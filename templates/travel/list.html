@@ -74,12 +74,6 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function toggleAll(el) { document.querySelectorAll('.row-check').forEach(cb => cb.checked = el.checked); }
-function batchPrint(type) {
-    var ids = []; document.querySelectorAll('.row-check:checked').forEach(cb => ids.push(cb.value));
-    if (!ids.length) { alert('请先勾选要打印的记录。'); return; }
-    window.open('/print/batch/' + type + '?ids=' + ids.join(','), '_blank');
-}
 document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_travel'); });
 </script>
 {% endblock %}

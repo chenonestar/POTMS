@@ -2,7 +2,7 @@
 {% block title %}证照登记表{% endblock %}
 {% block content %}
 <h4 class="mb-3"><i class="bi bi-card-checklist"></i> {{ '编辑' if editing else '新增' }}因私出国（境）备案人员证照登记表</h4>
-<form method="POST" {% if not editing %}data-draft="certificate"{% endif %}>
+<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="certificate"{% endif %}>
 <div class="form-section">
     <h5>选择备案人员</h5>
     <p class="text-muted small mb-2">选择人员后，单位/部门/姓名自动从备案信息带入。</p>

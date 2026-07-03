@@ -14,24 +14,66 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // --- 自动关闭 Alert ---
-    document.querySelectorAll('.alert-dismissible').forEach(function (alert) {
+    // --- 自动关闭 Alert（错误/警告不自动消失，避免用户没看清就没了）---
+    document.querySelectorAll('.alert-dismissible:not(.alert-danger):not(.alert-warning)').forEach(function (alert) {
         setTimeout(function () {
             const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
             if (bsAlert) bsAlert.close();
         }, 5000);
     });
 
-    // --- 侧边栏活跃状态 ---
+    // --- 侧边栏活跃状态（首页需精确匹配，避免恒亮）---
     const currentPath = window.location.pathname;
     document.querySelectorAll('.sidebar .nav-link').forEach(function (link) {
-        if (currentPath.startsWith(link.getAttribute('href'))) {
-            link.classList.add('active');
-        }
+        const href = link.getAttribute('href');
+        const active = (href === '/') ? (currentPath === '/') : currentPath.startsWith(href);
+        if (active) link.classList.add('active');
+    });
+
+    // --- 侧边栏移动端折叠 ---
+    const sbToggle = document.getElementById('sidebarToggle');
+    if (sbToggle) {
+        sbToggle.addEventListener('click', function () {
+            const sb = document.querySelector('.sidebar');
+            if (sb) sb.classList.toggle('show');
+        });
+    }
+
+    // --- 可访问性：图标按钮 title → aria-label ---
+    document.querySelectorAll('[title]:not([aria-label])').forEach(function (el) {
+        el.setAttribute('aria-label', el.getAttribute('title'));
+    });
+
+    // --- 表单前端必填校验：阻止提交并定位首个错误字段 ---
+    document.querySelectorAll('form.needs-validation').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                e.stopPropagation();
+                const first = form.querySelector(':invalid');
+                if (first) {
+                    first.focus({ preventScroll: true });
+                    first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }
+            }
+            form.classList.add('was-validated');
+        }, false);
     });
 });
 
 // ================= 列表通用：选中导出 / 筛选导出 / 列显示 =================
+
+// 全选/取消全选行复选框
+function toggleAll(el) {
+    document.querySelectorAll('.row-check').forEach(function (cb) { cb.checked = el.checked; });
+}
+
+// 批量打印选中行
+function batchPrint(type) {
+    var ids = selectedRowIds();
+    if (!ids.length) { alert('请先勾选要打印的记录。'); return; }
+    window.open('/print/batch/' + type + '?ids=' + ids.join(','), '_blank');
+}
 
 // 收集已勾选行的 ID
 function selectedRowIds() {

@@ -135,7 +135,7 @@ pyinstaller --onefile ^
 
 > **说明**
 > - 打包后的 exe **同样以 waitress 生产服务器运行**（debug 关闭）。
-> - `--add-data "static;static"` 会把 `static/js/regions.js`（省市区三级联动数据）等静态资源一并打包。
+> - `--add-data "static;static"` 会把前端静态资源一并打包，包括 `static/vendor/`（**本地内置的 Bootstrap 与 Bootstrap Icons**，无需外网 CDN，断网/内网也能正常显示）与 `static/js/regions.js`（省市区三级联动数据）。
 > - `--hidden-import bcrypt --hidden-import waitress` 确保二者被正确收集（waitress 为惰性导入，需显式声明）；若打包后启动报缺少模块，可再追加 `--collect-all bcrypt`。
 > - `--exclude-module cryptography`：本项目不依赖 cryptography，排除后可减小体积；部分环境该包存在损坏的二进制绑定，会导致打包分析报错，排除即可规避。
 > - 已在 Linux 环境实测：单文件构建成功、启动后经 waitress 提供服务，`data.db`/`uploads`/`exports`/`backup` 正确生成于可执行文件同目录。Windows 下用同样命令（`--add-data` 分隔符改 `;`）即可产出 `.exe`。
