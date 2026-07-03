@@ -39,6 +39,7 @@ def login():
         from werkzeug.security import check_password_hash
 
         if user and check_password_hash(user["password_hash"], password):
+            session.permanent = True  # 启用 PERMANENT_SESSION_LIFETIME 超时（默认1小时）
             session["logged_in"] = True
             session["username"] = user["username"]
             flash("登录成功。", "success")

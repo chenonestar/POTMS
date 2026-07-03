@@ -95,6 +95,7 @@ def new():
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
+        errors += _missing_attachment_errors(request.files, data["need_new_passport"])
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -267,6 +268,19 @@ def attachment_download(att_id):
     return send_from_directory(directory, att["file_path"], download_name=att["file_name"])
 
 
+@travel_bp.route("/travel/attachment/<int:att_id>/preview")
+@login_required
+def attachment_preview(att_id):
+    """在浏览器内联预览 PDF 附件"""
+    db = get_db()
+    att = db.execute("SELECT * FROM attachments WHERE id = ?", (att_id,)).fetchone()
+    if not att:
+        flash("附件不存在。", "danger")
+        return redirect(url_for("travel.list"))
+    directory = os.path.join(Config.UPLOAD_FOLDER)
+    return send_from_directory(directory, att["file_path"], mimetype="application/pdf", as_attachment=False)
+
+
 @travel_bp.route("/travel/attachment/<int:att_id>/delete", methods=["POST"])
 @login_required
 def attachment_delete(att_id):
@@ -337,6 +351,25 @@ def _validate_form(data: dict) -> list[str]:
             if not ok:
                 errors.append(f"{label}: {msg}")
 
+    return errors
+
+
+def _missing_attachment_errors(files, need_new_passport: str) -> list:
+    """附件必填校验：路径A须含《个人申请报告》《审批表》；路径B（需做证）另须《同意申办函》。"""
+    errors = []
+
+    def _has(field):
+        for f in files.getlist(field):
+            if f and f.filename:
+                return True
+        return False
+
+    if not _has("att_application"):
+        errors.append("附件《个人申请报告》为必传项（PDF）。")
+    if not _has("att_approval"):
+        errors.append("附件《审批表》为必传项（PDF）。")
+    if need_new_passport == "是" and not _has("att_consent"):
+        errors.append("需新办证件（路径B）时，《同意申办函》为必传项（PDF）。")
     return errors
 
 

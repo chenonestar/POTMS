@@ -6,7 +6,21 @@
     {{ '编辑' if editing else '新增' }}备案人员信息登记表
 </h4>
 
-<form method="POST" class="needs-validation" novalidate>
+{% if not editing %}
+<div class="d-flex align-items-center mb-4" style="max-width:520px;">
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-primary" style="width:26px;height:26px;line-height:18px;">1</span>
+        <div class="small mt-1 fw-bold text-primary">信息登记表</div>
+    </div>
+    <div class="flex-fill border-top border-2 mx-2" style="margin-top:-14px;"></div>
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-secondary" style="width:26px;height:26px;line-height:18px;">2</span>
+        <div class="small mt-1 text-muted">登记备案表</div>
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_info"{% endif %}>
 <div class="form-section">
     <h5>基本信息</h5>
     <div class="row g-3">

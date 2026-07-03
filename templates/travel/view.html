@@ -50,9 +50,10 @@
             {% for att in attachments %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-file-pdf text-danger me-2"></i> [{{ att.file_type }}] {{ att.file_name }} <small class="text-muted">({{ (att.file_size / 1024) | round | int }} KB)</small></span>
-                <a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-download"></i> 下载
-                </a>
+                <span>
+                    <a href="{{ url_for('travel.attachment_preview', att_id=att.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 预览</a>
+                    <a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download"></i> 下载</a>
+                </span>
             </li>
             {% endfor %}
         </ul>

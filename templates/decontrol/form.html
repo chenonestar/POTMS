@@ -8,7 +8,7 @@
     <strong>注意：</strong>提交撤控后，该人员的备案状态将标记为"已撤控"。如信息变更，需重新填写登记备案表。
 </div>
 
-<form method="POST">
+<form method="POST" data-draft="decontrol">
 <div class="form-section">
     <h5>身份信息</h5>
     <div class="row g-3">
@@ -42,7 +42,12 @@
     <div class="row g-3 mt-1">
         <div class="col-md-4">
             <label class="form-label required">户口所在地</label>
-            <input type="text" class="form-control" name="residence" value="{{ data.residence or '' }}" required>
+            <div class="row g-1 mb-1">
+                <div class="col-4"><select class="form-select form-select-sm" id="resProv"><option value="">省</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resCity"><option value="">市</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resDist"><option value="">区/县</option></select></div>
+            </div>
+            <input type="text" class="form-control" name="residence" id="resInput" value="{{ data.residence or '' }}" placeholder="三级联动或手动输入" required>
         </div>
         <div class="col-md-4">
             <label class="form-label required">工作单位</label>
@@ -113,4 +118,8 @@
     <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
 </div>
 </form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/regions.js') }}"></script>
+<script>document.addEventListener('DOMContentLoaded', function () { initRegionCascade('resProv', 'resCity', 'resDist', 'resInput'); });</script>
 {% endblock %}

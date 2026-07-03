@@ -2,7 +2,7 @@
 {% block title %}因私出国（境）人员明细表{% endblock %}
 {% block content %}
 <h4 class="mb-3"><i class="bi bi-airplane"></i> {{ '编辑' if editing else '新增' }}因私出国（境）人员明细表</h4>
-<form method="POST" enctype="multipart/form-data">
+<form method="POST" enctype="multipart/form-data" {% if not editing %}data-draft="travel"{% endif %}>
 
 <div class="form-section">
     <h5>选择备案人员</h5>
@@ -67,7 +67,7 @@
         <div class="col-md-4"><label class="form-label">同意申办函</label><input type="file" class="form-control" name="att_consent" accept=".pdf"><div class="form-text">路径B（新办证件）时上传</div></div>
     </div>
     {% if editing and attachments %}
-    <div class="mt-2"><strong>已有附件：</strong><ul class="list-group list-group-flush">{% for att in attachments %}<li class="list-group-item d-flex justify-content-between align-items-center py-1"><span><i class="bi bi-file-pdf text-danger"></i> [{{ att.file_type }}] {{ att.file_name }} ({{ (att.file_size / 1024) | round | int }} KB)</span><span><a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i></a><button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.attachment_delete', att_id=att.id) }}" data-message="确定要删除附件 {{ att.file_name }} 吗？"><i class="bi bi-trash"></i></button></span></li>{% endfor %}</ul></div>
+    <div class="mt-2"><strong>已有附件：</strong><ul class="list-group list-group-flush">{% for att in attachments %}<li class="list-group-item d-flex justify-content-between align-items-center py-1"><span><i class="bi bi-file-pdf text-danger"></i> [{{ att.file_type }}] {{ att.file_name }} ({{ (att.file_size / 1024) | round | int }} KB)</span><span><a href="{{ url_for('travel.attachment_preview', att_id=att.id) }}" target="_blank" class="btn btn-sm btn-outline-info" title="预览"><i class="bi bi-eye"></i></a> <a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-secondary" title="下载"><i class="bi bi-download"></i></a><button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.attachment_delete', att_id=att.id) }}" data-message="确定要删除附件 {{ att.file_name }} 吗？"><i class="bi bi-trash"></i></button></span></li>{% endfor %}</ul></div>
     {% endif %}
 </div>
 

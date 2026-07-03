@@ -52,6 +52,83 @@ function exportFiltered(baseUrl) {
     window.location = baseUrl + window.location.search;
 }
 
+// 表单暂存草稿：输入自动存 localStorage，加载时可恢复，提交后清除
+function initFormDraft(form) {
+    var key = 'draft_' + form.getAttribute('data-draft');
+    function fieldEls() { return form.querySelectorAll('input[name], select[name], textarea[name]'); }
+    function skip(el) { return el.type === 'file' || el.type === 'password' || el.type === 'hidden' || el.name === 'csrf_token'; }
+    function serialize() {
+        var o = {};
+        fieldEls().forEach(function (el) { if (!skip(el)) o[el.name] = el.value; });
+        return o;
+    }
+    function save() { try { localStorage.setItem(key, JSON.stringify(serialize())); } catch (e) {} }
+    form.addEventListener('input', save);
+    form.addEventListener('change', save);
+    form.addEventListener('submit', function () { try { localStorage.removeItem(key); } catch (e) {} });
+
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { saved = null; }
+    if (saved) {
+        var bar = document.createElement('div');
+        bar.className = 'alert alert-info d-flex justify-content-between align-items-center py-2';
+        bar.innerHTML = '<span><i class="bi bi-clock-history"></i> 发现上次未保存的草稿，是否恢复？</span>' +
+            '<span><button type="button" class="btn btn-sm btn-primary me-1" data-act="restore">恢复草稿</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary" data-act="discard">清除</button></span>';
+        form.parentNode.insertBefore(bar, form);
+        bar.querySelector('[data-act=restore]').addEventListener('click', function () {
+            fieldEls().forEach(function (el) {
+                if (skip(el) || el.readOnly) return;
+                if (Object.prototype.hasOwnProperty.call(saved, el.name)) {
+                    el.value = saved[el.name];
+                    el.dispatchEvent(new Event('change'));
+                }
+            });
+            bar.remove();
+        });
+        bar.querySelector('[data-act=discard]').addEventListener('click', function () {
+            try { localStorage.removeItem(key); } catch (e) {}
+            bar.remove();
+        });
+    }
+}
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form[data-draft]').forEach(initFormDraft);
+});
+
+// 户口所在地 省市区三级联动（数据来自 regions.js，写入目标文本框）
+function initRegionCascade(provId, cityId, distId, targetId) {
+    var regions = window.CHINA_REGIONS || [];
+    var prov = document.getElementById(provId), city = document.getElementById(cityId),
+        dist = document.getElementById(distId), target = document.getElementById(targetId);
+    if (!prov || !city || !dist || !target || !regions.length) return;
+
+    regions.forEach(function (p) { prov.add(new Option(p.n, p.n)); });
+
+    function findProv() { return regions.filter(function (x) { return x.n === prov.value; })[0]; }
+    function findCity(p) { return p ? p.c.filter(function (x) { return x.n === city.value; })[0] : null; }
+
+    function fillCities() {
+        city.length = 1; dist.length = 1;
+        var p = findProv();
+        if (p) p.c.forEach(function (c) { city.add(new Option(c.n, c.n)); });
+    }
+    function fillDists() {
+        dist.length = 1;
+        var c = findCity(findProv());
+        if (c) c.d.forEach(function (d) { dist.add(new Option(d, d)); });
+    }
+    function updateTarget() {
+        var parts = [prov.value];
+        if (city.value && city.value !== '市辖区' && city.value !== '县') parts.push(city.value);
+        if (dist.value) parts.push(dist.value);
+        target.value = parts.filter(Boolean).join('');
+    }
+    prov.addEventListener('change', function () { fillCities(); updateTarget(); });
+    city.addEventListener('change', function () { fillDists(); updateTarget(); });
+    dist.addEventListener('change', updateTarget);
+}
+
 // 自定义列显示/隐藏：从 thead th[data-col] 生成菜单，localStorage 持久化
 function initColumnToggle(tableId, menuId, storageKey) {
     var table = document.getElementById(tableId);

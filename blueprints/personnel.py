@@ -235,6 +235,19 @@ def filing_new():
         )
         db.commit()
         filing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # 撤控重报关联：若存在同一身份证的已撤控旧记录，建立新旧关联并标记为"更新"
+        prior = db.execute(
+            "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'decontrolled' "
+            "AND replaced_by_id IS NULL AND id != ? ORDER BY id DESC LIMIT 1",
+            (data["id_number"], filing_id),
+        ).fetchone()
+        if prior:
+            db.execute("UPDATE personnel_filing SET replaced_by_id = ? WHERE id = ?", (filing_id, prior["id"]))
+            db.execute("UPDATE personnel_filing SET tag = '更新' WHERE id = ?", (filing_id,))
+            db.commit()
+            flash(f"已与原撤控记录（#{prior['id']}）建立关联，本记录标记为“更新”。", "info")
+
         log_action("create", "personnel_filing", filing_id, after=row_snapshot("personnel_filing", filing_id))
         flash("登记备案表已保存。", "success")
         return redirect(url_for("personnel.list"))
@@ -334,10 +347,24 @@ def view(filing_id):
             (filing["personnel_info_id"],),
         ).fetchone()
 
+    # 撤控重报关联链路
+    successor = None  # 本（旧）记录被哪条新记录替代
+    if filing["replaced_by_id"]:
+        successor = db.execute(
+            "SELECT id, surname, given_name, created_at FROM personnel_filing WHERE id = ?",
+            (filing["replaced_by_id"],),
+        ).fetchone()
+    predecessor = db.execute(  # 本记录替代了哪条旧记录（即本记录为重报）
+        "SELECT id, surname, given_name, created_at FROM personnel_filing WHERE replaced_by_id = ?",
+        (filing_id,),
+    ).fetchone()
+
     return render_template(
         "personnel/view.html",
         filing=filing,
         info=info_row,
+        successor=successor,
+        predecessor=predecessor,
     )
 
 
