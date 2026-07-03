@@ -85,7 +85,7 @@ POTMS/
 
 ## 打包部署
 
-### 方式一：源码直接运行（开发/测试）
+### 方式一：源码直接运行
 
 适用于已有 Python 环境的机器：
 
@@ -93,6 +93,19 @@ POTMS/
 pip install -r requirements.txt
 python app.py            # 浏览器打开 http://localhost:5000
 ```
+
+**运行模式说明**
+
+- **默认即生产模式**：使用 **waitress**（纯 Python WSGI 服务器）提供服务，**不是** Flask 自带的开发服务器，也**不开启** debug。
+- 需要开发调试（热重载 + 调试器）时，设置环境变量 `POTMS_DEBUG=1` 再启动。
+- 首次运行才会在控制台提示默认账户 `admin / admin123`；改密后或非首次启动不再显示。
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `POTMS_DEBUG` | 关闭 | 设为 `1` 启用 Flask 开发服务器（仅调试用，勿用于生产） |
+| `POTMS_HOST` | `127.0.0.1` | 监听地址；如需局域网访问设为 `0.0.0.0` |
+| `POTMS_PORT` | `5000` | 监听端口 |
+| `SECRET_KEY` | 自动持久化 | 会话密钥，优先级高于 `.secret_key` 文件 |
 
 ### 方式二：PyInstaller 打包为单个 .exe（推荐生产）
 
@@ -109,14 +122,16 @@ pyinstaller --onefile ^
   --add-data "templates;templates" ^
   --add-data "static;static" ^
   --hidden-import bcrypt ^
+  --hidden-import waitress ^
   app.py
 
 # 3. 输出文件位于 dist/POTMS.exe
 ```
 
 > **说明**
+> - 打包后的 exe **同样以 waitress 生产服务器运行**（debug 关闭）。
 > - `--add-data "static;static"` 会把 `static/js/regions.js`（省市区三级联动数据）等静态资源一并打包。
-> - `--hidden-import bcrypt` 确保 bcrypt 的二进制扩展被正确收集；若打包后启动报缺少模块，可再追加 `--collect-all bcrypt`。
+> - `--hidden-import bcrypt --hidden-import waitress` 确保二者被正确收集（waitress 为惰性导入，需显式声明）；若打包后启动报缺少模块，可再追加 `--collect-all bcrypt`。
 > - 程序已适配打包环境：**模板/静态资源**从解压目录读取，而 **`data.db`、`uploads/`、`exports/`、`backup/`、`.secret_key`** 会持久化到 **`POTMS.exe` 所在目录**（不会随临时目录清除而丢失）。
 
 ### 目录与数据持久化
