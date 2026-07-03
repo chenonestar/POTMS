@@ -101,11 +101,7 @@
 <div class="form-section">
     <h5>撤控原因</h5>
     <div class="row g-3">
-        <div class="col-md-4">
-            <label class="form-label required">操作人</label>
-            <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
-        </div>
-        <div class="col-md-8">
+        <div class="col-md-12">
             <label class="form-label required">备注（撤控原因等）</label>
             <textarea class="form-control" name="reason" rows="2" required>{{ data.reason or '' }}</textarea>
         </div>

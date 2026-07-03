@@ -1,7 +1,7 @@
 """证照登记蓝图 — 护照 / 港澳通行证 / 台湾通行证"""
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 
 from auth import login_required
 from database import get_db
@@ -191,7 +191,7 @@ def _extract_form(form):
         "tw_pass_no": form.get("tw_pass_no", "").strip(),
         "tw_pass_expiry": parse_date_input(form.get("tw_pass_expiry", "")),
         "tw_pass_submit_date": parse_date_input(form.get("tw_pass_submit_date", "")),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -199,7 +199,7 @@ def _validate_form(data: dict) -> list[str]:
     errors = []
     required = [
         ("personnel_filing_id", "备案人员"), ("unit", "单位"),
-        ("department", "部门"), ("name", "姓名"), ("operator", "操作人"),
+        ("department", "部门"), ("name", "姓名"),
     ]
     for field, label in required:
         if not data.get(field):

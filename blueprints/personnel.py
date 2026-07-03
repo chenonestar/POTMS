@@ -1,7 +1,7 @@
 """人员备案蓝图 — 信息登记表 + 登记备案表"""
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 
 from auth import login_required
 from database import get_db
@@ -119,12 +119,12 @@ def info_new():
         db = get_db()
         db.execute(
             "INSERT INTO personnel_info (unit, department, name, gender, birth_date, "
-            "work_start_date, education, degree, title, rank, political_status, "
+            "id_number, work_start_date, education, degree, title, rank, political_status, "
             "party_join_date, position, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["unit"], data["department"], data["name"], data["gender"],
-                data["birth_date"], data["work_start_date"], data["education"],
+                data["birth_date"], data["id_number"], data["work_start_date"], data["education"],
                 data["degree"], data["title"], data["rank"], data["political_status"],
                 data["party_join_date"], data["position"], data["operator"],
             ),
@@ -160,12 +160,12 @@ def info_edit(info_id):
 
         db.execute(
             "UPDATE personnel_info SET unit=?, department=?, name=?, gender=?, "
-            "birth_date=?, work_start_date=?, education=?, degree=?, title=?, rank=?, "
+            "birth_date=?, id_number=?, work_start_date=?, education=?, degree=?, title=?, rank=?, "
             "political_status=?, party_join_date=?, position=?, operator=?, updated_at=CURRENT_TIMESTAMP "
             "WHERE id=?",
             (
                 data["unit"], data["department"], data["name"], data["gender"],
-                data["birth_date"], data["work_start_date"], data["education"],
+                data["birth_date"], data["id_number"], data["work_start_date"], data["education"],
                 data["degree"], data["title"], data["rank"], data["political_status"],
                 data["party_join_date"], data["position"], data["operator"], info_id,
             ),
@@ -235,6 +235,7 @@ def filing_new():
             "given_name": given_name,
             "gender": info_row["gender"],
             "birth_date": info_row["birth_date"],
+            "id_number": info_row["id_number"] or "",
             "political_status": info_row["political_status"],
             "work_unit": info_row["unit"],
             "position_or_title": info_row["position"] or info_row["rank"],
@@ -350,6 +351,7 @@ def _extract_info_form(form):
         "name": form.get("name", "").strip(),
         "gender": form.get("gender", "").strip(),
         "birth_date": parse_date_input(form.get("birth_date", "")),
+        "id_number": form.get("id_number", "").strip().upper(),
         "work_start_date": parse_date_input(form.get("work_start_date", "")),
         "education": form.get("education", "").strip(),
         "degree": form.get("degree", "").strip(),
@@ -358,7 +360,7 @@ def _extract_info_form(form):
         "political_status": form.get("political_status", "").strip(),
         "party_join_date": parse_date_input(form.get("party_join_date", "")),
         "position": form.get("position", "").strip(),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -366,9 +368,10 @@ def _validate_info_form(data: dict) -> list[str]:
     errors = []
     required = [
         ("unit", "单位"), ("department", "部门"), ("name", "姓名"),
-        ("gender", "性别"), ("birth_date", "出生日期"),
+        ("gender", "性别"), ("birth_date", "出生日期"), ("id_number", "身份证号"),
+        ("education", "学历"), ("degree", "学位"),
         ("rank", "职级"), ("political_status", "政治面貌"),
-        ("position", "职务（岗位名称）"), ("operator", "操作人"),
+        ("position", "职务（岗位名称）"),
     ]
     for field, label in required:
         if not data.get(field):
@@ -378,6 +381,15 @@ def _validate_info_form(data: dict) -> list[str]:
         ok, msg = validate_date_format(data["birth_date"])
         if not ok:
             errors.append(f"出生日期: {msg}")
+
+    if data["id_number"]:
+        ok, msg = validate_id_number(data["id_number"])
+        if not ok:
+            errors.append(f"身份证号: {msg}")
+        elif data["birth_date"]:
+            ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
+            if not ok2:
+                errors.append(msg2)
 
     if data["work_start_date"]:
         ok, msg = validate_date_format(data["work_start_date"])
@@ -410,7 +422,7 @@ def _extract_filing_form(form):
         "tag": form.get("tag", "新增").strip(),
         "informed": form.get("informed", "否").strip(),
         "remarks": form.get("remarks", "").strip(),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -422,7 +434,7 @@ def _validate_filing_form(data: dict, skip_id_dup_check: bool = False) -> list[s
         ("residence", "户口所在地"), ("political_status", "政治面貌"),
         ("work_unit", "工作单位"), ("position_or_title", "职务（级）或职称"),
         ("supervisor_unit", "人事主管单位"), ("tag", "标记"),
-        ("informed", "已告知本人"), ("operator", "操作人"),
+        ("informed", "已告知本人"),
     ]
     for field, label in required:
         if not data.get(field):

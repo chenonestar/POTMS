@@ -43,12 +43,12 @@ def parse_import_file(file_stream) -> dict:
             # 写入 personnel_info
             db.execute(
                 "INSERT INTO personnel_info (unit, department, name, gender, birth_date, "
-                "work_start_date, education, degree, title, rank, political_status, "
+                "id_number, work_start_date, education, degree, title, rank, political_status, "
                 "party_join_date, position, operator) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     data["unit"], data["department"], data["name"], data["gender"],
-                    data["birth_date"], data["work_start_date"], data["education_code"],
+                    data["birth_date"], data["id_number"], data["work_start_date"], data["education_code"],
                     data["degree_code"], data["title_code"], data["rank_code"],
                     data["political_status"], data["party_join_date"],
                     data["position"], data["operator"],

@@ -35,7 +35,8 @@
         <div class="col-md-3">
             <label class="form-label required">身份证号</label>
             <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
-                   placeholder="18位" maxlength="18" required>
+                   placeholder="18位" maxlength="18" required {{ 'readonly' if info_id and data.id_number }}>
+            {% if info_id and data.id_number %}<div class="form-text">取自信息登记表，不可修改。</div>{% endif %}
         </div>
     </div>
     <div class="row g-3 mt-1">
@@ -106,14 +107,6 @@
             <label class="form-label">备注</label>
             <input type="text" class="form-control" name="remarks" value="{{ data.remarks or '' }}">
         </div>
-    </div>
-</div>
-
-<div class="form-section">
-    <h5>操作信息</h5>
-    <div class="col-md-4">
-        <label class="form-label required">操作人</label>
-        <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
     </div>
 </div>
 

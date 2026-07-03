@@ -8,11 +8,15 @@
     <p class="text-muted small mb-2">选择人员后，单位/部门/姓名自动从备案信息带入。</p>
     <div class="row g-3">
         <div class="col-md-5">
+            <label class="form-label">搜索备案人员</label>
+            <input type="text" class="form-control" id="personSearch" placeholder="输入姓名 / 身份证号 / 单位 过滤" oninput="filterPersons('personSearch','personSelect')" autocomplete="off">
+        </div>
+        <div class="col-md-5">
             <label class="form-label required">备案人员</label>
-            <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillCert()">
+            <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillCert()" size="6">
                 <option value="">请选择备案人员</option>
                 {% for p in personnel_opts() %}
-                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -51,10 +55,6 @@
     <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="tw_pass_submit_date" value="{{ data.tw_pass_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
 </div></div>
 
-<div class="form-section"><h5>操作信息</h5>
-    <div class="col-md-4"><label class="form-label required">操作人</label><input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required></div>
-</div>
-
 <div class="mt-3">
     <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
     <a href="{{ url_for('certificate.list') }}" class="btn btn-secondary">取消</a>
@@ -69,6 +69,16 @@ function autoFillCert() {
     document.getElementById('certUnit').value = opt.getAttribute('data-unit') || '';
     document.getElementById('certDept').value = opt.getAttribute('data-dept') || '';
     document.getElementById('certName').value = opt.getAttribute('data-name') || '';
+}
+function filterPersons(searchId, selectId) {
+    var q = document.getElementById(searchId).value.trim().toLowerCase();
+    var sel = document.getElementById(selectId);
+    for (var i = 0; i < sel.options.length; i++) {
+        var o = sel.options[i];
+        if (!o.value) continue;
+        var hay = (o.getAttribute('data-search') || o.text).toLowerCase();
+        o.hidden = q !== '' && hay.indexOf(q) === -1;
+    }
 }
 // Init on page load (for edit mode)
 document.addEventListener('DOMContentLoaded', function() {

@@ -21,6 +21,10 @@ def create_app() -> Flask:
         init_db()
         seed_data()
 
+    # 轻量迁移（已存在的数据库补齐新增字段）
+    from database import run_migrations
+    run_migrations()
+
     # 注册蓝图
     from auth import auth_bp
     from blueprints.dashboard import dashboard_bp

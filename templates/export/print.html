@@ -36,7 +36,8 @@
 <table>
     <tr><td class="label">单位</td><td>{{ row.unit }}</td><td class="label">部门</td><td>{{ row.department }}</td></tr>
     <tr><td class="label">姓名</td><td>{{ row.name }}</td><td class="label">性别</td><td>{{ row.gender }}</td></tr>
-    <tr><td class="label">出生日期</td><td>{{ row.birth_date }}</td><td class="label">参加工作日期</td><td>{{ row.work_start_date or '' }}</td></tr>
+    <tr><td class="label">身份证号</td><td>{{ row.id_number or '' }}</td><td class="label">参加工作日期</td><td>{{ row.work_start_date or '' }}</td></tr>
+    <tr><td class="label">出生日期</td><td colspan="3">{{ row.birth_date }}</td></tr>
     <tr><td class="label">学历</td><td>{{ row.education or '' }}</td><td class="label">学位</td><td>{{ row.degree or '' }}</td></tr>
     <tr><td class="label">职称</td><td>{{ row.title or '' }}</td><td class="label">职级</td><td>{{ row.rank }}</td></tr>
     <tr><td class="label">政治面貌</td><td>{{ row.political_status }}</td><td class="label">入党日期</td><td>{{ row.party_join_date or '' }}</td></tr>

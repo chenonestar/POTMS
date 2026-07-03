@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import uuid
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory, session
 
 from auth import login_required
 from database import get_db
@@ -276,7 +276,7 @@ def _extract_form(form):
         "passport_no": form.get("passport_no", "").strip(),
         "passport_collect_date": parse_date_input(form.get("passport_collect_date", "")),
         "passport_return_date": parse_date_input(form.get("passport_return_date", "")),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -287,7 +287,6 @@ def _validate_form(data: dict) -> list[str]:
         ("name", "姓名"), ("position", "职务"), ("id_number", "身份证号"),
         ("destination_passport", "地点、证照"), ("category", "类别"),
         ("travel_dates", "计划出行日期"), ("need_new_passport", "是否做证"),
-        ("operator", "操作人"),
     ]
     for field, label in required:
         if not data.get(field):

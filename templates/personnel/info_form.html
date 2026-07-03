@@ -54,6 +54,14 @@
                    placeholder="YYYYMMDD" maxlength="8">
         </div>
     </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-6">
+            <label class="form-label required">身份证号</label>
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+                   placeholder="18位，需与出生日期一致" maxlength="18" required>
+            <div class="form-text">系统校验校验位并核对出生日期；登记备案表、明细表将自动带入此身份证。</div>
+        </div>
+    </div>
 </div>
 
 <div class="form-section">
@@ -61,7 +69,7 @@
     <div class="row g-3">
         <div class="col-md-3">
             <label class="form-label required">学历</label>
-            <select class="form-select" name="education">
+            <select class="form-select" name="education" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('education') %}
                 <option value="{{ o.code }}" {{ 'selected' if data.get('education') == o.code }}>{{ o.value }}</option>
@@ -70,7 +78,7 @@
         </div>
         <div class="col-md-3">
             <label class="form-label required">学位</label>
-            <select class="form-select" name="degree">
+            <select class="form-select" name="degree" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('degree') %}
                 <option value="{{ o.code }}" {{ 'selected' if data.get('degree') == o.code }}>{{ o.value }}</option>
@@ -119,14 +127,6 @@
             <label class="form-label required">职务（岗位名称）</label>
             <input type="text" class="form-control" name="position" value="{{ data.position or '' }}" required>
         </div>
-    </div>
-</div>
-
-<div class="form-section">
-    <h5>操作信息</h5>
-    <div class="col-md-4">
-        <label class="form-label required">操作人</label>
-        <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
     </div>
 </div>
 

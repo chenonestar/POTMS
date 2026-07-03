@@ -92,6 +92,18 @@ def init_db():
     db.close()
 
 
+def run_migrations():
+    """轻量迁移：为已存在的数据库补齐新增字段（幂等）"""
+    db = sqlite3.connect(Config.DATABASE)
+    try:
+        cols = {row[1] for row in db.execute("PRAGMA table_info(personnel_info)").fetchall()}
+        if "id_number" not in cols:
+            db.execute("ALTER TABLE personnel_info ADD COLUMN id_number TEXT")
+        db.commit()
+    finally:
+        db.close()
+
+
 def seed_data():
     """写入种子数据（幂等）"""
     db = sqlite3.connect(Config.DATABASE)
@@ -149,6 +161,7 @@ CREATE TABLE IF NOT EXISTS personnel_info (
     name TEXT NOT NULL,
     gender TEXT NOT NULL,
     birth_date TEXT NOT NULL,
+    id_number TEXT,
     work_start_date TEXT,
     education TEXT,
     degree TEXT,

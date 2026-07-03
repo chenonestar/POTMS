@@ -389,6 +389,7 @@
             </tbody>
         </table>
         <p style="margin-top:12px; color:var(--text-muted);">📌 系统仅设置单一管理员账户，登录后直接进入功能界面，无需角色切换、权限分配或审批流转。</p>
+        <p style="margin-top:8px; color:var(--text-muted);">📌 因系统为单用户统管，各业务表单<strong>无需手动填写"操作人"</strong>，系统在保存时自动记录当前登录管理员为操作人并写入操作日志。</p>
     </div>
 </section>
 
@@ -425,7 +426,8 @@
                 <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>与身份证一致（注：备案表中姓/名分开，此处可整体填写）</td></tr>
                 <tr><td>性别</td><td>ENUM('男','女')</td><td><span class="badge must">必填</span></td><td>下拉选择</td></tr>
                 <tr><td>出生日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD，需与身份证号对应</td></tr>
-                <tr><td>参加工作日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD</td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>校验位验证 + 出生日期一致性校验；作为唯一身份源，登记备案表 / 明细表自动带入</td></tr>
+                <tr><td>参加工作日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>格式 YYYYMMDD</td></tr>
                 <tr><td>学历</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
                 <tr><td>学位</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
                 <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>副高/正高/其他（字典维护）</td></tr>
@@ -586,9 +588,9 @@
                 <tr><td>单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>部门</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>职务</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td></td></tr>
-                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>职务</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
+                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>自动带入（取自信息登记表），无需重复选择</td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
                 <tr><td>地点、证照</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>目的地国家/地区及使用证照类型</td></tr>
                 <tr><td>类别</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>出国/出境类别（字典维护）</td></tr>
                 <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>日期区间，如"2023-6-20-2023-6-26"</td></tr>
@@ -698,6 +700,7 @@
         <h3>7.3 查询与筛选 <span class="req-id">REQ-006</span></h3>
         <ul class="styled">
             <li>全局搜索：按<strong>姓名、身份证号、单位</strong>进行全系统快速检索。</li>
+            <li>人员选择器：在证照登记、出国申请等需选择备案人员处，提供<strong>按姓名 / 身份证号 / 单位实时过滤</strong>的搜索框，适应约 500 人规模下的快速定位。</li>
             <li>高级筛选：按<strong>政治面貌、职级、户口所在地、备案状态、证照类型、出行日期范围</strong>等多条件组合筛选。</li>
             <li>列表页支持：排序、分页、自定义列显示/隐藏。</li>
         </ul>

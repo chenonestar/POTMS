@@ -145,7 +145,8 @@ def get_personnel_options() -> list[dict]:
     db = get_db()
     rows = db.execute(
         "SELECT pf.id, pf.surname, pf.given_name, pf.work_unit, pf.id_number, pf.position_or_title, "
-        "COALESCE(pi.department, '') AS department "
+        "COALESCE(pi.department, '') AS department, "
+        "(SELECT value FROM sys_dict WHERE category = 'title' AND code = pi.title) AS title_val "
         "FROM personnel_filing pf "
         "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
         "WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name"
@@ -161,5 +162,6 @@ def get_personnel_options() -> list[dict]:
             "department": r["department"],
             "id_number": r["id_number"],
             "position": r["position_or_title"],
+            "title": r["title_val"] or "",
         })
     return result

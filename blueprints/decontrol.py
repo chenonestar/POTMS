@@ -1,7 +1,7 @@
 """撤控备案蓝图"""
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 
 from auth import login_required
 from database import get_db
@@ -135,7 +135,7 @@ def _extract_form(form):
         "submit_phone": form.get("submit_phone", "").strip(),
         "batch_no": form.get("batch_no", "").strip(),
         "reason": form.get("reason", "").strip(),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -148,7 +148,7 @@ def _validate_form(data: dict) -> list[str]:
         ("work_unit", "工作单位"), ("supervisor_unit", "人事主管单位"),
         ("submit_unit_name", "报送单位名称"), ("submit_unit_type", "报送单位类别"),
         ("submit_contact", "报送单位联系人"), ("submit_phone", "报送单位联系电话"),
-        ("batch_no", "入库批号"), ("reason", "撤控原因"), ("operator", "操作人"),
+        ("batch_no", "入库批号"), ("reason", "撤控原因"),
     ]
     for field, label in required:
         if not data.get(field):

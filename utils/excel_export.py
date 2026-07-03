@@ -73,7 +73,7 @@ def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
 # 1. 备案人员信息登记表
 # =========================================================================
 HEADERS_INFO = [
-    "单位", "部门", "姓名", "性别", "出生日期", "参加工作日期",
+    "单位", "部门", "姓名", "性别", "出生日期", "身份证号", "参加工作日期",
     "学历", "学位", "职称", "职级", "政治面貌", "入党日期", "职务（岗位名称）",
 ]
 
@@ -97,7 +97,7 @@ def export_personnel_info(operator: str) -> str:
     for i, row in enumerate(rows, 2):
         values = [
             row["unit"], row["department"], row["name"], row["gender"],
-            row["birth_date"], row["work_start_date"] or "",
+            row["birth_date"], row["id_number"] or "", row["work_start_date"] or "",
             row["education"] or "", row["degree"] or "", row["title"] or "",
             row["rank"], row["political_status"], row["party_join_date"] or "",
             row["position"],
