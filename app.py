@@ -74,7 +74,7 @@ def create_app() -> Flask:
     app.teardown_appcontext(close_db)
 
     # Jinja2 模板全局函数（数据字典查询）
-    from utils.helpers import get_dict_options, get_dict_value, get_org_tree_options, get_org_children, get_personnel_options
+    from utils.helpers import get_dict_options, get_dict_value, get_org_tree_options, get_org_children, get_org_flat, get_personnel_options
 
     @app.context_processor
     def inject_dict_helpers():
@@ -83,6 +83,7 @@ def create_app() -> Flask:
             "dict_value": get_dict_value,
             "org_tree_opts": get_org_tree_options,
             "org_children": get_org_children,
+            "org_flat": get_org_flat,
             "personnel_opts": get_personnel_options,
         }
 

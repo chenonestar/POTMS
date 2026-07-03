@@ -412,7 +412,8 @@ def _validate_info_form(data: dict) -> list[str]:
     required = [
         ("unit", "单位"), ("department", "部门"), ("name", "姓名"),
         ("gender", "性别"), ("birth_date", "出生日期"), ("id_number", "身份证号"),
-        ("education", "学历"), ("degree", "学位"),
+        ("work_start_date", "参加工作日期"),
+        ("education", "学历"), ("degree", "学位"), ("title", "职称"),
         ("rank", "职级"), ("political_status", "政治面貌"),
         ("position", "职务（岗位名称）"),
     ]

@@ -234,12 +234,16 @@ def _validate_form(data: dict) -> list[str]:
             if not ok:
                 errors.append(f"{label}: {msg}")
 
-    # 证件号与有效日期至少有一个配套
-    if data.get("passport_no") and not data.get("passport_expiry"):
-        errors.append("填写护照证件号时，有效日期为必填。")
-    if data.get("hm_pass_no") and not data.get("hm_pass_expiry"):
-        errors.append("填写港澳通行证号时，有效日期为必填。")
-    if data.get("tw_pass_no") and not data.get("tw_pass_expiry"):
-        errors.append("填写台湾通行证号时，有效日期为必填。")
+    # 填写证件号时，有效日期与上交日期均为必填
+    for no_field, exp_field, sub_field, label in [
+        ("passport_no", "passport_expiry", "passport_submit_date", "护照"),
+        ("hm_pass_no", "hm_pass_expiry", "hm_pass_submit_date", "港澳通行证"),
+        ("tw_pass_no", "tw_pass_expiry", "tw_pass_submit_date", "台湾通行证"),
+    ]:
+        if data.get(no_field):
+            if not data.get(exp_field):
+                errors.append(f"填写{label}证件号时，有效日期为必填。")
+            if not data.get(sub_field):
+                errors.append(f"填写{label}证件号时，上交日期为必填。")
 
     return errors

@@ -427,10 +427,10 @@
                 <tr><td>性别</td><td>ENUM('男','女')</td><td><span class="badge must">必填</span></td><td>下拉选择</td></tr>
                 <tr><td>出生日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD，需与身份证号对应</td></tr>
                 <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>校验位验证 + 出生日期一致性校验；作为唯一身份源，登记备案表 / 明细表自动带入</td></tr>
-                <tr><td>参加工作日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>格式 YYYYMMDD</td></tr>
+                <tr><td>参加工作日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD</td></tr>
                 <tr><td>学历</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
                 <tr><td>学位</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
-                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>副高/正高/其他（字典维护）</td></tr>
+                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>副高/正高/其他（字典维护）</td></tr>
                 <tr><td>职级</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>处级/副处级/正科/其他（字典维护）</td></tr>
                 <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（枚举值见第8章）</td></tr>
                 <tr><td>入党日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>中共党员/预备党员时必填</td></tr>
@@ -530,7 +530,7 @@
         </table>
 
         <div class="footnote">
-            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。
+            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。<strong>填写某类证件号时，其"有效日期"与"上交日期"均为必填。</strong>系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。
         </div>
     </div>
 </section>

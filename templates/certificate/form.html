@@ -80,9 +80,29 @@ function filterPersons(searchId, selectId) {
         o.hidden = q !== '' && hay.indexOf(q) === -1;
     }
 }
+// 填写证件号时，有效日期/上交日期变为必填（显示 * 并触发校验）
+function bindCertRequired(noName, expName, subName) {
+    var no = document.querySelector('[name=' + noName + ']');
+    var exp = document.querySelector('[name=' + expName + ']');
+    var sub = document.querySelector('[name=' + subName + ']');
+    if (!no || !exp || !sub) return;
+    function upd() {
+        var on = no.value.trim() !== '';
+        [exp, sub].forEach(function (el) {
+            el.required = on;
+            var lbl = el.previousElementSibling;
+            if (lbl && lbl.classList.contains('form-label')) lbl.classList.toggle('required', on);
+        });
+    }
+    no.addEventListener('input', upd);
+    upd();
+}
 // Init on page load (for edit mode)
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('personSelect').value) autoFillCert();
+    bindCertRequired('passport_no', 'passport_expiry', 'passport_submit_date');
+    bindCertRequired('hm_pass_no', 'hm_pass_expiry', 'hm_pass_submit_date');
+    bindCertRequired('tw_pass_no', 'tw_pass_expiry', 'tw_pass_submit_date');
 });
 </script>
 {% endblock %}

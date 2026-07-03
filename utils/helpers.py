@@ -158,6 +158,15 @@ def get_org_tree_options() -> list[dict]:
     return _build(0, 0)
 
 
+def get_org_flat() -> list[dict]:
+    """获取全部组织节点（含 parent_id），用于单位/部门两级联动。"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, name, parent_id FROM sys_org ORDER BY parent_id, sort_order"
+    ).fetchall()
+    return [{"id": r["id"], "name": r["name"], "parent_id": r["parent_id"]} for r in rows]
+
+
 def get_org_children(parent_id: int = 0) -> list[dict]:
     """获取指定节点的直接子节点（用于级联选择）"""
     db = get_db()
