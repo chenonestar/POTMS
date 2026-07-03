@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}备案人员信息登记表{% endblock %}
+{% block content %}
+<h4 class="mb-3">
+    <i class="bi bi-person-plus"></i>
+    {{ '编辑' if editing else '新增' }}备案人员信息登记表
+</h4>
+
+<form method="POST" class="needs-validation" novalidate>
+<div class="form-section">
+    <h5>基本信息</h5>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label required">单位</label>
+            <select class="form-select" name="unit" id="orgUnit" required onchange="updateDept()">
+                <option value="">请选择单位</option>
+                {% for o in org_tree_opts() %}
+                {% set cn = o.name | replace('　', '') | replace('└ ', '') %}
+                <option value="{{ cn }}" data-oid="{{ o.id }}" {{ 'selected' if data.get('unit') == cn }}>{{ o.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label required">部门</label>
+            <select class="form-select" name="department" id="orgDept" required>
+                <option value="">请先选择单位</option>
+                {% for o in org_tree_opts() %}
+                {% set cn = o.name | replace('　', '') | replace('└ ', '') %}
+                <option value="{{ cn }}" data-pid="{{ o.parent_id }}" data-oid="{{ o.id }}" style="display:none" {{ 'selected' if data.get('department') == cn }}>{{ cn }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">姓名</label>
+            <input type="text" class="form-control" name="name" value="{{ data.name or '' }}"
+                   placeholder="与身份证一致" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">性别</label>
+            <select class="form-select" name="gender" required>
+                <option value="">请选择</option>
+                <option value="男" {{ 'selected' if data.gender == '男' }}>男</option>
+                <option value="女" {{ 'selected' if data.gender == '女' }}>女</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">出生日期</label>
+            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date or '' }}"
+                   placeholder="YYYYMMDD 如19800103" maxlength="8" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">参加工作日期</label>
+            <input type="text" class="form-control" name="work_start_date" value="{{ data.work_start_date or '' }}"
+                   placeholder="YYYYMMDD" maxlength="8">
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>学历与职称</h5>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label required">学历</label>
+            <select class="form-select" name="education">
+                <option value="">请选择</option>
+                {% for o in dict_opts('education') %}
+                <option value="{{ o.code }}" {{ 'selected' if data.get('education') == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">学位</label>
+            <select class="form-select" name="degree">
+                <option value="">请选择</option>
+                {% for o in dict_opts('degree') %}
+                <option value="{{ o.code }}" {{ 'selected' if data.get('degree') == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">职称</label>
+            <select class="form-select" name="title">
+                <option value="">请选择</option>
+                {% for o in dict_opts('title') %}
+                <option value="{{ o.code }}" {{ 'selected' if data.get('title') == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">职级</label>
+            <select class="form-select" name="rank" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('rank') %}
+                <option value="{{ o.code }}" {{ 'selected' if data.get('rank') == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>政治面貌与职务</h5>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label required">政治面貌</label>
+            <select class="form-select" name="political_status" id="politicalStatus" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('political_status') %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('political_status') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" id="partyDateLabel">入党日期</label>
+            <input type="text" class="form-control" name="party_join_date" id="partyJoinDate"
+                   value="{{ data.party_join_date or '' }}" placeholder="中共党员时必填" maxlength="8">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label required">职务（岗位名称）</label>
+            <input type="text" class="form-control" name="position" value="{{ data.position or '' }}" required>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>操作信息</h5>
+    <div class="col-md-4">
+        <label class="form-label required">操作人</label>
+        <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// 单位→部门级联
+function updateDept() {
+    var unitSel = document.getElementById('orgUnit');
+    var deptSel = document.getElementById('orgDept');
+    var selectedOid = unitSel.options[unitSel.selectedIndex].getAttribute('data-oid') || '';
+    var opts = deptSel.options;
+    // Show all options whose data-pid matches the selected org id
+    for (var i = 0; i < opts.length; i++) {
+        var pid = opts[i].getAttribute('data-pid') || '';
+        opts[i].style.display = (pid === selectedOid) ? '' : 'none';
+    }
+    // Reset selection
+    deptSel.selectedIndex = 0;
+    // If no matching children, add a self option
+    if (selectedOid) {
+        var hasChildren = false;
+        for (var j = 0; j < opts.length; j++) {
+            if ((opts[j].getAttribute('data-pid') || '') === selectedOid) { hasChildren = true; break; }
+        }
+        if (!hasChildren) {
+            // Select self
+            for (var k = 0; k < opts.length; k++) {
+                if ((opts[k].getAttribute('data-oid') || '') === selectedOid) {
+                    deptSel.selectedIndex = k; break;
+                }
+            }
+        }
+    }
+}
+// Init on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('orgUnit').value) updateDept();
+});
+// 入党日期联动：中共党员/预备党员时显示
+(function() {
+    var sel = document.getElementById('politicalStatus');
+    var input = document.getElementById('partyJoinDate');
+    var label = document.getElementById('partyDateLabel');
+    function toggle() {
+        var v = sel.value;
+        var show = v === '中共党员' || v === '中共预备党员';
+        input.style.display = show ? '' : 'none';
+        label.style.display = show ? '' : 'none';
+        if (!show) input.value = '';
+    }
+    sel.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
+{% endblock %}

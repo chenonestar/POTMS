@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}因私出国（境）人员明细表{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-airplane"></i> {{ '编辑' if editing else '新增' }}因私出国（境）人员明细表</h4>
+<form method="POST" enctype="multipart/form-data">
+
+<div class="form-section">
+    <h5>选择备案人员</h5>
+    <p class="text-muted small mb-2">选择人员后，基本信息自动从备案信息带入，无需手动填写。</p>
+    <div class="row g-3">
+        <div class="col-md-5">
+            <label class="form-label required">备案人员</label>
+            <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillTravel()">
+                <option value="">请选择备案人员</option>
+                {% for p in personnel_opts() %}
+                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-position="{{ p.position }}" data-idno="{{ p.id_number }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>基本信息 <small class="text-muted">(自动带入)</small></h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label">单位</label><input type="text" class="form-control" name="unit" id="tUnit" value="{{ data.unit or '' }}" readonly></div>
+        <div class="col-md-3"><label class="form-label">部门</label><input type="text" class="form-control" name="department" id="tDept" value="{{ data.department or '' }}" readonly></div>
+        <div class="col-md-2"><label class="form-label">姓名</label><input type="text" class="form-control" name="name" id="tName" value="{{ data.name or '' }}" readonly></div>
+        <div class="col-md-2"><label class="form-label">职务</label><input type="text" class="form-control" name="position" id="tPos" value="{{ data.position or '' }}" readonly></div>
+        <div class="col-md-2"><label class="form-label">职称</label><select class="form-select" name="title"><option value="">请选择</option>{% for o in dict_opts('title') %}<option value="{{ o.code }}" {{ 'selected' if data.get('title') == o.code }}>{{ o.value }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-3"><label class="form-label">身份证号</label><input type="text" class="form-control" name="id_number" id="tIdno" value="{{ data.id_number or '' }}" readonly></div>
+        <div class="col-md-9"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport or '' }}" placeholder="目的地国家/地区及使用的证照类型" required></div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>出行信息</h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label required">类别</label><select class="form-select" name="category" required><option value="">请选择</option>{% for o in dict_opts('travel_category') %}<option value="{{ o.value }}" {{ 'selected' if data.get('category') == o.value }}>{{ o.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label required">计划出行日期</label><input type="text" class="form-control" name="travel_dates" value="{{ data.travel_dates or '' }}" placeholder="如：2023-6-20-2023-6-26" required><div class="form-text">格式：起始日期-结束日期</div></div>
+        <div class="col-md-2"><label class="form-label">批准日期</label><input type="text" class="form-control" name="approval_date" value="{{ data.approval_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+        <div class="col-md-3"><label class="form-label required">是否做证</label><select class="form-select" name="need_new_passport" required><option value="否" {{ 'selected' if data.need_new_passport == '否' }}>否 — 已有证件</option><option value="是" {{ 'selected' if data.need_new_passport == '是' }}>是 — 需新办证件</option></select></div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>证件流转</h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label">证件号码</label><input type="text" class="form-control" name="passport_no" value="{{ data.passport_no or '' }}" placeholder="新办证件号（办理后补填）"></div>
+        <div class="col-md-3"><label class="form-label">证件领用日期</label><input type="text" class="form-control" name="passport_collect_date" value="{{ data.passport_collect_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">路径A（已有证件）时必填</div></div>
+        <div class="col-md-3"><label class="form-label">证件归还日期</label><input type="text" class="form-control" name="passport_return_date" value="{{ data.passport_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+        <div class="col-md-3"><label class="form-label required">操作人</label><input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required></div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>附件上传（PDF扫描件）</h5>
+    <p class="text-muted small">路径A（已有证件）：须上传《个人申请报告》《审批表》。路径B（新办证件）：须增传《同意申办函》。</p>
+    <div class="row g-3">
+        <div class="col-md-4"><label class="form-label">个人申请报告 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_application" accept=".pdf"><div class="form-text">PDF格式，≤10MB</div></div>
+        <div class="col-md-4"><label class="form-label">审批表 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_approval" accept=".pdf"><div class="form-text">PDF格式，≤10MB</div></div>
+        <div class="col-md-4"><label class="form-label">同意申办函</label><input type="file" class="form-control" name="att_consent" accept=".pdf"><div class="form-text">路径B（新办证件）时上传</div></div>
+    </div>
+    {% if editing and attachments %}
+    <div class="mt-2"><strong>已有附件：</strong><ul class="list-group list-group-flush">{% for att in attachments %}<li class="list-group-item d-flex justify-content-between align-items-center py-1"><span><i class="bi bi-file-pdf text-danger"></i> [{{ att.file_type }}] {{ att.file_name }} ({{ (att.file_size / 1024) | round | int }} KB)</span><span><a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i></a><button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.attachment_delete', att_id=att.id) }}" data-message="确定要删除附件 {{ att.file_name }} 吗？"><i class="bi bi-trash"></i></button></span></li>{% endfor %}</ul></div>
+    {% endif %}
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="{{ url_for('travel.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+{% include "components/confirm_modal.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+function autoFillTravel() {
+    var sel = document.getElementById('personSelect');
+    var opt = sel.options[sel.selectedIndex];
+    document.getElementById('tUnit').value = opt.getAttribute('data-unit') || '';
+    document.getElementById('tDept').value = opt.getAttribute('data-dept') || '';
+    document.getElementById('tName').value = opt.getAttribute('data-name') || '';
+    document.getElementById('tPos').value = opt.getAttribute('data-position') || '';
+    document.getElementById('tIdno').value = opt.getAttribute('data-idno') || '';
+}
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('personSelect').value) autoFillTravel();
+});
+</script>
+{% endblock %}

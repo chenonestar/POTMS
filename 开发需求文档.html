@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>因私出国（境）人员审批管理系统 — 开发需求说明书</title>
+    <style>
+        :root {
+            --primary: #1a5276;
+            --primary-light: #2980b9;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --border: #dee2e6;
+            --text: #2c3e50;
+            --text-muted: #6c757d;
+            --accent: #e67e22;
+            --success: #27ae60;
+            --danger: #c0392b;
+            --shadow: 0 2px 8px rgba(0,0,0,.08);
+            --radius: 8px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            padding: 0;
+        }
+
+        /* ===== 封面 ===== */
+        .cover {
+            background: linear-gradient(135deg, #0d2b45 0%, #1a5276 40%, #1a6e5c 100%);
+            color: #fff;
+            padding: 100px 60px 80px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .cover::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+        .cover h1 {
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+        .cover .subtitle {
+            font-size: 18px;
+            opacity: .85;
+            font-weight: 300;
+            letter-spacing: 4px;
+            position: relative;
+        }
+        .cover .meta {
+            margin-top: 48px;
+            font-size: 14px;
+            opacity: .65;
+            position: relative;
+        }
+
+        /* ===== 主容器 ===== */
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 30px 80px;
+        }
+
+        /* ===== 目录 ===== */
+        .toc {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 32px 40px;
+            margin-bottom: 48px;
+            box-shadow: var(--shadow);
+        }
+        .toc h2 {
+            font-size: 22px;
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary-light);
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .toc ol {
+            counter-reset: toc;
+            list-style: none;
+            padding-left: 0;
+        }
+        .toc ol li {
+            counter-increment: toc;
+            padding: 6px 0;
+            font-size: 15px;
+        }
+        .toc ol li::before {
+            content: counter(toc) ".";
+            color: var(--primary-light);
+            font-weight: 700;
+            margin-right: 8px;
+        }
+        .toc ol ol { margin-top: 4px; }
+        .toc ol ol li::before {
+            content: counter(toc, upper-alpha) ".";
+        }
+        .toc a {
+            color: var(--text);
+            text-decoration: none;
+            transition: color .2s;
+        }
+        .toc a:hover { color: var(--primary-light); }
+
+        /* ===== 章节 ===== */
+        section {
+            margin-bottom: 48px;
+        }
+        section h2 {
+            font-size: 26px;
+            color: var(--primary);
+            border-left: 5px solid var(--accent);
+            padding-left: 16px;
+            margin-bottom: 24px;
+        }
+        section h3 {
+            font-size: 19px;
+            color: var(--primary-light);
+            margin: 28px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed var(--border);
+        }
+        section h4 {
+            font-size: 16px;
+            color: #555;
+            margin: 16px 0 8px;
+        }
+
+        /* ===== 卡片 ===== */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+        }
+        .card.info { border-left: 4px solid var(--primary-light); }
+        .card.warning { border-left: 4px solid var(--accent); }
+        .card.success { border-left: 4px solid var(--success); }
+
+        /* ===== 表格 ===== */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 14px;
+        }
+        table thead th {
+            background: var(--primary);
+            color: #fff;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        table tbody td {
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        table tbody tr:nth-child(even) { background: #f5f7fa; }
+        table tbody tr:hover { background: #eaf2f8; }
+
+        /* ===== 流程图 ===== */
+        .flow {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 24px 0;
+            padding: 20px;
+            background: #f0f4f8;
+            border-radius: var(--radius);
+        }
+        .flow .node {
+            background: var(--card-bg);
+            border: 2px solid var(--primary-light);
+            border-radius: 6px;
+            padding: 10px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+        .flow .node.start { border-color: var(--success); background: #eafaf1; }
+        .flow .node.decision { border-color: var(--accent); background: #fef5e7; border-radius: 20px; }
+        .flow .node.end { border-color: var(--danger); background: #fdedec; }
+        .flow .arrow {
+            font-size: 20px;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        /* ===== 字段列表 ===== */
+        .field-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 8px 16px;
+            margin: 12px 0;
+        }
+        .field-item {
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 14px;
+            border: 1px solid #eee;
+        }
+        .field-item code {
+            background: #e8e8e8;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        /* ===== 标签 / 徽章 ===== */
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            margin: 0 4px;
+        }
+        .badge.must { background: var(--danger); }
+        .badge.opt  { background: var(--text-muted); }
+        .badge.key  { background: var(--primary-light); }
+
+        /* ===== 列表增强 ===== */
+        ul.styled, ol.styled {
+            padding-left: 24px;
+            margin: 8px 0 16px;
+        }
+        ul.styled li, ol.styled li {
+            margin-bottom: 7px;
+        }
+        ul.styled li::marker { color: var(--primary-light); }
+
+        /* ===== 需求编号 ===== */
+        .req-id {
+            display: inline-block;
+            background: var(--primary);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-right: 8px;
+            font-weight: 700;
+        }
+
+        /* ===== 打印样式 ===== */
+        @media print {
+            body { background: #fff; }
+            .cover { padding: 40px 30px; }
+            .container { max-width: 100%; padding: 20px; }
+            .card { box-shadow: none; break-inside: avoid; }
+            table { font-size: 12px; }
+        }
+
+        /* ===== 脚注 ===== */
+        .footnote {
+            background: #fff9e6;
+            border: 1px solid #f0d060;
+            border-radius: 6px;
+            padding: 14px 20px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .footnote strong { color: var(--accent); }
+    </style>
+</head>
+<body>
+
+<!-- ========== 封面 ========== -->
+<div class="cover">
+    <h1>因私出国（境）人员审批管理系统</h1>
+    <p class="subtitle">开 发 需 求 说 明 书</p>
+    <p class="meta">版本：V1.1 &nbsp;|&nbsp; 日期：2026-07-03 &nbsp;|&nbsp; 密级：内部</p>
+</div>
+
+<!-- ========== 正文 ========== -->
+<div class="container">
+
+<!-- ===== 目录 ===== -->
+<div class="toc">
+    <h2>目 录</h2>
+    <ol>
+        <li><a href="#s1">项目概述</a></li>
+        <li><a href="#s2">角色与权限</a></li>
+        <li><a href="#s3">业务模块 — 人员备案</a>
+            <ol>
+                <li><a href="#s3-1">备案人员信息登记表</a></li>
+                <li><a href="#s3-2">因私事出国（境）人员登记备案表</a></li>
+            </ol>
+        </li>
+        <li><a href="#s4">业务模块 — 证照登记与管理</a></li>
+        <li><a href="#s5">业务模块 — 因私出国（境）申请</a></li>
+        <li><a href="#s6">业务模块 — 备案信息变更（撤控重报）</a></li>
+        <li><a href="#s7">通用功能需求</a></li>
+        <li><a href="#s8">数据字典 &amp; 枚举值汇总</a></li>
+        <li><a href="#s9">非功能需求</a></li>
+    </ol>
+</div>
+
+<!-- ===== 第1章 项目概述 ===== -->
+<section id="s1">
+    <h2>1. 项目概述</h2>
+
+    <div class="card info">
+        <h3>1.1 项目背景与规模</h3>
+        <p>根据国家对公职人员因私出国（境）的管理规定，需对<strong>纳入备案管理范围</strong>的人员实行全流程闭环管理。本系统用于支撑从人员备案、证照登记、出国（境）申请审批到信息变更的全部线上业务，确保合规、高效、可追溯。</p>
+        <table style="margin-top:16px;">
+            <thead><tr><th>规模指标</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>备案人员规模</td><td>约 <strong>500 人</strong></td></tr>
+                <tr><td>系统用户数</td><td><strong>1 人统管</strong>（单用户，管理员全权操作）</td></tr>
+                <tr><td>审批模式</td><td><strong>无多流程审批</strong>，由管理员直接录入、登记、归档</td></tr>
+                <tr><td>并发访问</td><td>单用户操作，无并发压力</td></tr>
+            </tbody>
+        </table>
+        <p style="margin-top:12px; color:var(--text-muted);">📌 系统定位为<strong>小型单机管理系统</strong>，无需复杂的工作流引擎或多角色权限体系，以简洁实用为设计原则。</p>
+    </div>
+
+    <div class="card info">
+        <h3>1.2 核心业务流程总览</h3>
+        <div class="flow">
+            <span class="node start">人员备案</span>
+            <span class="arrow">→</span>
+            <span class="node">证照登记</span>
+            <span class="arrow">→</span>
+            <span class="node decision">出国申请？</span>
+            <span class="arrow">→</span>
+            <span class="node">领用/申办证件</span>
+            <span class="arrow">→</span>
+            <span class="node">填明细表&amp;上传材料</span>
+            <span class="arrow">→</span>
+            <span class="node end">审批归档</span>
+        </div>
+        <p style="text-align:center; color: var(--text-muted); margin-top:8px;">
+            信息变更流程：<strong>撤控备案 → 重新登记备案</strong>（形成子环）
+        </p>
+    </div>
+
+    <div class="card info">
+        <h3>1.3 系统范围与目标</h3>
+        <ul class="styled">
+            <li>实现备案人员信息的<strong>录入、查询、修改、导出</strong>。</li>
+            <li>实现三类出入境证照的<strong>集中登记与状态跟踪</strong>（护照 / 港澳通行证 / 台湾通行证）。</li>
+            <li>实现因私出国（境）申请的<strong>全流程线上审批</strong>，包括证件领用、材料上传与明细填报。</li>
+            <li>实现备案信息变更的<strong>"撤控—重报"</strong>双步操作。</li>
+            <li>所有表单支持 <strong>Excel 导出</strong> 与 <strong>在线打印</strong>。</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 第2章 角色与权限 ===== -->
+<section id="s2">
+    <h2>2. 用户角色</h2>
+
+    <div class="card warning">
+        <h4>单用户管理模式</h4>
+        <p>本系统规模较小（约500名备案人员），采用<strong>单用户统管</strong>模式，不设多角色多级审批。</p>
+        <table style="margin-top:12px;">
+            <thead>
+                <tr><th>角色</th><th>职责描述</th><th>核心权限</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>管理员（唯一用户）</strong></td>
+                    <td>统筹所有备案管理、证照登记、出国申请、信息变更、数据导出打印等全部业务操作</td>
+                    <td>全部功能权限（录入、查询、修改、撤控、导出、打印、数据维护）</td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin-top:12px; color:var(--text-muted);">📌 系统仅设置单一管理员账户，登录后直接进入功能界面，无需角色切换、权限分配或审批流转。</p>
+    </div>
+</section>
+
+<!-- ===== 第3章 人员备案 ===== -->
+<section id="s3">
+    <h2>3. 业务模块 — 人员备案</h2>
+
+    <div class="card warning">
+        <h4><span class="req-id">REQ-001</span> 备案入口条件</h4>
+        <p>凡符合备案管理范围的人员，须同步完成以下两张表的填写与提交，方可纳入系统备案管理：</p>
+        <ol class="styled">
+            <li>《备案人员信息登记表》（基础人事信息）</li>
+            <li>《因私事出国（境）人员登记备案表》（备案专用信息）</li>
+        </ol>
+    </div>
+
+    <!-- 3.1 备案人员信息登记表 -->
+    <h3 id="s3-1">3.1 备案人员信息登记表（基础表）</h3>
+
+    <div class="card">
+        <h4>字段定义</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>字段名</th>
+                    <th>数据类型</th>
+                    <th>必填</th>
+                    <th>说明 / 约束</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>工作单位全称</td></tr>
+                <tr><td>部门</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td>所属部门全称</td></tr>
+                <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>与身份证一致（注：备案表中姓/名分开，此处可整体填写）</td></tr>
+                <tr><td>性别</td><td>ENUM('男','女')</td><td><span class="badge must">必填</span></td><td>下拉选择</td></tr>
+                <tr><td>出生日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD，需与身份证号对应</td></tr>
+                <tr><td>参加工作日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD</td></tr>
+                <tr><td>学历</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
+                <tr><td>学位</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
+                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>副高/正高/其他（字典维护）</td></tr>
+                <tr><td>职级</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>处级/副处级/正科/其他（字典维护）</td></tr>
+                <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（枚举值见第8章）</td></tr>
+                <tr><td>入党日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>中共党员/预备党员时必填</td></tr>
+                <tr><td>职务（岗位名称）</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td>当前岗位职务全称</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 3.2 因私事出国人员登记备案表 -->
+    <h3 id="s3-2">3.2 因私事出国（境）人员登记备案表（备案专用）</h3>
+
+    <div class="card">
+        <h4>字段定义</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>字段名</th>
+                    <th>数据类型</th>
+                    <th>必填</th>
+                    <th>说明 / 约束</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>中文姓</td><td>VARCHAR(20)</td><td><span class="badge must">必填</span></td><td>复姓特别注意分开填写规则</td></tr>
+                <tr><td>中文名</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>姓与名分开存储</td></tr>
+                <tr><td>性别</td><td>ENUM('男','女')</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>出生日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>YYYYMMDD，需与身份证号匹配（系统校验）</td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>校验位验证 + 出生日期一致性校验</td></tr>
+                <tr><td>户口所在地</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td>填至区级，省份不加"省"字（如"浙江宁波市江北区"）</td></tr>
+                <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（枚举值见第8章）</td></tr>
+                <tr><td>工作单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>写全称</td></tr>
+                <tr><td>职务（级）或职称</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>处级领导→"处级"/"副处级"；副处级单位班子成员→"正科"；其他→"副高"/"正高"</td></tr>
+                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>名称需与印章一致</td></tr>
+                <tr><td>标记</td><td>ENUM('新增','更新')</td><td><span class="badge must">必填</span></td><td>首次备案为"新增"，信息变更重报为"更新"</td></tr>
+                <tr><td>已告知本人</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>备注</td><td>VARCHAR(500)</td><td><span class="badge opt">选填</span></td><td></td></tr>
+            </tbody>
+        </table>
+
+        <h4>校验规则</h4>
+        <ul class="styled">
+            <li><strong>身份证校验</strong>：18位公民身份证号须通过校验位算法，且出生日期段（第7–14位）须与"出生日期"字段一致。</li>
+            <li><strong>户口所在地格式</strong>：省份不加"省"字，如"浙江"非"浙江省"；江东区、鄞县在系统中统一映射为"浙江宁波市鄞州区"。</li>
+            <li><strong>复姓识别</strong>：前端提供常见复姓列表提示（欧阳、司马、上官、诸葛、令狐等），协助操作员正确拆分姓/名。</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 第4章 证照登记与管理 ===== -->
+<section id="s4">
+    <h2>4. 业务模块 — 证照登记与管理</h2>
+
+    <div class="card warning">
+        <h4><span class="req-id">REQ-002</span> 前置条件</h4>
+        <p>仅限<strong>已完成备案</strong>的人员进行证照登记。凡持有以下任一出入境证件的备案人员，须按规定上缴证件，并在系统中登记：</p>
+        <ul class="styled">
+            <li>普通护照</li>
+            <li>往来港澳通行证</li>
+            <li>大陆居民往来台湾通行证</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>4.1 因私出国（境）备案人员证照登记表</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>字段名</th>
+                    <th>数据类型</th>
+                    <th>必填</th>
+                    <th>说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>自动带出（关联备案信息）</td></tr>
+                <tr><td>部门</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td>自动带出</td></tr>
+                <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>从备案信息中选择</td></tr>
+                <tr>
+                    <td colspan="4"><strong>普通护照</strong></td>
+                </tr>
+                <tr><td>&nbsp;&nbsp;护照证件号</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>持有则必填</td></tr>
+                <tr><td>&nbsp;&nbsp;有效日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>有效期截止日</td></tr>
+                <tr><td>&nbsp;&nbsp;上交日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>证件实际收缴日期</td></tr>
+                <tr>
+                    <td colspan="4"><strong>往来港澳通行证</strong></td>
+                </tr>
+                <tr><td>&nbsp;&nbsp;港澳通行证号</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>持有则必填</td></tr>
+                <tr><td>&nbsp;&nbsp;有效日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td></td></tr>
+                <tr><td>&nbsp;&nbsp;上交日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td></td></tr>
+                <tr>
+                    <td colspan="4"><strong>大陆居民往来台湾通行证</strong></td>
+                </tr>
+                <tr><td>&nbsp;&nbsp;台湾通行证号</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>持有则必填</td></tr>
+                <tr><td>&nbsp;&nbsp;有效日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td></td></tr>
+                <tr><td>&nbsp;&nbsp;上交日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td></td></tr>
+            </tbody>
+        </table>
+
+        <div class="footnote">
+            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。
+        </div>
+    </div>
+</section>
+
+<!-- ===== 第5章 因私出国（境）申请 ===== -->
+<section id="s5">
+    <h2>5. 业务模块 — 因私出国（境）申请</h2>
+
+    <div class="card">
+        <h3>5.1 申请流程分支</h3>
+
+        <div class="flow">
+            <span class="node start">备案人员发起申请</span>
+            <span class="arrow">→</span>
+            <span class="node decision">是否已有有效证件？</span>
+        </div>
+        <div style="display:flex; gap:20px; margin-top:16px;">
+            <div style="flex:1; background:#eafaf1; border:2px solid var(--success); border-radius:8px; padding:16px;">
+                <h4 style="color:var(--success); margin-top:0;">✅ 路径A：已有证件</h4>
+                <ol>
+                    <li>办理<strong>证件领用</strong>手续（系统中记录领用）</li>
+                    <li>填写《因私出国（境）人员明细表》</li>
+                    <li>上传扫描件：
+                        <ul>
+                            <li>《因私出国（境）个人申请报告》</li>
+                            <li>《因私出国（境）审批表》</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+            <div style="flex:1; background:#fef9e7; border:2px solid var(--accent); border-radius:8px; padding:16px;">
+                <h4 style="color:var(--accent); margin-top:0;">📌 路径B：无有效证件</h4>
+                <ol>
+                    <li>线下办理<strong>《关于同意申办出入境证件的函》</strong></li>
+                    <li>凭函向<strong>公安机关出入境管理部门</strong>申办证件</li>
+                    <li>证件办理完成后，填写《因私出国（境）人员明细表》</li>
+                    <li>上传扫描件（含"同意申办函"，共3项）</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>5.2 因私出国（境）人员明细表</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>字段名</th>
+                    <th>数据类型</th>
+                    <th>必填</th>
+                    <th>说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>部门</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>职务</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td></td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>地点、证照</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>目的地国家/地区及使用证照类型</td></tr>
+                <tr><td>类别</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>出国/出境类别（字典维护）</td></tr>
+                <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>日期区间，如"2023-6-20-2023-6-26"</td></tr>
+                <tr><td>批准日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>审批通过后回填</td></tr>
+                <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证</td></tr>
+                <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>若"是否做证"为是，证件办好后补录</td></tr>
+                <tr><td>证件领用日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>路径A时必填</td></tr>
+                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国后证件上缴日期</td></tr>
+                <tr><td>附件</td><td>FILE</td><td><span class="badge must">必填</span></td><td>PDF扫描件（支持多文件上传）</td></tr>
+            </tbody>
+        </table>
+
+        <div class="footnote">
+            <strong>📌 附件说明：</strong>附件为PDF格式的扫描件。路径A须包含《个人申请报告》《审批表》；路径B须额外包含《同意申办函》。系统应支持附件<strong>预览、下载</strong>。
+        </div>
+    </div>
+
+    <div class="card success">
+        <h3>5.3 处理流程（单用户模式）</h3>
+        <p style="margin-bottom:12px;">管理员统一处理出国（境）申请的<strong>全流程</strong>——根据线下已签署的纸质材料，在系统中完成信息录入与归档：</p>
+        <ol class="styled">
+            <li><strong>录入</strong>：管理员根据《个人申请报告》《审批表》等线下已签批材料，填写《因私出国（境）人员明细表》并上传扫描附件。</li>
+            <li><strong>证照操作</strong>：已有证件→记录领用日期；无证件→记录"同意申办函"信息及后续证件号码。</li>
+            <li><strong>归档</strong>：信息填写完毕后直接保存归档，系统记录操作时间及操作人。</li>
+        </ol>
+        <p style="margin-top:8px; color:var(--text-muted);">📌 所有审批环节在线下完成，系统仅作为<strong>信息登记与电子归档</strong>平台，不做线上审批流转。</p>
+    </div>
+</section>
+
+<!-- ===== 第6章 备案信息变更 ===== -->
+<section id="s6">
+    <h2>6. 业务模块 — 备案信息变更（撤控重报）</h2>
+
+    <div class="card warning">
+        <h4><span class="req-id">REQ-003</span> 变更流程</h4>
+        <p>备案人员个人信息发生变动时，<strong>不允许直接修改</strong>，须遵循"先撤再报"原则：</p>
+        <div class="flow">
+            <span class="node start">第1步：提交撤控备案表</span>
+            <span class="arrow">→</span>
+            <span class="node">撤销原备案信息</span>
+            <span class="arrow">→</span>
+            <span class="node end">第2步：重新提交登记备案表</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>6.1 因私事出国（境）人员撤控备案表</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>字段名</th>
+                    <th>数据类型</th>
+                    <th>必填</th>
+                    <th>说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>中文姓</td><td>VARCHAR(20)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>中文名</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>性别</td><td>ENUM('男','女')</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>出生日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>YYYYMMDD</td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>户口所在地</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>工作单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>报送单位名称</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>报送单位类别</td><td>ENUM</td><td><span class="badge must">必填</span></td><td>党政机关 / 金融系统 / 教科文卫系统 / 国有大中型企业单位 / 其他单位</td></tr>
+                <tr><td>报送单位联系人</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>报送单位联系电话</td><td>VARCHAR(20)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>入库批号</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>原备案批号</td></tr>
+                <tr><td>备注（撤控原因等）</td><td>VARCHAR(500)</td><td><span class="badge must">必填</span></td><td>须写明撤控原因</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footnote">
+        <strong>📌 数据一致性：</strong>撤控操作将原备案记录标记为"已撤控"（逻辑删除，非物理删除），保留历史痕迹。重新提交的登记备案表作为一条新记录，标记为"更新"，并与原记录建立关联。
+    </div>
+</section>
+
+<!-- ===== 第7章 通用功能需求 ===== -->
+<section id="s7">
+    <h2>7. 通用功能需求</h2>
+
+    <div class="card">
+        <h3>7.1 Excel 导出 <span class="req-id">REQ-004</span></h3>
+        <ul class="styled">
+            <li>所有表单（5类表）均支持<strong>一键导出为 Excel（.xlsx）</strong>格式。</li>
+            <li>导出支持：<strong>按筛选条件导出</strong>、<strong>全量导出</strong>、<strong>选中行导出</strong>。</li>
+            <li>导出文件须包含：表头、数据行、填表说明（作为 Sheet2 或页脚行）。</li>
+            <li>导出时自动生成文件名：<code>表单名称_导出日期_操作人.xlsx</code>。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>7.2 在线打印 <span class="req-id">REQ-005</span></h3>
+        <ul class="styled">
+            <li>所有表单支持<strong>浏览器端在线打印</strong>（调用浏览器打印功能）。</li>
+            <li>打印样式须适配 A4 纸张，自动去除导航栏、侧边栏等无关元素。</li>
+            <li>支持<strong>打印预览</strong>，可调整页边距、缩放比例。</li>
+            <li>打印内容须包含：表单标题、数据内容、填表人/审核人签章栏、打印日期。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>7.3 查询与筛选 <span class="req-id">REQ-006</span></h3>
+        <ul class="styled">
+            <li>全局搜索：按<strong>姓名、身份证号、单位</strong>进行全系统快速检索。</li>
+            <li>高级筛选：按<strong>政治面貌、职级、户口所在地、备案状态、证照类型、出行日期范围</strong>等多条件组合筛选。</li>
+            <li>列表页支持：排序、分页、自定义列显示/隐藏。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>7.4 数据导入 <span class="req-id">REQ-007</span></h3>
+        <ul class="styled">
+            <li>支持<strong>批量导入</strong>备案人员信息（Excel模板导入）。</li>
+            <li>导入时进行<strong>逐行校验</strong>（身份证校验、必填项检查、枚举值匹配），错误行生成错误报告，正确行正常入库。</li>
+            <li>提供<strong>导入模板下载</strong>功能。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>7.5 操作日志与审计 <span class="req-id">REQ-008</span></h3>
+        <ul class="styled">
+            <li>记录所有关键操作：备案录入/修改/撤控、证照登记/领用/归还、申请提交/审批/退回、数据导出。</li>
+            <li>日志内容：<strong>操作人、操作时间、IP地址、操作类型、操作对象（人员ID）、变更前后数据快照</strong>。</li>
+            <li>日志不可删除、不可篡改，支持按时间范围和操作类型查询。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>7.6 提醒功能 <span class="req-id">REQ-009</span></h3>
+        <ul class="styled">
+            <li>证照有效期到期前30天，在系统首页以<strong>醒目提示条</strong>展示即将到期的证照信息。</li>
+            <li>证件领用后超过计划归还日期未归还，系统首页<strong>高亮标记</strong>逾期未还记录。</li>
+            <li>以上提醒均在管理员登录后的<strong>首页仪表盘</strong>集中展示，无需外部消息推送。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>7.7 首页仪表盘 <span class="req-id">REQ-010</span></h3>
+        <ul class="styled">
+            <li>备案人员总数及分类统计（按单位、政治面貌、职级等维度）。</li>
+            <li>证照状态总览卡片（在库 / 领用中 / 逾期未还，点击可跳转明细列表）。</li>
+            <li>近期出国（境）计划列表（按出行日期排序）。</li>
+            <li>证照到期 &amp; 归还逾期预警列表（置顶显示）。</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 第8章 数据字典 & 枚举值 ===== -->
+<section id="s8">
+    <h2>8. 数据字典 &amp; 枚举值汇总</h2>
+
+    <div class="card">
+        <h3>8.1 政治面貌</h3>
+        <table>
+            <thead><tr><th>代码</th><th>显示值</th></tr></thead>
+            <tbody>
+                <tr><td>01</td><td>中共党员</td></tr>
+                <tr><td>02</td><td>中共预备党员</td></tr>
+                <tr><td>03</td><td>共青团员</td></tr>
+                <tr><td>04</td><td>民革会员</td></tr>
+                <tr><td>05</td><td>民盟盟员</td></tr>
+                <tr><td>06</td><td>民建会员</td></tr>
+                <tr><td>07</td><td>民进会员</td></tr>
+                <tr><td>08</td><td>农工党党员</td></tr>
+                <tr><td>09</td><td>致工党党员</td></tr>
+                <tr><td>10</td><td>九三学社社员</td></tr>
+                <tr><td>99</td><td>群众</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>8.2 报送单位类别</h3>
+        <table>
+            <thead><tr><th>代码</th><th>显示值</th></tr></thead>
+            <tbody>
+                <tr><td>01</td><td>党政机关</td></tr>
+                <tr><td>02</td><td>金融系统</td></tr>
+                <tr><td>03</td><td>教科文卫系统</td></tr>
+                <tr><td>04</td><td>国有大中型企业单位</td></tr>
+                <tr><td>99</td><td>其他单位</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>8.3 标记</h3>
+        <table>
+            <thead><tr><th>代码</th><th>显示值</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>NEW</td><td>新增</td><td>首次备案</td></tr>
+                <tr><td>UPD</td><td>更新</td><td>撤控后重新备案</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>8.4 证照类型</h3>
+        <table>
+            <thead><tr><th>代码</th><th>显示值</th></tr></thead>
+            <tbody>
+                <tr><td>P</td><td>普通护照</td></tr>
+                <tr><td>M</td><td>往来港澳通行证</td></tr>
+                <tr><td>T</td><td>大陆居民往来台湾通行证</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>8.5 需系统维护的数据字典项</h3>
+        <table>
+            <thead><tr><th>字典类别</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>学历</td><td>博士研究生、硕士研究生、大学本科、大学专科、中专、高中、初中及以下</td></tr>
+                <tr><td>学位</td><td>博士、硕士、学士、无</td></tr>
+                <tr><td>职称</td><td>正高、副高、中级、初级、无</td></tr>
+                <tr><td>职级</td><td>处级、副处级、正科、副科、科员、其他</td></tr>
+                <tr><td>出国（境）类别</td><td>旅游、探亲、访友、商务、留学、其他</td></tr>
+                <tr><td>户口所在地</td><td>省市区三级联动（不含"省"字后缀）</td></tr>
+                <tr><td>单位/部门</td><td>树形组织结构维护</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ===== 第9章 非功能需求 ===== -->
+<section id="s9">
+    <h2>9. 非功能需求</h2>
+
+    <div class="card">
+        <h3>9.1 安全性</h3>
+        <ul class="styled">
+            <li><strong>身份认证</strong>：管理员用户名/密码登录，密码哈希存储（bcrypt）。</li>
+            <li><strong>会话管理</strong>：基于 Session 或 JWT Token，支持登录超时自动退出。</li>
+            <li><strong>数据脱敏</strong>：身份证号在前端列表展示时部分掩码（如 <code>330***********1234</code>）。</li>
+            <li><strong>附件安全</strong>：上传文件限制为 PDF 格式，单文件大小 ≤10MB。</li>
+            <li><strong>备份安全</strong>：SQLite 数据库文件定期备份至指定目录。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>9.2 性能</h3>
+        <ul class="styled">
+            <li>列表页查询响应时间：≤1秒（500条记录级别，SQLite 单机无压力）。</li>
+            <li>Excel 导出：500条全量导出应在 3 秒内完成。</li>
+            <li>附件上传：支持 PDF 文件上传，单文件 ≤10MB。</li>
+            <li>并发：单用户操作，无需考虑并发控制。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>9.3 可用性</h3>
+        <ul class="styled">
+            <li>SQLite 数据库文件每日自动备份至 <code>backup/</code> 子目录，保留最近 30 天。</li>
+            <li>关键操作提供<strong>二次确认</strong>弹窗（如撤控、删除记录）。</li>
+            <li>表单页支持<strong>暂存草稿</strong>功能，防止填写中断丢失数据。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>9.4 兼容性</h3>
+        <ul class="styled">
+            <li>浏览器：Chrome 90+、Edge 90+、Firefox 90+、国产浏览器（360安全浏览器、QQ浏览器）最新版。</li>
+            <li>分辨率：最低支持 1366×768，推荐 1920×1080。</li>
+            <li>操作系统：Windows 10/11（64位）。</li>
+            <li>运行模式：本地启动 Web 服务，浏览器访问 <code>http://localhost:端口</code>。</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>9.5 技术栈选型</h3>
+
+        <h4>9.5.1 总体架构</h4>
+        <table>
+            <thead><tr><th>层级</th><th>选型</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>架构模式</td><td><strong>前后端一体</strong>（单体应用）</td><td>无需前后端分离，后端直接渲染 HTML 页面，降低复杂度</td></tr>
+                <tr><td>数据库</td><td><strong>SQLite3</strong>（非本地编译版）</td><td>使用系统自带或纯 Python/Go 驱动的 SQLite，无需安装数据库服务</td></tr>
+                <tr><td>文件存储</td><td>本地文件系统</td><td>PDF 扫描件直接存储在服务器本地目录</td></tr>
+                <tr><td>部署方式</td><td>单文件可执行 / 源码直接运行</td><td>拷贝即用，无外部依赖</td></tr>
+            </tbody>
+        </table>
+
+        <h4>9.5.2 开发语言选型：Python vs Go 对比分析</h4>
+
+        <table>
+            <thead>
+                <tr><th>对比维度</th><th style="width:38%;">Python</th><th style="width:38%;">Go</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Web 框架</strong></td>
+                    <td>Flask / FastAPI + Jinja2 模板引擎，生态极其成熟，前后端一体开发效率极高</td>
+                    <td>net/http + html/template 标准库即用，或 Gin/Echo 框架，模板语法较基础</td>
+                </tr>
+                <tr>
+                    <td><strong>SQLite 支持</strong></td>
+                    <td>✅ 内置 <code>sqlite3</code> 标准库，无需 CGO 编译，纯 Python 驱动（或 aiosqlite）即可</td>
+                    <td>⚠️ 主流驱动 <code>mattn/go-sqlite3</code> 依赖 CGO 编译；纯 Go 方案（modernc.org/sqlite）可用但生态较新</td>
+                </tr>
+                <tr>
+                    <td><strong>Excel 生成</strong></td>
+                    <td>✅ <strong>openpyxl</strong>：功能最全，支持样式、合并单元格、打印设置、多 Sheet，完全满足5类表单导出需求</td>
+                    <td>⚠️ <strong>excelize</strong>：Go 生态最好的 Excel 库，基本功能齐全，但复杂样式和打印设置能力弱于 openpyxl</td>
+                </tr>
+                <tr>
+                    <td><strong>PDF 处理</strong></td>
+                    <td>✅ reportlab / WeasyPrint / pdfkit，多种成熟方案可选</td>
+                    <td>⚠️ gofpdf / pdfcpu，功能较基础</td>
+                </tr>
+                <tr>
+                    <td><strong>表单校验</strong></td>
+                    <td>✅ WTForms / Pydantic，声明式校验，身份证校验等规则库丰富</td>
+                    <td>⚠️ go-playground/validator，够用但需手写较多自定义规则</td>
+                </tr>
+                <tr>
+                    <td><strong>开发效率</strong></td>
+                    <td>✅ 语法简洁，热重载开发，从需求到原型的周期极短</td>
+                    <td>⚠️ 语法较冗长，错误处理显式（if err != nil），开发速度慢于 Python</td>
+                </tr>
+                <tr>
+                    <td><strong>部署便捷性</strong></td>
+                    <td>⚠️ 需 Python 解释器 + pip 依赖；可用 PyInstaller 打包为单个 .exe</td>
+                    <td>✅ 编译为<strong>单文件 .exe</strong>，无任何运行时依赖，拷贝即运行</td>
+                </tr>
+                <tr>
+                    <td><strong>运行性能</strong></td>
+                    <td>⚠️ 解释型语言，但 500 人数据量完全无感知（毫秒级查询）</td>
+                    <td>✅ 编译型语言，高性能，但在此规模下<strong>优势无法体现</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>打包体积</strong></td>
+                    <td>⚠️ PyInstaller 打包后约 30–60 MB</td>
+                    <td>✅ 编译后约 8–15 MB</td>
+                </tr>
+                <tr>
+                    <td><strong>学习成本</strong></td>
+                    <td>✅ 语法简单，上手快，生态资料丰富</td>
+                    <td>⚠️ 接口设计、错误处理、指针等概念对新手有门槛</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4>9.5.3 综合评分卡</h4>
+        <table>
+            <thead>
+                <tr><th>维度（权重）</th><th>Python 得分</th><th>Go 得分</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Excel 生成能力（25%）</td><td>⭐⭐⭐⭐⭐ 5</td><td>⭐⭐⭐ 3</td><td>openpyxl 完胜，本系统 5 类表单导出是核心需求</td></tr>
+                <tr><td>SQLite 集成（20%）</td><td>⭐⭐⭐⭐⭐ 5</td><td>⭐⭐⭐ 3</td><td>Python 标准库内置，纯 Python 无编译依赖</td></tr>
+                <tr><td>开发效率（20%）</td><td>⭐⭐⭐⭐⭐ 5</td><td>⭐⭐⭐ 3</td><td>Python 更简洁，功能实现快</td></tr>
+                <tr><td>部署便利（15%）</td><td>⭐⭐⭐ 3</td><td>⭐⭐⭐⭐⭐ 5</td><td>Go 单文件分发是显著优势</td></tr>
+                <tr><td>性能（10%）</td><td>⭐⭐⭐⭐ 4</td><td>⭐⭐⭐⭐⭐ 5</td><td>500 人规模下两者均无压力</td></tr>
+                <tr><td>打包体积（5%）</td><td>⭐⭐⭐ 3</td><td>⭐⭐⭐⭐ 4</td><td>差距不大，均可接受</td></tr>
+                <tr><td>学习成本（5%）</td><td>⭐⭐⭐⭐⭐ 5</td><td>⭐⭐⭐ 3</td><td>Python 更友好</td></tr>
+                <tr style="background:#eafaf1; font-weight:700;">
+                    <td><strong>加权总分</strong></td>
+                    <td><strong style="color:var(--success);">⭐ 4.45 / 5</strong></td>
+                    <td><strong>⭐ 3.45 / 5</strong></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footnote" style="margin-top:20px;">
+            <strong>🏆 推荐结论：选用 Python</strong><br><br>
+            <strong>核心理由：</strong>
+            <ol style="margin:8px 0 0 20px;">
+                <li><strong>Excel 导出是硬需求</strong> — 5 类表单需要精确的样式、合并单元格、打印排版，openpyxl 是业内最成熟的方案，Go 的 excelize 在复杂格式方面差距明显。</li>
+                <li><strong>SQLite 无编译痛点</strong> — Python 标准库内置 sqlite3，真正实现"零依赖"，而 Go 的纯 Go SQLite 驱动仍不够成熟。</li>
+                <li><strong>开发效率优先</strong> — 单用户、500 人、无并发的小型系统，开发速度和维护简便性远比运行性能重要。</li>
+                <li><strong>部署可通过 PyInstaller 弥补</strong> — 开发完成后打包为单个 .exe，用户体验接近 Go 的编译分发。</li>
+            </ol>
+            <br>
+            <strong>推荐技术组合：</strong>Python 3.12+ + Flask + SQLite3 + openpyxl + Jinja2 + Bootstrap 5（前端 UI）<br>
+            <strong>打包分发：</strong>PyInstaller 生成单文件 .exe，内置 Python 运行时 + SQLite 数据库模板
+        </div>
+    </div>
+</section>
+
+<!-- ===== 页脚 ===== -->
+<div style="text-align:center; padding:40px 0; color:var(--text-muted); font-size:13px; border-top:1px solid var(--border); margin-top:60px;">
+    <p>因私出国（境）人员审批管理系统 — 开发需求说明书 V1.1</p>
+    <p>文档生成日期：2026-07-03</p>
+</div>
+
+</div><!-- .container -->
+</body>
+</html>

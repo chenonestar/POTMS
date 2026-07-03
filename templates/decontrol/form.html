@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}撤控备案表{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-arrow-repeat"></i> 因私事出国（境）人员撤控备案表</h4>
+
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i>
+    <strong>注意：</strong>提交撤控后，该人员的备案状态将标记为"已撤控"。如信息变更，需重新填写登记备案表。
+</div>
+
+<form method="POST">
+<div class="form-section">
+    <h5>身份信息</h5>
+    <div class="row g-3">
+        <div class="col-md-2">
+            <label class="form-label required">中文姓</label>
+            <input type="text" class="form-control" name="surname" value="{{ data.surname or '' }}" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">中文名</label>
+            <input type="text" class="form-control" name="given_name" value="{{ data.given_name or '' }}" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">性别</label>
+            <select class="form-select" name="gender" required>
+                <option value="">请选择</option>
+                <option value="男" {{ 'selected' if data.gender == '男' }}>男</option>
+                <option value="女" {{ 'selected' if data.gender == '女' }}>女</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">出生日期</label>
+            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date or '' }}"
+                   placeholder="YYYYMMDD" maxlength="8" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">身份证号</label>
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+                   maxlength="18" required>
+        </div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-4">
+            <label class="form-label required">户口所在地</label>
+            <input type="text" class="form-control" name="residence" value="{{ data.residence or '' }}" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">工作单位</label>
+            <input type="text" class="form-control" name="work_unit" value="{{ data.work_unit or '' }}" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">人事主管单位</label>
+            <input type="text" class="form-control" name="supervisor_unit" value="{{ data.supervisor_unit or '' }}" required>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>报送信息</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label required">报送单位名称</label>
+            <input type="text" class="form-control" name="submit_unit_name" value="{{ data.submit_unit_name or '' }}" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">报送单位类别</label>
+            <select class="form-select" name="submit_unit_type" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('submit_unit_type') %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('submit_unit_type') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">联系人</label>
+            <input type="text" class="form-control" name="submit_contact" value="{{ data.submit_contact or '' }}" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">联系电话</label>
+            <input type="text" class="form-control" name="submit_phone" value="{{ data.submit_phone or '' }}" required>
+        </div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-4">
+            <label class="form-label required">入库批号</label>
+            <input type="text" class="form-control" name="batch_no" value="{{ data.batch_no or '' }}"
+                   placeholder="原备案批号" required>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label required">政治面貌</label>
+            <select class="form-select" name="political_status" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('political_status') %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('political_status') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>撤控原因</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label required">操作人</label>
+            <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label required">备注（撤控原因等）</label>
+            <textarea class="form-control" name="reason" rows="2" required>{{ data.reason or '' }}</textarea>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-danger"><i class="bi bi-exclamation-triangle"></i> 确认撤控</button>
+    <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+{% endblock %}

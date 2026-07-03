@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ filing.surname }}{{ filing.given_name }} - 备案详情{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-person-vcard"></i> 备案人员详情</h4>
+    <div class="no-print">
+        <a href="{{ url_for('personnel.list') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+        <a href="{{ url_for('export.print_view', print_type='filing', id=filing.id) }}" class="btn btn-outline-primary btn-sm" target="_blank">
+            <i class="bi bi-printer"></i> 打印备案表
+        </a>
+        {% if info %}
+        <a href="{{ url_for('export.print_view', print_type='info', id=info.id) }}" class="btn btn-outline-primary btn-sm" target="_blank">
+            <i class="bi bi-printer"></i> 打印信息表
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 登记备案表 -->
+<div class="card mb-3">
+    <div class="card-header"><strong>因私事出国（境）人员登记备案表</strong></div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><label class="text-muted">中文姓</label><p>{{ filing.surname }}</p></div>
+            <div class="col-md-3"><label class="text-muted">中文名</label><p>{{ filing.given_name }}</p></div>
+            <div class="col-md-2"><label class="text-muted">性别</label><p>{{ filing.gender }}</p></div>
+            <div class="col-md-2"><label class="text-muted">出生日期</label><p>{{ filing.birth_date }}</p></div>
+            <div class="col-md-2"><label class="text-muted">身份证号</label><p><code>{{ filing.id_number }}</code></p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-4"><label class="text-muted">户口所在地</label><p>{{ filing.residence }}</p></div>
+            <div class="col-md-2"><label class="text-muted">政治面貌</label><p>{{ filing.political_status }}</p></div>
+            <div class="col-md-4"><label class="text-muted">工作单位</label><p>{{ filing.work_unit }}</p></div>
+            <div class="col-md-2"><label class="text-muted">职务（级）或职称</label><p>{{ filing.position_or_title }}</p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-4"><label class="text-muted">人事主管单位</label><p>{{ filing.supervisor_unit }}</p></div>
+            <div class="col-md-2"><label class="text-muted">标记</label><p><span class="badge {{ 'bg-primary' if filing.tag == '新增' else 'bg-warning' }}">{{ filing.tag }}</span></p></div>
+            <div class="col-md-2"><label class="text-muted">已告知本人</label><p>{{ filing.informed }}</p></div>
+            <div class="col-md-4"><label class="text-muted">备注</label><p>{{ filing.remarks or '-' }}</p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-12"><label class="text-muted">操作人 / 时间</label><p>{{ filing.operator }} / {{ filing.created_at }}</p></div>
+        </div>
+    </div>
+</div>
+
+<!-- 基础信息表 -->
+{% if info %}
+<div class="card">
+    <div class="card-header"><strong>备案人员信息登记表</strong></div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4"><label class="text-muted">单位</label><p>{{ info.unit }}</p></div>
+            <div class="col-md-4"><label class="text-muted">部门</label><p>{{ info.department }}</p></div>
+            <div class="col-md-4"><label class="text-muted">姓名</label><p>{{ info.name }}</p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-2"><label class="text-muted">性别</label><p>{{ info.gender }}</p></div>
+            <div class="col-md-2"><label class="text-muted">出生日期</label><p>{{ info.birth_date }}</p></div>
+            <div class="col-md-2"><label class="text-muted">参加工作日期</label><p>{{ info.work_start_date or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">学历</label><p>{{ dict_value('education', info.education) if info.education else '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">学位</label><p>{{ dict_value('degree', info.degree) if info.degree else '-' }}</p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-2"><label class="text-muted">职称</label><p>{{ dict_value('title', info.title) if info.title else '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">职级</label><p>{{ dict_value('rank', info.rank) if info.rank else '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">政治面貌</label><p>{{ info.political_status }}</p></div>
+            <div class="col-md-2"><label class="text-muted">入党日期</label><p>{{ info.party_join_date or '-' }}</p></div>
+            <div class="col-md-4"><label class="text-muted">职务（岗位名称）</label><p>{{ info.position }}</p></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

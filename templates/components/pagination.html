@@ -1,0 +1,30 @@
+{% macro render_pagination(pg, endpoint) %}
+{% if pg.pages > 1 %}
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {{ 'disabled' if not pg.has_prev }}">
+            <a class="page-link" href="{{ url_for(endpoint, page=pg.page-1, **request.args) if pg.has_prev else '#' }}">上一页</a>
+        </li>
+        {% set start = [pg.page - 2, 1] | max %}
+        {% set end = [pg.page + 2, pg.pages] | min %}
+        {% if start > 1 %}
+        <li class="page-item"><a class="page-link" href="{{ url_for(endpoint, page=1, **request.args) }}">1</a></li>
+        {% if start > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+        {% endif %}
+        {% for p in range(start, end + 1) %}
+        <li class="page-item {{ 'active' if p == pg.page }}">
+            <a class="page-link" href="{{ url_for(endpoint, page=p, **request.args) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        {% if end < pg.pages %}
+        {% if end < pg.pages - 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+        <li class="page-item"><a class="page-link" href="{{ url_for(endpoint, page=pg.pages, **request.args) }}">{{ pg.pages }}</a></li>
+        {% endif %}
+        <li class="page-item {{ 'disabled' if not pg.has_next }}">
+            <a class="page-link" href="{{ url_for(endpoint, page=pg.page+1, **request.args) if pg.has_next else '#' }}">下一页</a>
+        </li>
+    </ul>
+</nav>
+<div class="text-center text-muted small">共 {{ pg.total }} 条记录，第 {{ pg.page }}/{{ pg.pages }} 页</div>
+{% endif %}
+{% endmacro %}

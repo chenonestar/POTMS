@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}组织架构{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-diagram-3"></i> 单位 / 部门组织架构</h4>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addModal">
+        <i class="bi bi-plus-lg"></i> 添加根节点
+    </button>
+</div>
+
+{% macro render_tree(orgs, parent_id, level) %}
+{% for o in orgs if o.parent_id == parent_id %}
+<div class="tree-node" style="margin-left: {{ level * 24 }}px;">
+    <div class="d-flex align-items-center py-1 border-bottom">
+        <i class="bi bi-{{ 'building' if o.parent_id == 0 else 'folder' }} text-muted me-2"></i>
+        <span class="flex-grow-1">{{ o.name }}</span>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary btn-sm" onclick="addChild({{ o.id }}, '{{ o.name }}')" title="添加子部门"><i class="bi bi-plus"></i></button>
+            <button class="btn btn-outline-warning btn-sm" onclick="editNode({{ o.id }}, '{{ o.name }}', {{ o.parent_id }})" title="编辑"><i class="bi bi-pencil"></i></button>
+            <form method="POST" action="{{ url_for('organization.delete', org_id=o.id) }}" style="display:inline" onsubmit="return confirm('确定删除 {{ o.name }} 吗？');">
+                <button class="btn btn-outline-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
+            </form>
+        </div>
+    </div>
+    {{ render_tree(orgs, o.id, level + 1) }}
+</div>
+{% endfor %}
+{% endmacro %}
+
+<div class="card">
+    <div class="card-body">
+        {{ render_tree(orgs, 0, 0) }}
+    </div>
+</div>
+
+<!-- 添加 / 编辑模态框 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('organization.add') }}">
+                <div class="modal-header"><h5 class="modal-title">添加单位/部门</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" name="parent_id" id="addParentId" value="0">
+                    <label class="form-label">上级：<span id="addParentName" class="text-muted">(根节点)</span></label>
+                    <input type="text" class="form-control mt-2" name="name" placeholder="请输入名称" required>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">添加</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="editForm">
+                <div class="modal-header"><h5 class="modal-title">编辑</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label class="form-label">名称</label>
+                    <input type="text" class="form-control" name="name" id="editName" required>
+                    <input type="hidden" name="parent_id" id="editParentId" value="0">
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function addChild(pid, pname) {
+    document.getElementById('addParentId').value = pid;
+    document.getElementById('addParentName').textContent = pname;
+    new bootstrap.Modal(document.getElementById('addModal')).show();
+}
+function editNode(id, name, pid) {
+    document.getElementById('editName').value = name;
+    document.getElementById('editParentId').value = pid;
+    document.getElementById('editForm').action = '/org/' + id + '/edit';
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

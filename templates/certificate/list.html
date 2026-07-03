@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}证照管理{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-card-checklist"></i> 证照登记列表</h4>
+    <div>
+        <a href="{{ url_for('certificate.new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增</a>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('certificate')"><i class="bi bi-printer"></i> 批量打印</button>
+        <a href="{{ url_for('export.certificate_export') }}" class="btn btn-outline-success ms-1"><i class="bi bi-file-earmark-excel"></i> 导出</a>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 单位" value="{{ search }}"></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="has_passport"><option value="">护照</option><option value="1" {{ 'selected' if has_passport == '1' }}>有护照</option><option value="0" {{ 'selected' if has_passport == '0' }}>无护照</option></select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="has_hm"><option value="">港澳通行证</option><option value="1" {{ 'selected' if has_hm == '1' }}>有港澳</option><option value="0" {{ 'selected' if has_hm == '0' }}>无港澳</option></select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="has_tw"><option value="">台湾通行证</option><option value="1" {{ 'selected' if has_tw == '1' }}>有台湾</option><option value="0" {{ 'selected' if has_tw == '0' }}>无台湾</option></select></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('certificate.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+{% set warn_ids = expired_set | map(attribute=0) | list %}
+{% if warn_ids %}
+<div class="alert alert-warning d-flex align-items-center"><i class="bi bi-exclamation-triangle-fill me-2"></i><div>以下证照即将到期（30天内）：{% for row in items.rows %}{% if row.id in warn_ids %}<strong>{{ row.name }}</strong> — {{ expired_map[row.id][1] }} ({{ expired_map[row.id][2] }}) &nbsp;{% endif %}{% endfor %}</div></div>
+{% endif %}
+
+<div class="table-card"><div class="table-responsive">
+<table class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th>单位</th><th>部门</th><th>姓名</th><th>普通护照</th><th>护照有效期</th><th>港澳通行证</th><th>港澳通有效期</th><th>台湾通行证</th><th>台湾通有效期</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for row in items.rows %}
+    {% set row_warn = (row.id, '普通护照') in expired_set or (row.id, '往来港澳通行证') in expired_set or (row.id, '大陆居民往来台湾通行证') in expired_set %}
+    <tr class="{{ 'row-warning' if row_warn }}">
+        <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
+        <td>{{ row.unit[:15] }}{{ '…' if row.unit|length > 15 }}</td>
+        <td>{{ row.department[:10] }}{{ '…' if row.department|length > 10 }}</td>
+        <td>{{ row.name }}</td>
+        <td>{{ row.passport_no or '-' }}</td>
+        <td class="{{ 'text-danger fw-bold' if (row.id, '普通护照') in expired_set }}">{{ row.passport_expiry or '-' }}</td>
+        <td>{{ row.hm_pass_no or '-' }}</td>
+        <td class="{{ 'text-danger fw-bold' if (row.id, '往来港澳通行证') in expired_set }}">{{ row.hm_pass_expiry or '-' }}</td>
+        <td>{{ row.tw_pass_no or '-' }}</td>
+        <td class="{{ 'text-danger fw-bold' if (row.id, '大陆居民往来台湾通行证') in expired_set }}">{{ row.tw_pass_expiry or '-' }}</td>
+        <td><div class="btn-group btn-group-sm">
+            <a href="{{ url_for('export.print_view', print_type='certificate', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+            <a href="{{ url_for('certificate.edit', cert_id=row.id) }}" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('certificate.delete', cert_id=row.id) }}" data-message="确定要删除 {{ row.name }} 的证照记录吗？"><i class="bi bi-trash"></i></button>
+        </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="text-center text-muted py-4">暂无证照记录</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+{% from "components/pagination.html" import render_pagination %}
+{{ render_pagination(items, 'certificate.list') }}
+{% include "components/confirm_modal.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleAll(el) { document.querySelectorAll('.row-check').forEach(cb => cb.checked = el.checked); }
+function batchPrint(type) {
+    var ids = []; document.querySelectorAll('.row-check:checked').forEach(cb => ids.push(cb.value));
+    if (!ids.length) { alert('请先勾选要打印的记录。'); return; }
+    window.open('/print/batch/' + type + '?ids=' + ids.join(','), '_blank');
+}
+</script>
+{% endblock %}

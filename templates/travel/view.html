@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}出国申请详情{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-airplane"></i> 出国（境）申请详情</h4>
+    <div class="no-print">
+        <a href="{{ url_for('travel.list') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+        <a href="{{ url_for('export.print_view', print_type='travel', id=travel.id) }}" class="btn btn-outline-primary btn-sm" target="_blank">
+            <i class="bi bi-printer"></i> 打印
+        </a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><strong>因私出国（境）人员明细表</strong></div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4"><label class="text-muted">单位</label><p>{{ travel.unit }}</p></div>
+            <div class="col-md-4"><label class="text-muted">部门</label><p>{{ travel.department }}</p></div>
+            <div class="col-md-4"><label class="text-muted">姓名</label><p>{{ travel.name }}</p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-3"><label class="text-muted">职务</label><p>{{ travel.position }}</p></div>
+            <div class="col-md-3"><label class="text-muted">职称</label><p>{{ travel.title or '-' }}</p></div>
+            <div class="col-md-6"><label class="text-muted">身份证号</label><p><code>{{ travel.id_number }}</code></p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-6"><label class="text-muted">地点、证照</label><p>{{ travel.destination_passport }}</p></div>
+            <div class="col-md-3"><label class="text-muted">类别</label><p>{{ travel.category }}</p></div>
+            <div class="col-md-3"><label class="text-muted">计划出行日期</label><p>{{ travel.travel_dates }}</p></div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-2"><label class="text-muted">批准日期</label><p>{{ travel.approval_date or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">是否做证</label><p>{{ travel.need_new_passport }}</p></div>
+            <div class="col-md-2"><label class="text-muted">证件号码</label><p>{{ travel.passport_no or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">证件领用</label><p>{{ travel.passport_collect_date or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">证件归还</label><p>{{ travel.passport_return_date or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">操作人</label><p>{{ travel.operator }}</p></div>
+        </div>
+    </div>
+</div>
+
+{% if attachments %}
+<div class="card mb-3">
+    <div class="card-header"><strong>附件列表</strong></div>
+    <div class="card-body">
+        <ul class="list-group list-group-flush">
+            {% for att in attachments %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-file-pdf text-danger me-2"></i> [{{ att.file_type }}] {{ att.file_name }} <small class="text-muted">({{ (att.file_size / 1024) | round | int }} KB)</small></span>
+                <a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-download"></i> 下载
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

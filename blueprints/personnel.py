@@ -1,0 +1,454 @@
+"""人员备案蓝图 — 信息登记表 + 登记备案表"""
+from __future__ import annotations
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+
+from auth import login_required
+from database import get_db
+from utils.helpers import (
+    get_dict_options, get_dict_value, log_action, paginate,
+    detect_surname_split, normalize_residence,
+)
+from utils.validators import (
+    validate_id_number, validate_birth_date_match,
+    validate_date_format, parse_date_input, is_party_member,
+)
+
+personnel_bp = Blueprint("personnel", __name__)
+
+
+# =========================================================================
+# 列表页
+# =========================================================================
+@personnel_bp.route("/personnel/")
+@login_required
+def list():
+    page = request.args.get("page", 1, type=int)
+    search = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    political_filter = request.args.get("political_status", "").strip()
+    rank_filter = request.args.get("rank", "").strip()
+    gender_filter = request.args.get("gender", "").strip()
+    tag_filter = request.args.get("tag", "").strip()
+    sort_by = request.args.get("sort", "created_at_desc").strip()
+
+    base = (
+        "SELECT pf.id, pf.surname, pf.given_name, pf.gender, pf.birth_date, "
+        "pf.id_number, pf.work_unit, pf.position_or_title, pf.tag, pf.status, "
+        "pf.created_at, pi.id AS info_id "
+        "FROM personnel_filing pf "
+        "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
+        "WHERE 1=1"
+    )
+    params: list = []
+
+    if search:
+        base += " AND (pf.surname||pf.given_name LIKE ? OR pf.id_number LIKE ? OR pf.work_unit LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like, like])
+
+    if status_filter:
+        base += " AND pf.status = ?"
+        params.append(status_filter)
+
+    if political_filter:
+        base += " AND pf.political_status = ?"
+        params.append(political_filter)
+
+    if rank_filter:
+        base += " AND pi.rank = ?"
+        params.append(rank_filter)
+
+    if gender_filter:
+        base += " AND pf.gender = ?"
+        params.append(gender_filter)
+
+    if tag_filter:
+        base += " AND pf.tag = ?"
+        params.append(tag_filter)
+
+    # 排序
+    sort_map = {
+        "created_at_desc": "pf.created_at DESC",
+        "created_at_asc": "pf.created_at ASC",
+        "name_asc": "pf.surname||pf.given_name ASC",
+        "birth_date_asc": "pf.birth_date ASC",
+    }
+    base += f" ORDER BY {sort_map.get(sort_by, 'pf.created_at DESC')}"
+
+    pg = paginate(base, tuple(params), page)
+
+    return render_template(
+        "personnel/list.html",
+        items=pg,
+        search=search,
+        status_filter=status_filter,
+        political_filter=political_filter,
+        rank_filter=rank_filter,
+        gender_filter=gender_filter,
+        tag_filter=tag_filter,
+        sort_by=sort_by,
+        statuses=[{"code": "active", "value": "有效"}, {"code": "decontrolled", "value": "已撤控"}],
+        political_opts=get_dict_options("political_status"),
+        rank_opts=get_dict_options("rank"),
+        tags=[{"code": "新增", "value": "新增"}, {"code": "更新", "value": "更新"}],
+        genders=[{"code": "男", "value": "男"}, {"code": "女", "value": "女"}],
+        sorts=[
+            {"code": "created_at_desc", "value": "录入时间（新→旧）"},
+            {"code": "created_at_asc", "value": "录入时间（旧→新）"},
+            {"code": "name_asc", "value": "姓名排序"},
+            {"code": "birth_date_asc", "value": "出生日期"},
+        ],
+    )
+
+
+# =========================================================================
+# 信息登记表 — 新增
+# =========================================================================
+@personnel_bp.route("/personnel/info/new", methods=["GET", "POST"])
+@login_required
+def info_new():
+    if request.method == "POST":
+        data = _extract_info_form(request.form)
+        errors = _validate_info_form(data)
+        if errors:
+            for e in errors:
+                flash(e, "danger")
+            return render_template("personnel/info_form.html", data=data, editing=False)
+
+        db = get_db()
+        db.execute(
+            "INSERT INTO personnel_info (unit, department, name, gender, birth_date, "
+            "work_start_date, education, degree, title, rank, political_status, "
+            "party_join_date, position, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                data["unit"], data["department"], data["name"], data["gender"],
+                data["birth_date"], data["work_start_date"], data["education"],
+                data["degree"], data["title"], data["rank"], data["political_status"],
+                data["party_join_date"], data["position"], data["operator"],
+            ),
+        )
+        db.commit()
+        info_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        log_action("create", "personnel_info", info_id)
+        flash("备案人员信息登记表已保存。请继续填写登记备案表。", "success")
+        return redirect(url_for("personnel.filing_new", info_id=info_id))
+
+    return render_template("personnel/info_form.html", data={}, editing=False)
+
+
+# =========================================================================
+# 信息登记表 — 编辑
+# =========================================================================
+@personnel_bp.route("/personnel/info/<int:info_id>/edit", methods=["GET", "POST"])
+@login_required
+def info_edit(info_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM personnel_info WHERE id = ?", (info_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("personnel.list"))
+
+    if request.method == "POST":
+        data = _extract_info_form(request.form)
+        errors = _validate_info_form(data)
+        if errors:
+            for e in errors:
+                flash(e, "danger")
+            return render_template("personnel/info_form.html", data=data, editing=True, info_id=info_id)
+
+        db.execute(
+            "UPDATE personnel_info SET unit=?, department=?, name=?, gender=?, "
+            "birth_date=?, work_start_date=?, education=?, degree=?, title=?, rank=?, "
+            "political_status=?, party_join_date=?, position=?, operator=?, updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=?",
+            (
+                data["unit"], data["department"], data["name"], data["gender"],
+                data["birth_date"], data["work_start_date"], data["education"],
+                data["degree"], data["title"], data["rank"], data["political_status"],
+                data["party_join_date"], data["position"], data["operator"], info_id,
+            ),
+        )
+        db.commit()
+        log_action("update", "personnel_info", info_id)
+        flash("信息登记表已更新。", "success")
+        return redirect(url_for("personnel.list"))
+
+    return render_template(
+        "personnel/info_form.html",
+        data=dict(row),
+        editing=True,
+        info_id=info_id,
+    )
+
+
+# =========================================================================
+# 登记备案表 — 新增
+# =========================================================================
+@personnel_bp.route("/personnel/filing/new", methods=["GET", "POST"])
+@login_required
+def filing_new():
+    info_id = request.args.get("info_id", type=int)
+    info_row = None
+    if info_id:
+        db = get_db()
+        info_row = db.execute("SELECT * FROM personnel_info WHERE id = ?", (info_id,)).fetchone()
+
+    if request.method == "POST":
+        data = _extract_filing_form(request.form)
+        errors = _validate_filing_form(data)
+        if errors:
+            for e in errors:
+                flash(e, "danger")
+            return render_template(
+                "personnel/filing_form.html",
+                data=data, editing=False, info_id=info_id,
+            )
+
+        db = get_db()
+        db.execute(
+            "INSERT INTO personnel_filing (personnel_info_id, surname, given_name, gender, "
+            "birth_date, id_number, residence, political_status, work_unit, "
+            "position_or_title, supervisor_unit, tag, informed, remarks, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                info_id, data["surname"], data["given_name"], data["gender"],
+                data["birth_date"], data["id_number"], data["residence"],
+                data["political_status"], data["work_unit"], data["position_or_title"],
+                data["supervisor_unit"], data["tag"], data["informed"],
+                data.get("remarks", ""), data["operator"],
+            ),
+        )
+        db.commit()
+        filing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        log_action("create", "personnel_filing", filing_id)
+        flash("登记备案表已保存。", "success")
+        return redirect(url_for("personnel.list"))
+
+    # GET — 预填信息登记表数据
+    prefill = {}
+    if info_row:
+        surname, given_name = detect_surname_split(info_row["name"])
+        prefill = {
+            "surname": surname,
+            "given_name": given_name,
+            "gender": info_row["gender"],
+            "birth_date": info_row["birth_date"],
+            "political_status": info_row["political_status"],
+            "work_unit": info_row["unit"],
+            "position_or_title": info_row["position"] or info_row["rank"],
+        }
+
+    return render_template(
+        "personnel/filing_form.html",
+        data=prefill,
+        editing=False,
+        info_id=info_id,
+    )
+
+
+# =========================================================================
+# 登记备案表 — 编辑
+# =========================================================================
+@personnel_bp.route("/personnel/filing/<int:filing_id>/edit", methods=["GET", "POST"])
+@login_required
+def filing_edit(filing_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("personnel.list"))
+
+    if request.method == "POST":
+        data = _extract_filing_form(request.form)
+        errors = _validate_filing_form(data, skip_id_dup_check=True)
+        if errors:
+            for e in errors:
+                flash(e, "danger")
+            return render_template(
+                "personnel/filing_form.html",
+                data=data, editing=True, filing_id=filing_id,
+            )
+
+        db.execute(
+            "UPDATE personnel_filing SET surname=?, given_name=?, gender=?, birth_date=?, "
+            "id_number=?, residence=?, political_status=?, work_unit=?, "
+            "position_or_title=?, supervisor_unit=?, tag=?, informed=?, remarks=?, "
+            "operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (
+                data["surname"], data["given_name"], data["gender"],
+                data["birth_date"], data["id_number"], data["residence"],
+                data["political_status"], data["work_unit"], data["position_or_title"],
+                data["supervisor_unit"], data["tag"], data["informed"],
+                data.get("remarks", ""), data["operator"], filing_id,
+            ),
+        )
+        db.commit()
+        log_action("update", "personnel_filing", filing_id)
+        flash("登记备案表已更新。", "success")
+        return redirect(url_for("personnel.list"))
+
+    return render_template(
+        "personnel/filing_form.html",
+        data=dict(row),
+        editing=True,
+        filing_id=filing_id,
+    )
+
+
+# =========================================================================
+# 查看详情
+# =========================================================================
+@personnel_bp.route("/personnel/<int:filing_id>")
+@login_required
+def view(filing_id):
+    db = get_db()
+    filing = db.execute(
+        "SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)
+    ).fetchone()
+    if not filing:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("personnel.list"))
+
+    info_row = None
+    if filing["personnel_info_id"]:
+        info_row = db.execute(
+            "SELECT * FROM personnel_info WHERE id = ?",
+            (filing["personnel_info_id"],),
+        ).fetchone()
+
+    return render_template(
+        "personnel/view.html",
+        filing=filing,
+        info=info_row,
+    )
+
+
+# =========================================================================
+# 删除
+# =========================================================================
+@personnel_bp.route("/personnel/<int:filing_id>/delete", methods=["POST"])
+@login_required
+def delete(filing_id):
+    db = get_db()
+    db.execute("DELETE FROM personnel_filing WHERE id = ?", (filing_id,))
+    db.commit()
+    log_action("delete", "personnel_filing", filing_id)
+    flash("备案记录已删除。", "info")
+    return redirect(url_for("personnel.list"))
+
+
+# =========================================================================
+# 表单提取 & 校验
+# =========================================================================
+def _extract_info_form(form):
+    """从 POST 数据提取信息登记表字段"""
+    return {
+        "unit": form.get("unit", "").strip(),
+        "department": form.get("department", "").strip(),
+        "name": form.get("name", "").strip(),
+        "gender": form.get("gender", "").strip(),
+        "birth_date": parse_date_input(form.get("birth_date", "")),
+        "work_start_date": parse_date_input(form.get("work_start_date", "")),
+        "education": form.get("education", "").strip(),
+        "degree": form.get("degree", "").strip(),
+        "title": form.get("title", "").strip(),
+        "rank": form.get("rank", "").strip(),
+        "political_status": form.get("political_status", "").strip(),
+        "party_join_date": parse_date_input(form.get("party_join_date", "")),
+        "position": form.get("position", "").strip(),
+        "operator": form.get("operator", "").strip(),
+    }
+
+
+def _validate_info_form(data: dict) -> list[str]:
+    errors = []
+    required = [
+        ("unit", "单位"), ("department", "部门"), ("name", "姓名"),
+        ("gender", "性别"), ("birth_date", "出生日期"),
+        ("rank", "职级"), ("political_status", "政治面貌"),
+        ("position", "职务（岗位名称）"), ("operator", "操作人"),
+    ]
+    for field, label in required:
+        if not data.get(field):
+            errors.append(f"{label} 为必填项。")
+
+    if data["birth_date"]:
+        ok, msg = validate_date_format(data["birth_date"])
+        if not ok:
+            errors.append(f"出生日期: {msg}")
+
+    if data["work_start_date"]:
+        ok, msg = validate_date_format(data["work_start_date"])
+        if not ok:
+            errors.append(f"参加工作日期: {msg}")
+
+    if data["party_join_date"]:
+        ok, msg = validate_date_format(data["party_join_date"])
+        if not ok:
+            errors.append(f"入党日期: {msg}")
+
+    if is_party_member(data["political_status"]) and not data["party_join_date"]:
+        errors.append("中共党员/预备党员须填写入党日期。")
+
+    return errors
+
+
+def _extract_filing_form(form):
+    return {
+        "surname": form.get("surname", "").strip(),
+        "given_name": form.get("given_name", "").strip(),
+        "gender": form.get("gender", "").strip(),
+        "birth_date": parse_date_input(form.get("birth_date", "")),
+        "id_number": form.get("id_number", "").strip().upper(),
+        "residence": normalize_residence(form.get("residence", "")),
+        "political_status": form.get("political_status", "").strip(),
+        "work_unit": form.get("work_unit", "").strip(),
+        "position_or_title": form.get("position_or_title", "").strip(),
+        "supervisor_unit": form.get("supervisor_unit", "").strip(),
+        "tag": form.get("tag", "新增").strip(),
+        "informed": form.get("informed", "否").strip(),
+        "remarks": form.get("remarks", "").strip(),
+        "operator": form.get("operator", "").strip(),
+    }
+
+
+def _validate_filing_form(data: dict, skip_id_dup_check: bool = False) -> list[str]:
+    errors = []
+    required = [
+        ("surname", "中文姓"), ("given_name", "中文名"), ("gender", "性别"),
+        ("birth_date", "出生日期"), ("id_number", "身份证号"),
+        ("residence", "户口所在地"), ("political_status", "政治面貌"),
+        ("work_unit", "工作单位"), ("position_or_title", "职务（级）或职称"),
+        ("supervisor_unit", "人事主管单位"), ("tag", "标记"),
+        ("informed", "已告知本人"), ("operator", "操作人"),
+    ]
+    for field, label in required:
+        if not data.get(field):
+            errors.append(f"{label} 为必填项。")
+
+    if data["birth_date"]:
+        ok, msg = validate_date_format(data["birth_date"])
+        if not ok:
+            errors.append(f"出生日期: {msg}")
+
+    if data["id_number"]:
+        ok, msg = validate_id_number(data["id_number"])
+        if not ok:
+            errors.append(f"身份证号: {msg}")
+        elif data["birth_date"]:
+            ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
+            if not ok2:
+                errors.append(msg2)
+
+        if not skip_id_dup_check:
+            db = get_db()
+            dup = db.execute(
+                "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'active'",
+                (data["id_number"],),
+            ).fetchone()
+            if dup:
+                errors.append("该身份证号已存在有效备案记录，请勿重复登记。")
+
+    return errors

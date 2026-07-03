@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}证照登记表{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-card-checklist"></i> {{ '编辑' if editing else '新增' }}因私出国（境）备案人员证照登记表</h4>
+<form method="POST">
+<div class="form-section">
+    <h5>选择备案人员</h5>
+    <p class="text-muted small mb-2">选择人员后，单位/部门/姓名自动从备案信息带入。</p>
+    <div class="row g-3">
+        <div class="col-md-5">
+            <label class="form-label required">备案人员</label>
+            <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillCert()">
+                <option value="">请选择备案人员</option>
+                {% for p in personnel_opts() %}
+                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="row g-3 mt-2">
+        <div class="col-md-3">
+            <label class="form-label">单位 <span class="text-muted">(自动带入)</span></label>
+            <input type="text" class="form-control" name="unit" id="certUnit" value="{{ data.unit or '' }}" readonly>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">部门 <span class="text-muted">(自动带入)</span></label>
+            <input type="text" class="form-control" name="department" id="certDept" value="{{ data.department or '' }}" readonly>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">姓名 <span class="text-muted">(自动带入)</span></label>
+            <input type="text" class="form-control" name="name" id="certName" value="{{ data.name or '' }}" readonly>
+        </div>
+    </div>
+</div>
+
+<div class="form-section"><h5>普通护照</h5><div class="row g-3">
+    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="passport_no" value="{{ data.passport_no or '' }}"></div>
+    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="passport_expiry" value="{{ data.passport_expiry or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="passport_submit_date" value="{{ data.passport_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+</div></div>
+
+<div class="form-section"><h5>往来港澳通行证</h5><div class="row g-3">
+    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="hm_pass_no" value="{{ data.hm_pass_no or '' }}"></div>
+    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="hm_pass_expiry" value="{{ data.hm_pass_expiry or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="hm_pass_submit_date" value="{{ data.hm_pass_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+</div></div>
+
+<div class="form-section"><h5>大陆居民往来台湾通行证</h5><div class="row g-3">
+    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="tw_pass_no" value="{{ data.tw_pass_no or '' }}"></div>
+    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="tw_pass_expiry" value="{{ data.tw_pass_expiry or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="tw_pass_submit_date" value="{{ data.tw_pass_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+</div></div>
+
+<div class="form-section"><h5>操作信息</h5>
+    <div class="col-md-4"><label class="form-label required">操作人</label><input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required></div>
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="{{ url_for('certificate.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+function autoFillCert() {
+    var sel = document.getElementById('personSelect');
+    var opt = sel.options[sel.selectedIndex];
+    document.getElementById('certUnit').value = opt.getAttribute('data-unit') || '';
+    document.getElementById('certDept').value = opt.getAttribute('data-dept') || '';
+    document.getElementById('certName').value = opt.getAttribute('data-name') || '';
+}
+// Init on page load (for edit mode)
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('personSelect').value) autoFillCert();
+});
+</script>
+{% endblock %}

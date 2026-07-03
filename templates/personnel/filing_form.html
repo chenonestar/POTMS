@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}登记备案表{% endblock %}
+{% block content %}
+<h4 class="mb-3">
+    <i class="bi bi-file-earmark-text"></i>
+    {{ '编辑' if editing else '新增' }}因私事出国（境）人员登记备案表
+</h4>
+
+<form method="POST" class="needs-validation" novalidate>
+<div class="form-section">
+    <h5>身份信息</h5>
+    <div class="row g-3">
+        <div class="col-md-2">
+            <label class="form-label required">中文姓</label>
+            <input type="text" class="form-control" name="surname" value="{{ data.surname or '' }}"
+                   placeholder="复姓如欧阳" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">中文名</label>
+            <input type="text" class="form-control" name="given_name" value="{{ data.given_name or '' }}" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">性别</label>
+            <select class="form-select" name="gender" required>
+                <option value="">请选择</option>
+                <option value="男" {{ 'selected' if data.gender == '男' }}>男</option>
+                <option value="女" {{ 'selected' if data.gender == '女' }}>女</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">出生日期</label>
+            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date or '' }}"
+                   placeholder="YYYYMMDD" maxlength="8" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">身份证号</label>
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+                   placeholder="18位" maxlength="18" required>
+        </div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-8">
+            <label class="form-label required">户口所在地</label>
+            <input type="text" class="form-control" name="residence" value="{{ data.residence or '' }}"
+                   placeholder="省份不加省字，填至区级，如：浙江宁波市江北区" required>
+            <div class="form-text">省份不加"省"字；江东区、鄞县统一为"鄞州区"。</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">政治面貌</label>
+            <select class="form-select" name="political_status" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('political_status') %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('political_status') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>单位信息</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label required">工作单位</label>
+            <select class="form-select" name="work_unit" required>
+                <option value="">请选择单位</option>
+                {% for o in org_tree_opts() %}
+                {% set clean_name = o.name | replace('　', '') | replace('└ ', '') %}
+                <option value="{{ clean_name }}" {{ 'selected' if data.get('work_unit') == clean_name }}>{{ o.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">职务（级）或职称</label>
+            <input type="text" class="form-control" name="position_or_title"
+                   value="{{ data.position_or_title or '' }}"
+                   placeholder="处级/副处级/正科 或 副高/正高" required>
+            <div class="form-text">处级领导填"处级"或"副处级"；副处级单位班子成员填"正科"；其他填"副高"或"正高"。</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">人事主管单位</label>
+            <input type="text" class="form-control" name="supervisor_unit" value="{{ data.supervisor_unit or '' }}"
+                   placeholder="名称需与印章一致" required>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>备案信息</h5>
+    <div class="row g-3">
+        <div class="col-md-2">
+            <label class="form-label required">标记</label>
+            <select class="form-select" name="tag" required>
+                <option value="新增" {{ 'selected' if data.tag == '新增' }}>新增</option>
+                <option value="更新" {{ 'selected' if data.tag == '更新' }}>更新</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">已告知本人</label>
+            <select class="form-select" name="informed" required>
+                <option value="是" {{ 'selected' if data.informed == '是' }}>是</option>
+                <option value="否" {{ 'selected' if data.informed == '否' }}>否</option>
+            </select>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label">备注</label>
+            <input type="text" class="form-control" name="remarks" value="{{ data.remarks or '' }}">
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>操作信息</h5>
+    <div class="col-md-4">
+        <label class="form-label required">操作人</label>
+        <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+{% endblock %}
