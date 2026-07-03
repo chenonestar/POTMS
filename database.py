@@ -3,8 +3,6 @@ import sqlite3
 import os
 from datetime import datetime
 
-from werkzeug.security import generate_password_hash
-
 from config import Config
 
 # ---------------------------------------------------------------------------
@@ -138,9 +136,10 @@ def seed_data():
     # --- 管理员账户 ---
     existing = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
     if not existing:
+        from utils.security import hash_password
         db.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            ("admin", generate_password_hash("admin123")),
+            ("admin", hash_password("admin123")),
         )
 
     # --- 数据字典 ---

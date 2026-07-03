@@ -66,9 +66,13 @@ POTMS/
 │   ├── decontrol.py          # 撤控备案
 │   └── export.py             # Excel 导出 / 打印
 ├── utils/                    # 工具函数
-│   ├── validators.py         # 身份证 / 日期校验
-│   ├── helpers.py            # 分页 / 复姓 / 日志
+│   ├── validators.py         # 身份证 / 日期 / 出行区间校验
+│   ├── helpers.py            # 分页 / 复姓 / 日志（含变更快照）
+│   ├── security.py           # bcrypt 密码哈希与校验
+│   ├── backup.py             # 每日自动备份 + 保留30天
+│   ├── excel_import.py       # Excel 批量导入
 │   └── excel_export.py       # openpyxl 表格生成
+├── static/js/regions.js      # 省市区三级联动数据
 ├── templates/                # Jinja2 模板 (Bootstrap 5)
 ├── static/                   # CSS / JS
 ├── uploads/                  # PDF 附件存储 (运行时创建)
@@ -83,25 +87,57 @@ POTMS/
 
 ### 方式一：源码直接运行（开发/测试）
 
-适用于已有 Python 环境的机器，直接 `python app.py` 启动。
+适用于已有 Python 环境的机器：
 
-### 方式二：PyInstaller 打包为单个 .exe（推荐）
+```bash
+pip install -r requirements.txt
+python app.py            # 浏览器打开 http://localhost:5000
+```
+
+### 方式二：PyInstaller 打包为单个 .exe（推荐生产）
 
 无需安装 Python，拷贝即用。
 
 ```bash
-# 1. 安装 PyInstaller
+# 1. 安装打包工具（在已装好项目依赖的同一环境中）
+pip install -r requirements.txt
 pip install pyinstaller
 
-# 2. 打包为单文件
-pyinstaller --onefile --add-data "templates;templates" --add-data "static;static" --name "POTMS" app.py
+# 2. 打包为单文件（Windows 用分号 ; 分隔；Linux/macOS 用冒号 :）
+pyinstaller --onefile ^
+  --name "POTMS" ^
+  --add-data "templates;templates" ^
+  --add-data "static;static" ^
+  --hidden-import bcrypt ^
+  app.py
 
 # 3. 输出文件位于 dist/POTMS.exe
 ```
 
-首次运行时程序会自动创建 `data.db` 以及 `uploads/`、`exports/`、`backup/` 目录。
+> **说明**
+> - `--add-data "static;static"` 会把 `static/js/regions.js`（省市区三级联动数据）等静态资源一并打包。
+> - `--hidden-import bcrypt` 确保 bcrypt 的二进制扩展被正确收集；若打包后启动报缺少模块，可再追加 `--collect-all bcrypt`。
+> - 程序已适配打包环境：**模板/静态资源**从解压目录读取，而 **`data.db`、`uploads/`、`exports/`、`backup/`、`.secret_key`** 会持久化到 **`POTMS.exe` 所在目录**（不会随临时目录清除而丢失）。
 
-> **注意**：打包后 `admin123` 为默认密码，首次登录后建议在数据库中修改。
+### 目录与数据持久化
+
+首次运行时，程序在 **exe 同目录** 自动创建：
+
+| 文件/目录 | 用途 | 是否需备份 |
+|---|---|---|
+| `data.db` | SQLite 数据库（全部业务数据） | ✅ 必须 |
+| `uploads/` | PDF 附件 | ✅ 必须 |
+| `backup/` | 每日自动备份（保留最近 30 天） | 可选 |
+| `exports/` | 临时 Excel 导出文件 | 否 |
+| `.secret_key` | 会话密钥（持久化，避免重启后登录失效） | 建议随库一起备份 |
+
+> 建议将 `POTMS.exe` 与数据放在一个**具有写权限**的目录（如 `D:\POTMS\`），不要放在 `C:\Program Files\` 等受 UAC 保护的位置。
+
+### 首次运行与安全
+
+- 默认管理员：`admin` / `admin123`，**首次登录后请立即改密**（见"修改管理员密码"）。
+- 会话默认 **1 小时** 无操作自动超时（`config.py` 的 `PERMANENT_SESSION_LIFETIME`）。
+- 如需在多台机器间固定会话密钥，可设置环境变量 `SECRET_KEY`（优先级高于 `.secret_key` 文件）。
 
 ### 方式三：Windows 自启动（开机运行）
 
@@ -111,13 +147,15 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 C:\Users\<用户名>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup
 ```
 
-或使用 `nssm`（Non-Sucking Service Manager）注册为 Windows 服务：
+或使用 `nssm`（Non-Sucking Service Manager）注册为 Windows 服务，实现无人值守常驻：
 
 ```bash
-nssm install POTMS "C:\POTMS\dist\POTMS.exe"
-nssm set POTMS AppDirectory "C:\POTMS\dist"
+nssm install POTMS "D:\POTMS\POTMS.exe"
+nssm set POTMS AppDirectory "D:\POTMS"
 nssm start POTMS
 ```
+
+> 注册为服务时，`AppDirectory` 必须设为 exe 所在目录，确保 `data.db` 等数据写入正确位置。
 
 ---
 
@@ -125,21 +163,34 @@ nssm start POTMS
 
 SQLite 数据库为单文件 `data.db`，备份即复制该文件。
 
-### 手动备份
+### 内置自动备份（默认已启用）
+
+系统已内置每日自动备份，**无需额外配置**：
+
+- 应用启动及每次进入首页时触发检查，当天未备份则自动复制一份到 `backup/data_YYYYMMDD.db`（幂等，当天只备份一次）。
+- 自动清理 **30 天前** 的旧备份。
+- 首页仪表盘显示"最近备份"日期，并提供 **「立即备份」** 手动按钮。
+
+### 手动备份（离线冷备）
+
+直接复制数据文件即可：
 
 ```bash
 copy data.db backup\data_20260703.db
 ```
 
-### 自动备份（Windows 任务计划程序）
+> 完整冷备建议同时复制 `data.db`、`uploads/`（附件）、`.secret_key`。
 
-创建批处理文件 `backup.bat`：
+### 外部定时备份（可选，Windows 任务计划程序）
+
+若需异地/额外备份，可创建批处理文件 `backup.bat`：
 
 ```bat
 @echo off
-set BACKUP_DIR=E:\POTMS\backup
+set BACKUP_DIR=E:\POTMS_backup
 set DATE=%date:~0,4%%date:~5,2%%date:~8,2%
-copy E:\POTMS\data.db %BACKUP_DIR%\data_%DATE%.db
+copy D:\POTMS\data.db %BACKUP_DIR%\data_%DATE%.db
+xcopy /E /I /Y D:\POTMS\uploads %BACKUP_DIR%\uploads_%DATE%
 ```
 
 在 Windows 任务计划程序中创建每日定时任务执行该脚本。
@@ -163,15 +214,19 @@ copy E:\POTMS\data.db %BACKUP_DIR%\data_%DATE%.db
 
 ## 修改管理员密码
 
+密码采用 **bcrypt** 加盐哈希存储。生成新密码哈希：
+
 ```bash
-python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('新密码'))"
+python -c "from utils.security import hash_password; print(hash_password('新密码'))"
 ```
 
-将输出的哈希值更新到 `data.db` 中 `users` 表的 `password_hash` 字段：
+将输出的哈希值（以 `$2b$` 开头）更新到 `data.db` 中 `users` 表的 `password_hash` 字段：
 
 ```sql
-UPDATE users SET password_hash = '新哈希值' WHERE username = 'admin';
+UPDATE users SET password_hash = '$2b$...新哈希值...' WHERE username = 'admin';
 ```
+
+> **兼容说明**：系统兼容旧版 `werkzeug`（pbkdf2）哈希——若数据库中仍是旧哈希，管理员**首次登录成功后会自动升级为 bcrypt**，无需手动迁移。
 
 ---
 
@@ -183,6 +238,7 @@ UPDATE users SET password_hash = '新哈希值' WHERE username = 'admin';
 | 数据库 | SQLite3（Python 标准库，免安装） |
 | 前端 | Bootstrap 5 + Jinja2 |
 | Excel | openpyxl |
+| 密码哈希 | bcrypt |
 | 打包 | PyInstaller |
 
 > 为什么选 Python 而非 Go？详见 `开发需求文档.html` 第 9.5 节对比分析。

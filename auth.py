@@ -36,9 +36,17 @@ def login():
             "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
 
-        from werkzeug.security import check_password_hash
+        from utils.security import verify_password, hash_password
 
-        if user and check_password_hash(user["password_hash"], password):
+        ok, needs_rehash = verify_password(password, user["password_hash"]) if user else (False, False)
+        if ok:
+            # 旧哈希登录成功后透明升级为 bcrypt
+            if needs_rehash:
+                db.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (hash_password(password), user["id"]),
+                )
+                db.commit()
             session.permanent = True  # 启用 PERMANENT_SESSION_LIFETIME 超时（默认1小时）
             session["logged_in"] = True
             session["username"] = user["username"]

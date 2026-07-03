@@ -7,8 +7,20 @@ from flask import Flask
 from config import Config
 
 
+def _resource_root() -> str:
+    """模板/静态资源根目录：打包为单文件 exe 时位于临时解压目录 _MEIPASS。"""
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS
+    return os.path.abspath(os.path.dirname(__file__))
+
+
 def create_app() -> Flask:
-    app = Flask(__name__)
+    root = _resource_root()
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(root, "templates"),
+        static_folder=os.path.join(root, "static"),
+    )
     app.config.from_object(Config)
 
     # 确保运行时目录存在
