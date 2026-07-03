@@ -57,6 +57,7 @@ def create_app() -> Flask:
     from blueprints.import_data import import_bp
     from blueprints.logs import logs_bp
     from blueprints.organization import org_bp
+    from blueprints.dict_admin import dict_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -68,6 +69,7 @@ def create_app() -> Flask:
     app.register_blueprint(import_bp)
     app.register_blueprint(logs_bp)
     app.register_blueprint(org_bp)
+    app.register_blueprint(dict_bp)
 
     # 数据库连接关闭
     from database import close_db

@@ -112,6 +112,7 @@ def index():
         {"code": "certificates", "value": "证照登记表"},
         {"code": "travel_details", "value": "出国明细表"},
         {"code": "decontrol_filing", "value": "撤控备案表"},
+        {"code": "sys_dict", "value": "数据字典"},
         {"code": "batch", "value": "批量导入"},
     ]
 
