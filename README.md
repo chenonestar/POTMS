@@ -111,6 +111,10 @@ python app.py            # 浏览器打开 http://localhost:5000
 
 无需安装 Python，拷贝即用。
 
+**一键打包（推荐）**：在 Windows 上直接双击运行仓库根目录的 **`build.bat`**，它会自动安装依赖、执行打包并输出 `dist\POTMS.exe`。
+
+手动打包命令如下：
+
 ```bash
 # 1. 安装打包工具（在已装好项目依赖的同一环境中）
 pip install -r requirements.txt
