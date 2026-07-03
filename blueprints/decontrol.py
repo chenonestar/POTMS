@@ -5,10 +5,29 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate, normalize_residence, get_dict_options
+from utils.helpers import log_action, paginate, normalize_residence, get_dict_options, row_snapshot
 from utils.validators import validate_id_number, validate_birth_date_match, validate_date_format, parse_date_input
 
 decontrol_bp = Blueprint("decontrol", __name__)
+
+
+def build_filters(args, ids=None):
+    """构建撤控列表 WHERE 子句，供列表与导出复用。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (surname||given_name LIKE ? OR id_number LIKE ? OR reason LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like, like])
+    if args.get("submit_unit_type", "").strip():
+        where += " AND submit_unit_type = ?"
+        params.append(args.get("submit_unit_type").strip())
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
 
 
 @decontrol_bp.route("/decontrol/")
@@ -18,18 +37,10 @@ def list():
     search = request.args.get("search", "").strip()
     unit_type_filter = request.args.get("submit_unit_type", "").strip()
 
-    base = "SELECT * FROM decontrol_filing WHERE 1=1"
-    params: list = []
-    if search:
-        base += " AND (surname||given_name LIKE ? OR id_number LIKE ? OR reason LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like, like])
-    if unit_type_filter:
-        base += " AND submit_unit_type = ?"
-        params.append(unit_type_filter)
-    base += " ORDER BY created_at DESC"
+    where, params = build_filters(request.args)
+    base = "SELECT * FROM decontrol_filing WHERE 1=1" + where + " ORDER BY created_at DESC"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
     return render_template(
         "decontrol/list.html",
         items=pg,
@@ -86,7 +97,7 @@ def new(filing_id):
         )
         db.commit()
         dec_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "decontrol_filing", dec_id)
+        log_action("create", "decontrol_filing", dec_id, after=row_snapshot("decontrol_filing", dec_id))
         flash("撤控备案已提交。该人员备案状态已标记为'已撤控'。", "success")
         return redirect(url_for("personnel.list"))
 

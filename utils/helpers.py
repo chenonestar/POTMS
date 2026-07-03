@@ -43,12 +43,20 @@ def normalize_residence(raw: str) -> str:
     return raw
 
 
-def log_action(action: str, target_type: str, target_id: int = None, detail: str = None):
-    """写入操作日志"""
+def log_action(action: str, target_type: str, target_id: int = None, detail: str = None,
+               before: dict = None, after: dict = None):
+    """写入操作日志。before/after 为变更前后的数据快照（可选），序列化为 JSON 存入 snapshot。"""
+    import json
+    snapshot = None
+    if before is not None or after is not None:
+        snapshot = json.dumps(
+            {"before": _clean_snapshot(before), "after": _clean_snapshot(after)},
+            ensure_ascii=False, default=str,
+        )
     db = get_db()
     db.execute(
-        "INSERT INTO operation_logs (operator, action, target_type, target_id, detail, ip_address) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO operation_logs (operator, action, target_type, target_id, detail, ip_address, snapshot) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             _operator_name(),
             action,
@@ -56,9 +64,29 @@ def log_action(action: str, target_type: str, target_id: int = None, detail: str
             target_id,
             detail,
             request.remote_addr,
+            snapshot,
         ),
     )
     db.commit()
+
+
+# 快照中忽略的字段（时间戳等无意义变更）
+_SNAPSHOT_SKIP = {"created_at", "updated_at"}
+
+
+def _clean_snapshot(data):
+    """将 sqlite Row / dict 转为纯 dict，过滤时间戳字段"""
+    if data is None:
+        return None
+    d = dict(data)
+    return {k: v for k, v in d.items() if k not in _SNAPSHOT_SKIP}
+
+
+def row_snapshot(table: str, row_id: int) -> dict:
+    """读取指定表某行的当前快照（dict），不存在返回 None"""
+    db = get_db()
+    row = db.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone()
+    return dict(row) if row else None
 
 
 def _operator_name() -> str:

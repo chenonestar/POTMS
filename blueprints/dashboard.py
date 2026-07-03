@@ -1,17 +1,39 @@
 """首页仪表盘 — 增强版（维度分类 + 可点击）"""
 from datetime import datetime, timedelta
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, redirect, url_for, flash
 
 from auth import login_required
 from database import get_db
+from utils.backup import run_daily_backup, latest_backup
+from utils.helpers import log_action
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+
+@dashboard_bp.route("/backup/now", methods=["POST"])
+@login_required
+def backup_now():
+    """手动立即备份数据库"""
+    try:
+        result = run_daily_backup(force=True)
+        log_action("backup", "database", detail=f"手动备份 {result['date']}，清理旧备份 {result['pruned']} 个")
+        flash(f"数据库已备份（{result['date']}）。", "success")
+    except Exception as e:
+        flash(f"备份失败：{e}", "danger")
+    return redirect(url_for("dashboard.index"))
 
 
 @dashboard_bp.route("/")
 @login_required
 def index():
+    # 长时间运行时，登录首页也触发每日备份检查（当天已备份则跳过）
+    try:
+        run_daily_backup()
+    except Exception:
+        pass
+    _, backup_date = latest_backup()
+
     db = get_db()
     today = datetime.now().strftime("%Y%m%d")
     warn_date = (datetime.now() + timedelta(days=30)).strftime("%Y%m%d")
@@ -98,4 +120,5 @@ def index():
         expiring=expiring,
         overdue=[dict(r) for r in overdue],
         recent_travel=recent_travel,
+        backup_date=backup_date,
     )

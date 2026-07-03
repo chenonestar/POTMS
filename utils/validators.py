@@ -83,3 +83,22 @@ def parse_date_input(raw: str) -> str:
 def is_party_member(political_status: str) -> bool:
     """是否为中共党员/预备党员（需要填写入党日期）"""
     return political_status in ("中共党员", "中共预备党员")
+
+
+def parse_travel_range(text: str) -> tuple[str, str]:
+    """
+    从计划出行日期文本中解析出起止日期（规范化为 YYYYMMDD）。
+    支持形如 "2023-6-20-2023-6-26" / "20230620-20230626" / 单个日期。
+    返回 (start, end)，无法解析则返回 ("", "")。
+    """
+    if not text:
+        return ("", "")
+    # 匹配 YYYY-M-D / YYYY/M/D / YYYYMMDD
+    matches = re.findall(r"(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})", text)
+    if not matches:
+        return ("", "")
+    def _norm(m):
+        return f"{m[0]}{m[1].zfill(2)}{m[2].zfill(2)}"
+    start = _norm(matches[0])
+    end = _norm(matches[-1])
+    return (start, end)

@@ -19,15 +19,34 @@ def _operator():
     return session.get("username", "unknown")
 
 
+def _selected_ids():
+    """从查询串解析选中行 ID（?ids=1,2,3）"""
+    raw = request.args.get("ids", "")
+    return [int(x) for x in raw.split(",") if x.strip().isdigit()]
+
+
+def _scope_note(where_sql, ids) -> str:
+    if ids:
+        return f"选中{len(ids)}行"
+    if where_sql:
+        return "按筛选条件"
+    return "全量"
+
+
 # =========================================================================
-# Excel 导出 — 5 类表单
+# Excel 导出 — 5 类表单（支持 全量 / 按筛选 / 选中行）
 # =========================================================================
 @export_bp.route("/export/info")
 @login_required
 def info_export():
+    from blueprints.personnel import build_filters
     try:
-        filepath, filename = export_personnel_info(_operator())
-        log_action("export", "personnel_info", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        # 有筛选或选中时经 filing 关联导出；否则全量导出信息表
+        joined = bool(where)
+        filepath, filename = export_personnel_info(_operator(), where, params, joined=joined)
+        log_action("export", "personnel_info", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -37,9 +56,12 @@ def info_export():
 @export_bp.route("/export/filing")
 @login_required
 def filing_export():
+    from blueprints.personnel import build_filters
     try:
-        filepath, filename = export_personnel_filing(_operator())
-        log_action("export", "personnel_filing", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_personnel_filing(_operator(), where, params)
+        log_action("export", "personnel_filing", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -49,9 +71,12 @@ def filing_export():
 @export_bp.route("/export/certificate")
 @login_required
 def certificate_export():
+    from blueprints.certificate import build_filters
     try:
-        filepath, filename = export_certificates(_operator())
-        log_action("export", "certificates", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_certificates(_operator(), where, params)
+        log_action("export", "certificates", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -61,9 +86,12 @@ def certificate_export():
 @export_bp.route("/export/travel")
 @login_required
 def travel_export():
+    from blueprints.travel import build_filters
     try:
-        filepath, filename = export_travel_details(_operator())
-        log_action("export", "travel_details", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_travel_details(_operator(), where, params)
+        log_action("export", "travel_details", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -73,9 +101,12 @@ def travel_export():
 @export_bp.route("/export/decontrol")
 @login_required
 def decontrol_export():
+    from blueprints.decontrol import build_filters
     try:
-        filepath, filename = export_decontrol(_operator())
-        log_action("export", "decontrol_filing", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_decontrol(_operator(), where, params)
+        log_action("export", "decontrol_filing", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")

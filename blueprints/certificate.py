@@ -5,10 +5,41 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate
+from utils.helpers import log_action, paginate, row_snapshot
 from utils.validators import parse_date_input, validate_date_format
 
 certificate_bp = Blueprint("certificate", __name__)
+
+
+def build_filters(args, ids=None):
+    """构建证照列表 WHERE 子句，供列表与导出复用。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (name LIKE ? OR unit LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like])
+    has_passport = args.get("has_passport", "").strip()
+    if has_passport == "1":
+        where += " AND passport_no IS NOT NULL AND passport_no != ''"
+    elif has_passport == "0":
+        where += " AND (passport_no IS NULL OR passport_no = '')"
+    has_hm = args.get("has_hm", "").strip()
+    if has_hm == "1":
+        where += " AND hm_pass_no IS NOT NULL AND hm_pass_no != ''"
+    elif has_hm == "0":
+        where += " AND (hm_pass_no IS NULL OR hm_pass_no = '')"
+    has_tw = args.get("has_tw", "").strip()
+    if has_tw == "1":
+        where += " AND tw_pass_no IS NOT NULL AND tw_pass_no != ''"
+    elif has_tw == "0":
+        where += " AND (tw_pass_no IS NULL OR tw_pass_no = '')"
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
 
 
 @certificate_bp.route("/certificate/")
@@ -20,27 +51,10 @@ def list():
     has_hm = request.args.get("has_hm", "").strip()
     has_tw = request.args.get("has_tw", "").strip()
 
-    base = "SELECT * FROM certificates WHERE 1=1"
-    params: list = []
-    if search:
-        base += " AND (name LIKE ? OR unit LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like])
-    if has_passport == "1":
-        base += " AND passport_no IS NOT NULL AND passport_no != ''"
-    elif has_passport == "0":
-        base += " AND (passport_no IS NULL OR passport_no = '')"
-    if has_hm == "1":
-        base += " AND hm_pass_no IS NOT NULL AND hm_pass_no != ''"
-    elif has_hm == "0":
-        base += " AND (hm_pass_no IS NULL OR hm_pass_no = '')"
-    if has_tw == "1":
-        base += " AND tw_pass_no IS NOT NULL AND tw_pass_no != ''"
-    elif has_tw == "0":
-        base += " AND (tw_pass_no IS NULL OR tw_pass_no = '')"
-    base += " ORDER BY updated_at DESC"
+    where, params = build_filters(request.args)
+    base = "SELECT * FROM certificates WHERE 1=1" + where + " ORDER BY updated_at DESC"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
 
     # 标记即将到期的证照
     from datetime import datetime, timedelta
@@ -98,7 +112,7 @@ def new():
         )
         db.commit()
         cert_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "certificate", cert_id)
+        log_action("create", "certificate", cert_id, after=row_snapshot("certificates", cert_id))
         flash("证照登记已保存。", "success")
         return redirect(url_for("certificate.list"))
 
@@ -141,6 +155,7 @@ def edit(cert_id):
                 flash(e, "danger")
             return render_template("certificate/form.html", data=data, editing=True, cert_id=cert_id)
 
+        before = row_snapshot("certificates", cert_id)
         db.execute(
             "UPDATE certificates SET personnel_filing_id=?, unit=?, department=?, name=?, "
             "passport_no=?, passport_expiry=?, passport_submit_date=?, "
@@ -157,7 +172,8 @@ def edit(cert_id):
             ),
         )
         db.commit()
-        log_action("update", "certificate", cert_id)
+        log_action("update", "certificate", cert_id,
+                   before=before, after=row_snapshot("certificates", cert_id))
         flash("证照信息已更新。", "success")
         return redirect(url_for("certificate.list"))
 
@@ -168,9 +184,10 @@ def edit(cert_id):
 @login_required
 def delete(cert_id):
     db = get_db()
+    before = row_snapshot("certificates", cert_id)
     db.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))
     db.commit()
-    log_action("delete", "certificate", cert_id)
+    log_action("delete", "certificate", cert_id, before=before)
     flash("证照记录已删除。", "info")
     return redirect(url_for("certificate.list"))
 

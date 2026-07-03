@@ -85,9 +85,15 @@ NOTES_INFO = [
 ]
 
 
-def export_personnel_info(operator: str) -> str:
+def export_personnel_info(operator: str, where_sql: str = "", params: tuple = (), joined: bool = False) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM personnel_info ORDER BY created_at DESC").fetchall()
+    if joined:
+        sql = ("SELECT pi.* FROM personnel_info pi "
+               "JOIN personnel_filing pf ON pf.personnel_info_id = pi.id "
+               "WHERE 1=1 " + where_sql + " ORDER BY pi.created_at DESC")
+    else:
+        sql = "SELECT * FROM personnel_info WHERE 1=1 " + where_sql + " ORDER BY created_at DESC"
+    rows = db.execute(sql, params).fetchall()
 
     wb = Workbook()
     ws = wb.active
@@ -132,9 +138,14 @@ NOTES_FILING = [
 ]
 
 
-def export_personnel_filing(operator: str) -> str:
+def export_personnel_filing(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM personnel_filing ORDER BY created_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT pf.* FROM personnel_filing pf "
+        "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
+        "WHERE 1=1 " + where_sql + " ORDER BY pf.created_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
@@ -169,9 +180,12 @@ HEADERS_CERT = [
 ]
 
 
-def export_certificates(operator: str) -> str:
+def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM certificates ORDER BY updated_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT * FROM certificates WHERE 1=1 " + where_sql + " ORDER BY updated_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
@@ -203,9 +217,12 @@ HEADERS_TRAVEL = [
 ]
 
 
-def export_travel_details(operator: str) -> str:
+def export_travel_details(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM travel_details ORDER BY created_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT * FROM travel_details WHERE 1=1 " + where_sql + " ORDER BY created_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
@@ -242,9 +259,12 @@ HEADERS_DEC = [
 ]
 
 
-def export_decontrol(operator: str) -> str:
+def export_decontrol(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM decontrol_filing ORDER BY created_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT * FROM decontrol_filing WHERE 1=1 " + where_sql + " ORDER BY created_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active

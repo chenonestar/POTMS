@@ -96,10 +96,36 @@ def run_migrations():
     """轻量迁移：为已存在的数据库补齐新增字段（幂等）"""
     db = sqlite3.connect(Config.DATABASE)
     try:
-        cols = {row[1] for row in db.execute("PRAGMA table_info(personnel_info)").fetchall()}
-        if "id_number" not in cols:
+        info_cols = {row[1] for row in db.execute("PRAGMA table_info(personnel_info)").fetchall()}
+        if "id_number" not in info_cols:
             db.execute("ALTER TABLE personnel_info ADD COLUMN id_number TEXT")
+
+        # 出国明细：规范化的出行起止日期（用于日期区间筛选）
+        travel_cols = {row[1] for row in db.execute("PRAGMA table_info(travel_details)").fetchall()}
+        need_backfill = False
+        if "travel_start" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN travel_start TEXT")
+            need_backfill = True
+        if "travel_end" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN travel_end TEXT")
+            need_backfill = True
+
+        # 操作日志：变更前后数据快照（JSON）
+        log_cols = {row[1] for row in db.execute("PRAGMA table_info(operation_logs)").fetchall()}
+        if "snapshot" not in log_cols:
+            db.execute("ALTER TABLE operation_logs ADD COLUMN snapshot TEXT")
+
         db.commit()
+
+        # 回填历史出行记录的起止日期
+        if need_backfill:
+            from utils.validators import parse_travel_range
+            rows = db.execute("SELECT id, travel_dates FROM travel_details").fetchall()
+            for tid, dates in rows:
+                start, end = parse_travel_range(dates or "")
+                db.execute("UPDATE travel_details SET travel_start=?, travel_end=? WHERE id=?",
+                           (start, end, tid))
+            db.commit()
     finally:
         db.close()
 

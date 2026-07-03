@@ -25,6 +25,13 @@ def create_app() -> Flask:
     from database import run_migrations
     run_migrations()
 
+    # 每日自动备份（幂等：当天已备份则跳过）
+    try:
+        from utils.backup import run_daily_backup
+        run_daily_backup()
+    except Exception:
+        pass
+
     # 注册蓝图
     from auth import auth_bp
     from blueprints.dashboard import dashboard_bp

@@ -7,7 +7,7 @@ from auth import login_required
 from database import get_db
 from utils.helpers import (
     get_dict_options, get_dict_value, log_action, paginate,
-    detect_surname_split, normalize_residence,
+    detect_surname_split, normalize_residence, row_snapshot,
 )
 from utils.validators import (
     validate_id_number, validate_birth_date_match,
@@ -20,6 +20,40 @@ personnel_bp = Blueprint("personnel", __name__)
 # =========================================================================
 # 列表页
 # =========================================================================
+def build_filters(args, ids=None):
+    """构建人员备案列表的 WHERE 子句（pf/pi 别名），供列表与导出复用。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (pf.surname||pf.given_name LIKE ? OR pf.id_number LIKE ? OR pf.work_unit LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like, like])
+    if args.get("status", "").strip():
+        where += " AND pf.status = ?"
+        params.append(args.get("status").strip())
+    if args.get("political_status", "").strip():
+        where += " AND pf.political_status = ?"
+        params.append(args.get("political_status").strip())
+    if args.get("rank", "").strip():
+        where += " AND pi.rank = ?"
+        params.append(args.get("rank").strip())
+    if args.get("gender", "").strip():
+        where += " AND pf.gender = ?"
+        params.append(args.get("gender").strip())
+    if args.get("tag", "").strip():
+        where += " AND pf.tag = ?"
+        params.append(args.get("tag").strip())
+    if args.get("residence", "").strip():
+        where += " AND pf.residence LIKE ?"
+        params.append(f"%{args.get('residence').strip()}%")
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND pf.id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
+
+
 @personnel_bp.route("/personnel/")
 @login_required
 def list():
@@ -30,42 +64,18 @@ def list():
     rank_filter = request.args.get("rank", "").strip()
     gender_filter = request.args.get("gender", "").strip()
     tag_filter = request.args.get("tag", "").strip()
+    residence_filter = request.args.get("residence", "").strip()
     sort_by = request.args.get("sort", "created_at_desc").strip()
 
+    where, params = build_filters(request.args)
     base = (
         "SELECT pf.id, pf.surname, pf.given_name, pf.gender, pf.birth_date, "
         "pf.id_number, pf.work_unit, pf.position_or_title, pf.tag, pf.status, "
         "pf.created_at, pi.id AS info_id "
         "FROM personnel_filing pf "
         "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
-        "WHERE 1=1"
+        "WHERE 1=1" + where
     )
-    params: list = []
-
-    if search:
-        base += " AND (pf.surname||pf.given_name LIKE ? OR pf.id_number LIKE ? OR pf.work_unit LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like, like])
-
-    if status_filter:
-        base += " AND pf.status = ?"
-        params.append(status_filter)
-
-    if political_filter:
-        base += " AND pf.political_status = ?"
-        params.append(political_filter)
-
-    if rank_filter:
-        base += " AND pi.rank = ?"
-        params.append(rank_filter)
-
-    if gender_filter:
-        base += " AND pf.gender = ?"
-        params.append(gender_filter)
-
-    if tag_filter:
-        base += " AND pf.tag = ?"
-        params.append(tag_filter)
 
     # 排序
     sort_map = {
@@ -76,7 +86,7 @@ def list():
     }
     base += f" ORDER BY {sort_map.get(sort_by, 'pf.created_at DESC')}"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
 
     return render_template(
         "personnel/list.html",
@@ -87,6 +97,7 @@ def list():
         rank_filter=rank_filter,
         gender_filter=gender_filter,
         tag_filter=tag_filter,
+        residence_filter=residence_filter,
         sort_by=sort_by,
         statuses=[{"code": "active", "value": "有效"}, {"code": "decontrolled", "value": "已撤控"}],
         political_opts=get_dict_options("political_status"),
@@ -131,7 +142,7 @@ def info_new():
         )
         db.commit()
         info_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "personnel_info", info_id)
+        log_action("create", "personnel_info", info_id, after=row_snapshot("personnel_info", info_id))
         flash("备案人员信息登记表已保存。请继续填写登记备案表。", "success")
         return redirect(url_for("personnel.filing_new", info_id=info_id))
 
@@ -158,6 +169,7 @@ def info_edit(info_id):
                 flash(e, "danger")
             return render_template("personnel/info_form.html", data=data, editing=True, info_id=info_id)
 
+        before = row_snapshot("personnel_info", info_id)
         db.execute(
             "UPDATE personnel_info SET unit=?, department=?, name=?, gender=?, "
             "birth_date=?, id_number=?, work_start_date=?, education=?, degree=?, title=?, rank=?, "
@@ -171,7 +183,8 @@ def info_edit(info_id):
             ),
         )
         db.commit()
-        log_action("update", "personnel_info", info_id)
+        log_action("update", "personnel_info", info_id,
+                   before=before, after=row_snapshot("personnel_info", info_id))
         flash("信息登记表已更新。", "success")
         return redirect(url_for("personnel.list"))
 
@@ -222,7 +235,7 @@ def filing_new():
         )
         db.commit()
         filing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "personnel_filing", filing_id)
+        log_action("create", "personnel_filing", filing_id, after=row_snapshot("personnel_filing", filing_id))
         flash("登记备案表已保存。", "success")
         return redirect(url_for("personnel.list"))
 
@@ -272,6 +285,7 @@ def filing_edit(filing_id):
                 data=data, editing=True, filing_id=filing_id,
             )
 
+        before = row_snapshot("personnel_filing", filing_id)
         db.execute(
             "UPDATE personnel_filing SET surname=?, given_name=?, gender=?, birth_date=?, "
             "id_number=?, residence=?, political_status=?, work_unit=?, "
@@ -286,7 +300,8 @@ def filing_edit(filing_id):
             ),
         )
         db.commit()
-        log_action("update", "personnel_filing", filing_id)
+        log_action("update", "personnel_filing", filing_id,
+                   before=before, after=row_snapshot("personnel_filing", filing_id))
         flash("登记备案表已更新。", "success")
         return redirect(url_for("personnel.list"))
 
@@ -333,9 +348,10 @@ def view(filing_id):
 @login_required
 def delete(filing_id):
     db = get_db()
+    before = row_snapshot("personnel_filing", filing_id)
     db.execute("DELETE FROM personnel_filing WHERE id = ?", (filing_id,))
     db.commit()
-    log_action("delete", "personnel_filing", filing_id)
+    log_action("delete", "personnel_filing", filing_id, before=before)
     flash("备案记录已删除。", "info")
     return redirect(url_for("personnel.list"))
 

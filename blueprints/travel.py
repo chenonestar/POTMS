@@ -8,8 +8,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate, get_dict_options
-from utils.validators import parse_date_input, validate_date_format, validate_id_number
+from utils.helpers import log_action, paginate, get_dict_options, row_snapshot
+from utils.validators import parse_date_input, validate_date_format, validate_id_number, parse_travel_range
 from config import Config
 
 travel_bp = Blueprint("travel", __name__)
@@ -18,6 +18,37 @@ travel_bp = Blueprint("travel", __name__)
 # =========================================================================
 # 列表
 # =========================================================================
+def build_filters(args, ids=None):
+    """构建出国明细列表 WHERE 子句，供列表与导出复用。含出行日期区间筛选。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (name LIKE ? OR destination_passport LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like])
+    if args.get("category", "").strip():
+        where += " AND category = ?"
+        params.append(args.get("category").strip())
+    if args.get("need_new_passport", "").strip():
+        where += " AND need_new_passport = ?"
+        params.append(args.get("need_new_passport").strip())
+    # 出行日期区间：出行起始日落在 [date_from, date_to] 内（与区间有交集）
+    date_from = parse_date_input(args.get("date_from", ""))
+    date_to = parse_date_input(args.get("date_to", ""))
+    if date_from:
+        where += " AND travel_end >= ? AND travel_end != ''"
+        params.append(date_from)
+    if date_to:
+        where += " AND travel_start <= ? AND travel_start != ''"
+        params.append(date_to)
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
+
+
 @travel_bp.route("/travel/")
 @login_required
 def list():
@@ -25,22 +56,13 @@ def list():
     search = request.args.get("search", "").strip()
     category_filter = request.args.get("category", "").strip()
     need_passport_filter = request.args.get("need_new_passport", "").strip()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
 
-    base = "SELECT * FROM travel_details WHERE 1=1"
-    params: list = []
-    if search:
-        base += " AND (name LIKE ? OR destination_passport LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like])
-    if category_filter:
-        base += " AND category = ?"
-        params.append(category_filter)
-    if need_passport_filter:
-        base += " AND need_new_passport = ?"
-        params.append(need_passport_filter)
-    base += " ORDER BY created_at DESC"
+    where, params = build_filters(request.args)
+    base = "SELECT * FROM travel_details WHERE 1=1" + where + " ORDER BY created_at DESC"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
 
     # 标记逾期未还
     from datetime import datetime
@@ -57,6 +79,8 @@ def list():
         search=search,
         category_filter=category_filter,
         need_passport_filter=need_passport_filter,
+        date_from=date_from,
+        date_to=date_to,
         overdue_ids=overdue_ids,
         category_opts=get_dict_options("travel_category"),
     )
@@ -77,17 +101,18 @@ def new():
             return render_template("travel/form.html", data=data, editing=False)
 
         db = get_db()
+        t_start, t_end = parse_travel_range(data["travel_dates"])
         db.execute(
             "INSERT INTO travel_details (personnel_filing_id, unit, department, name, "
             "position, title, id_number, destination_passport, category, travel_dates, "
-            "approval_date, need_new_passport, passport_no, passport_collect_date, "
-            "passport_return_date, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "travel_start, travel_end, approval_date, need_new_passport, passport_no, "
+            "passport_collect_date, passport_return_date, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
-                data["approval_date"], data["need_new_passport"], data["passport_no"],
+                t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
                 data["passport_collect_date"], data["passport_return_date"],
                 data["operator"],
             ),
@@ -98,7 +123,7 @@ def new():
         # 处理附件上传
         _save_attachments(travel_id, request.files)
 
-        log_action("create", "travel_details", travel_id)
+        log_action("create", "travel_details", travel_id, after=row_snapshot("travel_details", travel_id))
         flash("出国（境）明细表已保存。", "success")
         return redirect(url_for("travel.list"))
 
@@ -146,17 +171,19 @@ def edit(travel_id):
                 flash(e, "danger")
             return render_template("travel/form.html", data=data, editing=True, travel_id=travel_id)
 
+        before = row_snapshot("travel_details", travel_id)
+        t_start, t_end = parse_travel_range(data["travel_dates"])
         db.execute(
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
             "name=?, position=?, title=?, id_number=?, destination_passport=?, "
-            "category=?, travel_dates=?, approval_date=?, need_new_passport=?, "
+            "category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, "
             "passport_no=?, passport_collect_date=?, passport_return_date=?, "
             "operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
-                data["approval_date"], data["need_new_passport"], data["passport_no"],
+                t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
                 data["passport_collect_date"], data["passport_return_date"],
                 data["operator"], travel_id,
             ),
@@ -166,7 +193,8 @@ def edit(travel_id):
         # 补充上传附件
         _save_attachments(travel_id, request.files)
 
-        log_action("update", "travel_details", travel_id)
+        log_action("update", "travel_details", travel_id,
+                   before=before, after=row_snapshot("travel_details", travel_id))
         flash("明细表已更新。", "success")
         return redirect(url_for("travel.list"))
 
@@ -215,10 +243,11 @@ def delete(travel_id):
         full_path = os.path.join(Config.UPLOAD_FOLDER, att["file_path"])
         if os.path.exists(full_path):
             os.remove(full_path)
+    before = row_snapshot("travel_details", travel_id)
     db.execute("DELETE FROM attachments WHERE travel_id = ?", (travel_id,))
     db.execute("DELETE FROM travel_details WHERE id = ?", (travel_id,))
     db.commit()
-    log_action("delete", "travel_details", travel_id)
+    log_action("delete", "travel_details", travel_id, before=before)
     flash("出国申请记录已删除。", "info")
     return redirect(url_for("travel.list"))
 
