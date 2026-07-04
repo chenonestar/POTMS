@@ -4,7 +4,8 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4><i class="bi bi-arrow-repeat"></i> 撤控备案列表</h4>
     <div>
-        <button type="button" class="btn btn-outline-success" onclick="batchPrint('decontrol')"><i class="bi bi-printer"></i> 批量打印</button>
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#startDecontrolModal"><i class="bi bi-arrow-repeat"></i> 发起撤控</button>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('decontrol')"><i class="bi bi-printer"></i> 批量打印</button>
         <div class="dropdown d-inline-block ms-1">
             <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
             <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
@@ -59,9 +60,44 @@
 
 {% from "components/pagination.html" import render_pagination %}
 {{ render_pagination(items, 'decontrol.list') }}
+
+<!-- 发起撤控：选择备案人员 -->
+<div class="modal fade" id="startDecontrolModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> 发起撤控 — 选择备案人员</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% set dec_people = personnel_opts() %}
+                {% if dec_people %}
+                <input type="text" class="form-control" id="decPersonSearch" placeholder="搜索 姓名 / 身份证号 / 单位" oninput="filterPersons('decPersonSearch','decPersonSelect')" autocomplete="off">
+                <select class="form-select mt-2" id="decPersonSelect" size="8" ondblclick="gotoDecontrol()">
+                    {% for p in dec_people %}
+                    <option value="{{ p.id }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}">{{ p.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">仅列出"有效"备案人员；选中后前往撤控表单（双击可直接进入）。</div>
+                {% else %}
+                <p class="text-muted mb-0">暂无"有效"备案人员可撤控。请先在「人员备案」中完成备案。</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                {% if dec_people %}<button type="button" class="btn btn-danger" onclick="gotoDecontrol()">前往撤控 <i class="bi bi-arrow-right"></i></button>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
+function gotoDecontrol() {
+    var sel = document.getElementById('decPersonSelect');
+    if (!sel || !sel.value) { alert('请先选择备案人员。'); return; }
+    window.location = '/decontrol/new/' + sel.value;
+}
 document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_decontrol'); });
 </script>
 {% endblock %}
