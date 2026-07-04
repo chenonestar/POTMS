@@ -463,7 +463,7 @@
                 <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（枚举值见第8章）</td></tr>
                 <tr><td>工作单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>写全称</td></tr>
                 <tr><td>职务（级）或职称</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>处级领导→"处级"/"副处级"；副处级单位班子成员→"正科"；其他→"副高"/"正高"</td></tr>
-                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>名称需与印章一致</td></tr>
+                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>下拉选择（数据字典维护，可复用）；名称需与印章一致</td></tr>
                 <tr><td>标记</td><td>ENUM('新增','更新')</td><td><span class="badge must">必填</span></td><td>首次备案为"新增"，信息变更重报为"更新"</td></tr>
                 <tr><td>已告知本人</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>备注</td><td>VARCHAR(500)</td><td><span class="badge opt">选填</span></td><td></td></tr>
@@ -656,7 +656,7 @@
                 <tr><td>户口所在地</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>工作单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>下拉选择（数据字典维护）</td></tr>
                 <tr><td>报送单位名称</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>报送单位类别</td><td>ENUM</td><td><span class="badge must">必填</span></td><td>党政机关 / 金融系统 / 教科文卫系统 / 国有大中型企业单位 / 其他单位</td></tr>
                 <tr><td>报送单位联系人</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
@@ -815,6 +815,7 @@
                 <tr><td>职称</td><td>正高、副高、中级、初级、无</td></tr>
                 <tr><td>职级</td><td>处级、副处级、正科、副科、科员、其他</td></tr>
                 <tr><td>出国（境）类别</td><td>旅游、探亲、访友、商务、留学、其他</td></tr>
+                <tr><td>人事主管单位</td><td>下拉配置，可复用；支持从已有数据自动引导 + 手动维护</td></tr>
                 <tr><td>户口所在地</td><td>省市区三级联动（不含"省"字后缀）</td></tr>
                 <tr><td>单位/部门</td><td>树形组织结构维护</td></tr>
             </tbody>

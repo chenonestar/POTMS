@@ -18,6 +18,8 @@ CATEGORIES = [
               ("decontrol_filing", "political_status")]},
     {"key": "travel_category", "label": "出国（境）类别", "refs": [("travel_details", "category")]},
     {"key": "submit_unit_type", "label": "报送单位类别", "refs": [("decontrol_filing", "submit_unit_type")]},
+    {"key": "supervisor_unit", "label": "人事主管单位",
+     "refs": [("personnel_filing", "supervisor_unit"), ("decontrol_filing", "supervisor_unit")]},
 ]
 _CAT_MAP = {c["key"]: c for c in CATEGORIES}
 

@@ -55,7 +55,16 @@
         </div>
         <div class="col-md-4">
             <label class="form-label required">人事主管单位</label>
-            <input type="text" class="form-control" name="supervisor_unit" value="{{ data.supervisor_unit or '' }}" required>
+            {% set sup_opts = dict_opts('supervisor_unit') %}
+            <select class="form-select" name="supervisor_unit" required>
+                <option value="">请选择</option>
+                {% for o in sup_opts %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('supervisor_unit') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+                {% if data.get('supervisor_unit') and data.get('supervisor_unit') not in (sup_opts | map(attribute='value') | list) %}
+                <option value="{{ data.supervisor_unit }}" selected>{{ data.supervisor_unit }}（历史值）</option>
+                {% endif %}
+            </select>
         </div>
     </div>
 </div>

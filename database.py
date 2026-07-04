@@ -60,6 +60,8 @@ SEED_DICT = [
     ("submit_unit_type", "03", "教科文卫系统", 3),
     ("submit_unit_type", "04", "国有大中型企业单位", 4),
     ("submit_unit_type", "99", "其他单位", 5),
+    # 人事主管单位（下拉配置，可在数据字典维护）
+    ("supervisor_unit", "S01", "人事处", 1),
 ]
 
 
@@ -124,6 +126,31 @@ def run_migrations():
                 db.execute("UPDATE travel_details SET travel_start=?, travel_end=? WHERE id=?",
                            (start, end, tid))
             db.commit()
+
+        # 引导"人事主管单位"字典：把已有记录中的去重值补入字典（幂等）
+        existing = {r[0] for r in db.execute(
+            "SELECT value FROM sys_dict WHERE category = 'supervisor_unit'").fetchall()}
+        distinct = db.execute(
+            "SELECT DISTINCT supervisor_unit FROM personnel_filing "
+            "WHERE supervisor_unit IS NOT NULL AND supervisor_unit != '' "
+            "UNION SELECT DISTINCT supervisor_unit FROM decontrol_filing "
+            "WHERE supervisor_unit IS NOT NULL AND supervisor_unit != ''"
+        ).fetchall()
+        maxn = 0
+        for r in db.execute("SELECT code FROM sys_dict WHERE category = 'supervisor_unit'").fetchall():
+            cc = r[0] or ""
+            if cc.startswith("S") and cc[1:].isdigit():
+                maxn = max(maxn, int(cc[1:]))
+        order = len(existing)
+        for (val,) in distinct:
+            if val not in existing:
+                maxn += 1
+                order += 1
+                db.execute(
+                    "INSERT OR IGNORE INTO sys_dict (category, code, value, sort_order) "
+                    "VALUES ('supervisor_unit', ?, ?, ?)", (f"S{maxn:02d}", val, order))
+                existing.add(val)
+        db.commit()
     finally:
         db.close()
 
