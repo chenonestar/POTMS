@@ -2,6 +2,7 @@
 .secret_key
 backup/
 uploads/
+exports/
 
 # Python 缓存
 *.pyc
