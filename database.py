@@ -155,6 +155,21 @@ def run_migrations():
                            (start, end, tid))
             db.commit()
 
+        # 统一"计划出行日期"存储格式为 YYYY/MM/DD-YYYY/MM/DD（转换历史 - 分隔写法）
+        # 转换后含 '/'，故以 NOT LIKE '%/%' 作幂等守卫，后续启动不再重复处理
+        from utils.validators import parse_travel_range, format_travel_range
+        legacy = db.execute(
+            "SELECT id, travel_dates FROM travel_details "
+            "WHERE travel_dates IS NOT NULL AND travel_dates != '' AND travel_dates NOT LIKE '%/%'"
+        ).fetchall()
+        for tid, td in legacy:
+            s, e = parse_travel_range(td or "")
+            canon = format_travel_range(s, e)
+            if canon:
+                db.execute("UPDATE travel_details SET travel_dates=? WHERE id=?", (canon, tid))
+        if legacy:
+            db.commit()
+
         # 引导"人事主管单位"字典：把已有记录中的去重值补入字典（幂等）
         existing = {r[0] for r in db.execute(
             "SELECT value FROM sys_dict WHERE category = 'supervisor_unit'").fetchall()}

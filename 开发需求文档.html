@@ -596,7 +596,7 @@
                 <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
                 <tr><td>地点、证照</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>目的地国家/地区及使用证照类型</td></tr>
                 <tr><td>类别</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>出国/出境类别（字典维护）</td></tr>
-                <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>日期区间，如"2023-6-20-2023-6-26"</td></tr>
+                <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>统一格式 YYYY/MM/DD-YYYY/MM/DD（如 2026/08/01-2026/08/11），前端固定掩码输入；历史数据自动转换</td></tr>
                 <tr><td>批准日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>审批通过后回填</td></tr>
                 <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证</td></tr>
                 <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>已登记证件可下拉选取，做证新号手输；若"是否做证"为是，证件办好后补录</td></tr>

@@ -10,7 +10,7 @@ from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, get_dict_options, row_snapshot
 from utils.validators import (parse_date_input, validate_date_format, validate_id_number,
-                              parse_travel_range, validate_travel_range,
+                              parse_travel_range, validate_travel_range, format_travel_range,
                               is_cert_overdue, cert_overdue_deadline)
 from config import Config
 
@@ -209,6 +209,7 @@ def new():
 
         db = get_db()
         t_start, t_end = parse_travel_range(data["travel_dates"])
+        data["travel_dates"] = format_travel_range(t_start, t_end) or data["travel_dates"]
         db.execute(
             "INSERT INTO travel_details (personnel_filing_id, unit, department, name, "
             "position, title, id_number, destination_passport, category, travel_dates, "
@@ -280,6 +281,7 @@ def edit(travel_id):
 
         before = row_snapshot("travel_details", travel_id)
         t_start, t_end = parse_travel_range(data["travel_dates"])
+        data["travel_dates"] = format_travel_range(t_start, t_end) or data["travel_dates"]
         db.execute(
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
             "name=?, position=?, title=?, id_number=?, destination_passport=?, "

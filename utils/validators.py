@@ -117,6 +117,19 @@ def parse_travel_range(text: str) -> tuple[str, str]:
     return (start, end)
 
 
+def format_travel_range(start: str, end: str) -> str:
+    """
+    将起止日期（YYYYMMDD）组装为统一存储/展示格式 YYYY/MM/DD-YYYY/MM/DD。
+    起止相同或仅有单个日期时，返回单个 YYYY/MM/DD。
+    """
+    def _f(s):
+        return f"{s[0:4]}/{s[4:6]}/{s[6:8]}" if s and len(s) == 8 else ""
+    fs, fe = _f(start), _f(end)
+    if fs and fe and fs != fe:
+        return f"{fs}-{fe}"
+    return fs or fe or ""
+
+
 def validate_travel_range(text: str) -> tuple[bool, str]:
     """
     校验"计划出行日期"区间文本：须能解析出起止两个真实存在的日期，

@@ -43,7 +43,7 @@
     <h5>出行信息</h5>
     <div class="row g-3">
         <div class="col-md-3"><label class="form-label required">类别</label><select class="form-select" name="category" required><option value="">请选择</option>{% for o in dict_opts('travel_category') %}<option value="{{ o.value }}" {{ 'selected' if data.get('category') == o.value }}>{{ o.value }}</option>{% endfor %}</select></div>
-        <div class="col-md-4"><label class="form-label required">计划出行日期</label><input type="text" class="form-control" name="travel_dates" value="{{ data.travel_dates or '' }}" placeholder="如：2023-6-20-2023-6-26" required><div class="form-text">格式：起始日期-结束日期</div></div>
+        <div class="col-md-4"><label class="form-label required">计划出行日期</label><input type="text" class="form-control" name="travel_dates" value="{{ data.travel_dates or '' }}" placeholder="YYYY/MM/DD-YYYY/MM/DD" inputmode="numeric" required><div class="form-text">直接输入数字，分隔符自动补全，如 2026/08/01-2026/08/11</div></div>
         <div class="col-md-2"><label class="form-label">批准日期</label><input type="text" class="form-control" name="approval_date" value="{{ data.approval_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
         <div class="col-md-3"><label class="form-label required">是否做证</label><select class="form-select" name="need_new_passport" required><option value="否" {{ 'selected' if data.need_new_passport == '否' }}>否 — 已有证件</option><option value="是" {{ 'selected' if data.need_new_passport == '是' }}>是 — 需新办证件</option></select></div>
     </div>
