@@ -117,6 +117,27 @@ def parse_travel_range(text: str) -> tuple[str, str]:
     return (start, end)
 
 
+def validate_travel_range(text: str) -> tuple[bool, str]:
+    """
+    校验"计划出行日期"区间文本：须能解析出起止两个真实存在的日期，
+    且起始日期不晚于结束日期。返回 (是否通过, 错误信息)。
+    """
+    if not text or not text.strip():
+        return False, "计划出行日期不能为空。"
+    start, end = parse_travel_range(text)
+    if not start or not end:
+        return False, "计划出行日期格式无法识别，请填「起始-结束」，如 2026-8-1-2026-8-11。"
+    ok, msg = validate_date_format(start)
+    if not ok:
+        return False, f"起始日期不合法（解析为 {start}）：{msg}"
+    ok, msg = validate_date_format(end)
+    if not ok:
+        return False, f"结束日期不合法（解析为 {end}）：{msg}"
+    if start > end:
+        return False, f"起始日期（{start}）不应晚于结束日期（{end}）。"
+    return True, ""
+
+
 def add_working_days(start_ymd: str, n: int) -> str:
     """
     以 start_ymd（YYYYMMDD）为第 0 天，向后顺延 n 个工作日（仅跳过周六/周日，

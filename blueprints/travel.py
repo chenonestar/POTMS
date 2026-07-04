@@ -10,7 +10,8 @@ from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, get_dict_options, row_snapshot
 from utils.validators import (parse_date_input, validate_date_format, validate_id_number,
-                              parse_travel_range, is_cert_overdue, cert_overdue_deadline)
+                              parse_travel_range, validate_travel_range,
+                              is_cert_overdue, cert_overdue_deadline)
 from config import Config
 
 travel_bp = Blueprint("travel", __name__)
@@ -503,6 +504,12 @@ def _validate_form(data: dict) -> list[str]:
         ok, msg = validate_id_number(data["id_number"])
         if not ok:
             errors.append(f"身份证号: {msg}")
+
+    # 计划出行日期区间：起止须为真实日期且起始不晚于结束
+    if data.get("travel_dates"):
+        ok, msg = validate_travel_range(data["travel_dates"])
+        if not ok:
+            errors.append(f"计划出行日期: {msg}")
 
     for field, label in [
         ("approval_date", "批准日期"),

@@ -65,6 +65,30 @@ document.addEventListener('DOMContentLoaded', function () {
         el.addEventListener('input', function () { el.setCustomValidity(''); });
     });
 
+    // --- 计划出行日期区间即时校验：起止真实存在 + 起始≤结束 ---
+    document.querySelectorAll('input[name="travel_dates"]').forEach(function (el) {
+        function check() {
+            var v = el.value.trim();
+            if (!v) { el.setCustomValidity(''); return; }
+            var m = v.match(/(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/g);
+            if (!m || !m.length) {
+                el.setCustomValidity('计划出行日期格式无法识别，请填「起始-结束」，如 2026-8-1-2026-8-11。');
+                return;
+            }
+            function norm(s) {
+                var p = s.match(/(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/);
+                return p[1] + ('0' + p[2]).slice(-2) + ('0' + p[3]).slice(-2);
+            }
+            var start = norm(m[0]), end = norm(m[m.length - 1]);
+            if (!isRealDate(start)) { el.setCustomValidity('起始日期不合法（' + start + '）。'); return; }
+            if (!isRealDate(end)) { el.setCustomValidity('结束日期不合法（' + end + '）。'); return; }
+            if (start > end) { el.setCustomValidity('起始日期（' + start + '）不应晚于结束日期（' + end + '）。'); return; }
+            el.setCustomValidity('');
+        }
+        el.addEventListener('blur', check);
+        el.addEventListener('input', function () { el.setCustomValidity(''); });
+    });
+
     // --- 身份证号即时校验：18位 + 校验位；并与性别顺序码交叉核对 ---
     var ID_W = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2], ID_C = '10X98765432';
     function idCheckMsg(id) {
