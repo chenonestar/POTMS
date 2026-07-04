@@ -158,6 +158,16 @@ def get_org_tree_options() -> list[dict]:
     return _build(0, 0)
 
 
+def get_submit_units() -> list[dict]:
+    """获取报送单位配置（名称/联系人/电话），用于撤控表下拉联动。"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, name, contact, phone FROM sys_submit_unit ORDER BY sort_order, name"
+    ).fetchall()
+    return [{"id": r["id"], "name": r["name"], "contact": r["contact"] or "", "phone": r["phone"] or ""}
+            for r in rows]
+
+
 def get_org_flat() -> list[dict]:
     """获取全部组织节点（含 parent_id），用于单位/部门两级联动。"""
     db = get_db()
@@ -188,6 +198,15 @@ def get_personnel_options() -> list[dict]:
         "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
         "WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name"
     ).fetchall()
+    # 每人已登记的证件号（护照/港澳/台湾），一次查询建映射
+    cert_map: dict = {}
+    for cr in db.execute(
+        "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates"
+    ).fetchall():
+        lst = cert_map.setdefault(cr["personnel_filing_id"], [])
+        for v in (cr["passport_no"], cr["hm_pass_no"], cr["tw_pass_no"]):
+            if v and v.strip() and v.strip() not in lst:
+                lst.append(v.strip())
     result = []
     for r in rows:
         name = f"{r['surname']}{r['given_name']}"
@@ -200,5 +219,6 @@ def get_personnel_options() -> list[dict]:
             "id_number": r["id_number"],
             "position": r["position_or_title"],
             "title": r["title_val"] or "",
+            "cert_nos": cert_map.get(r["id"], []),
         })
     return result

@@ -74,7 +74,17 @@
     <div class="row g-3">
         <div class="col-md-4">
             <label class="form-label required">报送单位名称</label>
-            <input type="text" class="form-control" name="submit_unit_name" value="{{ data.submit_unit_name or '' }}" required>
+            {% set su_opts = submit_units() %}
+            <select class="form-select" name="submit_unit_name" id="submitUnitName" required onchange="fillSubmitUnit()">
+                <option value="">请选择</option>
+                {% for u in su_opts %}
+                <option value="{{ u.name }}" data-contact="{{ u.contact }}" data-phone="{{ u.phone }}" {{ 'selected' if data.get('submit_unit_name') == u.name }}>{{ u.name }}</option>
+                {% endfor %}
+                {% if data.get('submit_unit_name') and data.get('submit_unit_name') not in (su_opts | map(attribute='name') | list) %}
+                <option value="{{ data.submit_unit_name }}" data-contact="{{ data.submit_contact or '' }}" data-phone="{{ data.submit_phone or '' }}" selected>{{ data.submit_unit_name }}（历史值）</option>
+                {% endif %}
+            </select>
+            <div class="form-text">在「系统设置 → 报送单位」中维护；选中自动带出联系人/电话。</div>
         </div>
         <div class="col-md-3">
             <label class="form-label required">报送单位类别</label>
@@ -87,11 +97,11 @@
         </div>
         <div class="col-md-2">
             <label class="form-label required">联系人</label>
-            <input type="text" class="form-control" name="submit_contact" value="{{ data.submit_contact or '' }}" required>
+            <input type="text" class="form-control" name="submit_contact" id="submitContact" value="{{ data.submit_contact or '' }}" required>
         </div>
         <div class="col-md-3">
             <label class="form-label required">联系电话</label>
-            <input type="text" class="form-control" name="submit_phone" value="{{ data.submit_phone or '' }}" required>
+            <input type="text" class="form-control" name="submit_phone" id="submitPhone" value="{{ data.submit_phone or '' }}" required>
         </div>
     </div>
     <div class="row g-3 mt-1">
@@ -113,9 +123,14 @@
 </div>
 
 <div class="form-section">
-    <h5>撤控原因</h5>
+    <h5>撤控原因 / 证件移交</h5>
     <div class="row g-3">
-        <div class="col-md-12">
+        <div class="col-md-4">
+            <label class="form-label">证件移交日期</label>
+            <input type="text" class="form-control" name="cert_handover_date" value="{{ data.cert_handover_date or '' }}" placeholder="YYYYMMDD" maxlength="8">
+            <div class="form-text">撤控后证件移交出去时填写（选填）。</div>
+        </div>
+        <div class="col-md-8">
             <label class="form-label required">备注（撤控原因等）</label>
             <textarea class="form-control" name="reason" rows="2" required>{{ data.reason or '' }}</textarea>
         </div>
@@ -130,5 +145,15 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/regions.js') }}"></script>
-<script>document.addEventListener('DOMContentLoaded', function () { initRegionCascade('resProv', 'resCity', 'resDist', 'resInput'); });</script>
+<script>
+// 选择报送单位 → 自动带出联系人/电话（可再改）
+function fillSubmitUnit() {
+    var sel = document.getElementById('submitUnitName');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById('submitContact').value = opt.getAttribute('data-contact') || '';
+    document.getElementById('submitPhone').value = opt.getAttribute('data-phone') || '';
+}
+document.addEventListener('DOMContentLoaded', function () { initRegionCascade('resProv', 'resCity', 'resDist', 'resInput'); });
+</script>
 {% endblock %}

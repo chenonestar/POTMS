@@ -58,6 +58,7 @@ def create_app() -> Flask:
     from blueprints.logs import logs_bp
     from blueprints.organization import org_bp
     from blueprints.dict_admin import dict_bp
+    from blueprints.submit_unit import submit_unit_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -70,13 +71,14 @@ def create_app() -> Flask:
     app.register_blueprint(logs_bp)
     app.register_blueprint(org_bp)
     app.register_blueprint(dict_bp)
+    app.register_blueprint(submit_unit_bp)
 
     # 数据库连接关闭
     from database import close_db
     app.teardown_appcontext(close_db)
 
     # Jinja2 模板全局函数（数据字典查询）
-    from utils.helpers import get_dict_options, get_dict_value, get_org_tree_options, get_org_children, get_org_flat, get_personnel_options
+    from utils.helpers import get_dict_options, get_dict_value, get_org_tree_options, get_org_children, get_org_flat, get_personnel_options, get_submit_units
 
     @app.context_processor
     def inject_dict_helpers():
@@ -87,6 +89,7 @@ def create_app() -> Flask:
             "org_children": get_org_children,
             "org_flat": get_org_flat,
             "personnel_opts": get_personnel_options,
+            "submit_units": get_submit_units,
         }
 
     return app

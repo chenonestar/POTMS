@@ -17,7 +17,7 @@
             <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillTravel()" size="6">
                 <option value="">请选择备案人员</option>
                 {% for p in personnel_opts() %}
-                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-position="{{ p.position }}" data-idno="{{ p.id_number }}" data-title="{{ p.title }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-position="{{ p.position }}" data-idno="{{ p.id_number }}" data-title="{{ p.title }}" data-certs="{{ p.cert_nos | join(',') }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -52,7 +52,7 @@
 <div class="form-section">
     <h5>证件流转</h5>
     <div class="row g-3">
-        <div class="col-md-3"><label class="form-label">证件号码</label><input type="text" class="form-control" name="passport_no" value="{{ data.passport_no or '' }}" placeholder="新办证件号（办理后补填）"></div>
+        <div class="col-md-3"><label class="form-label">证件号码</label><input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="{{ data.passport_no or '' }}" placeholder="选已登记证件或手输新证件号" autocomplete="off"><datalist id="certNoList"></datalist><div class="form-text">已有证件可下拉选，做证新号手输。</div></div>
         <div class="col-md-3"><label class="form-label">证件领用日期</label><input type="text" class="form-control" name="passport_collect_date" value="{{ data.passport_collect_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">路径A（已有证件）时必填</div></div>
         <div class="col-md-3"><label class="form-label">证件归还日期</label><input type="text" class="form-control" name="passport_return_date" value="{{ data.passport_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
     </div>
@@ -89,6 +89,14 @@ function autoFillTravel() {
     document.getElementById('tPos').value = opt.getAttribute('data-position') || '';
     document.getElementById('tIdno').value = opt.getAttribute('data-idno') || '';
     document.getElementById('tTitle').value = opt.getAttribute('data-title') || '';
+    // 填充该人已登记证件号作为"证件号码"的候选
+    var dl = document.getElementById('certNoList');
+    if (dl) {
+        dl.innerHTML = '';
+        (opt.getAttribute('data-certs') || '').split(',').filter(Boolean).forEach(function (x) {
+            var o = document.createElement('option'); o.value = x; dl.appendChild(o);
+        });
+    }
 }
 function filterPersons(searchId, selectId) {
     var q = document.getElementById(searchId).value.trim().toLowerCase();

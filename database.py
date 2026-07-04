@@ -115,6 +115,17 @@ def run_migrations():
         if "snapshot" not in log_cols:
             db.execute("ALTER TABLE operation_logs ADD COLUMN snapshot TEXT")
 
+        # 撤控：证件移交日期
+        dec_cols = {row[1] for row in db.execute("PRAGMA table_info(decontrol_filing)").fetchall()}
+        if "cert_handover_date" not in dec_cols:
+            db.execute("ALTER TABLE decontrol_filing ADD COLUMN cert_handover_date TEXT")
+
+        # 报送单位配置表（名称/联系人/电话）
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS sys_submit_unit ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+            "contact TEXT, phone TEXT, sort_order INTEGER DEFAULT 0)")
+
         db.commit()
 
         # 回填历史出行记录的起止日期
@@ -150,6 +161,22 @@ def run_migrations():
                     "INSERT OR IGNORE INTO sys_dict (category, code, value, sort_order) "
                     "VALUES ('supervisor_unit', ?, ?, ?)", (f"S{maxn:02d}", val, order))
                 existing.add(val)
+
+        # 引导"报送单位"配置：从已有撤控记录补齐（名称去重，带联系人/电话）
+        su_existing = {r[0] for r in db.execute("SELECT name FROM sys_submit_unit").fetchall()}
+        su_rows = db.execute(
+            "SELECT submit_unit_name, submit_contact, submit_phone FROM decontrol_filing "
+            "WHERE submit_unit_name IS NOT NULL AND submit_unit_name != '' "
+            "GROUP BY submit_unit_name"
+        ).fetchall()
+        su_order = len(su_existing)
+        for name, contact, phone in su_rows:
+            if name not in su_existing:
+                su_order += 1
+                db.execute(
+                    "INSERT INTO sys_submit_unit (name, contact, phone, sort_order) VALUES (?, ?, ?, ?)",
+                    (name, contact or "", phone or "", su_order))
+                su_existing.add(name)
         db.commit()
     finally:
         db.close()
@@ -310,8 +337,17 @@ CREATE TABLE IF NOT EXISTS decontrol_filing (
     submit_phone TEXT NOT NULL,
     batch_no TEXT NOT NULL,
     reason TEXT NOT NULL,
+    cert_handover_date TEXT,
     operator TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sys_submit_unit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    contact TEXT,
+    phone TEXT,
+    sort_order INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS attachments (

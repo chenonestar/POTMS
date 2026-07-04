@@ -79,15 +79,15 @@ def new(filing_id):
             "INSERT INTO decontrol_filing (personnel_filing_id, surname, given_name, "
             "gender, birth_date, id_number, residence, political_status, work_unit, "
             "supervisor_unit, submit_unit_name, submit_unit_type, submit_contact, "
-            "submit_phone, batch_no, reason, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "submit_phone, batch_no, reason, cert_handover_date, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filing_id, data["surname"], data["given_name"], data["gender"],
                 data["birth_date"], data["id_number"], data["residence"],
                 data["political_status"], data["work_unit"], data["supervisor_unit"],
                 data["submit_unit_name"], data["submit_unit_type"],
                 data["submit_contact"], data["submit_phone"], data["batch_no"],
-                data["reason"], data["operator"],
+                data["reason"], data["cert_handover_date"], data["operator"],
             ),
         )
         # 将原备案标记为已撤控
@@ -146,6 +146,7 @@ def _extract_form(form):
         "submit_phone": form.get("submit_phone", "").strip(),
         "batch_no": form.get("batch_no", "").strip(),
         "reason": form.get("reason", "").strip(),
+        "cert_handover_date": parse_date_input(form.get("cert_handover_date", "")),
         "operator": session.get("username", "admin"),
     }
 
@@ -174,5 +175,10 @@ def _validate_form(data: dict) -> list[str]:
         ok, msg = validate_id_number(data["id_number"])
         if not ok:
             errors.append(f"身份证号: {msg}")
+
+    if data.get("cert_handover_date"):
+        ok, msg = validate_date_format(data["cert_handover_date"])
+        if not ok:
+            errors.append(f"证件移交日期: {msg}")
 
     return errors

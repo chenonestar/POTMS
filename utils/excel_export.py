@@ -272,7 +272,7 @@ HEADERS_DEC = [
     "中文姓", "中文名", "性别", "出生日期", "身份证号", "户口所在地",
     "政治面貌", "工作单位", "人事主管单位", "报送单位名称",
     "报送单位类别", "报送单位联系人", "报送单位联系电话",
-    "入库批号", "撤控原因",
+    "入库批号", "证件移交日期", "撤控原因",
 ]
 
 
@@ -294,7 +294,7 @@ def export_decontrol(operator: str, where_sql: str = "", params: tuple = ()) -> 
             row["id_number"], row["residence"], row["political_status"],
             row["work_unit"], row["supervisor_unit"], row["submit_unit_name"],
             row["submit_unit_type"], row["submit_contact"], row["submit_phone"],
-            row["batch_no"], row["reason"],
+            row["batch_no"], row["cert_handover_date"] or "", row["reason"],
         ]
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)
