@@ -100,8 +100,23 @@ function filterPersons(searchId, selectId) {
         o.hidden = q !== '' && hay.indexOf(q) === -1;
     }
 }
+// 路径A（已有证件，不做证）时，证件领用日期变为必填
+function bindCollectRequired() {
+    var np = document.querySelector('[name=need_new_passport]');
+    var cd = document.querySelector('[name=passport_collect_date]');
+    if (!np || !cd) return;
+    function upd() {
+        var pathA = np.value === '否';
+        cd.required = pathA;
+        var lbl = cd.previousElementSibling;
+        if (lbl && lbl.classList.contains('form-label')) lbl.classList.toggle('required', pathA);
+    }
+    np.addEventListener('change', upd);
+    upd();
+}
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('personSelect').value) autoFillTravel();
+    bindCollectRequired();
 });
 </script>
 {% endblock %}

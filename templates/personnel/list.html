@@ -55,7 +55,7 @@
         <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
         <td>{{ row.surname }}{{ row.given_name }}</td>
         <td>{{ row.gender }}</td><td>{{ row.birth_date }}</td>
-        <td><code>{{ row.id_number[:6] }}****{{ row.id_number[-4:] if row.id_number|length >= 10 }}</code></td>
+        <td><code>{{ row.id_number[:3] }}***********{{ row.id_number[-4:] if row.id_number|length >= 7 }}</code></td>
         <td>{{ row.work_unit[:20] }}{{ '…' if row.work_unit|length > 20 }}</td>
         <td>{{ row.position_or_title }}</td>
         <td><span class="{{ 'tag-new' if row.tag == '新增' else 'tag-update' }}">{{ row.tag }}</span></td>

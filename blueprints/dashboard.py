@@ -102,7 +102,9 @@ def index():
     # ——— 近期出行（按出行日期排序） ———
     recent_travel = db.execute(
         "SELECT name, destination_passport, travel_dates, created_at "
-        "FROM travel_details ORDER BY travel_dates DESC LIMIT 5"
+        "FROM travel_details "
+        "ORDER BY CASE WHEN travel_start IS NULL OR travel_start = '' THEN 1 ELSE 0 END, "
+        "travel_start DESC, created_at DESC LIMIT 5"
     ).fetchall()
 
     return render_template(

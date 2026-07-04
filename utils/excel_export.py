@@ -179,6 +179,14 @@ HEADERS_CERT = [
     "台湾通行证", "台湾通行证号", "台湾通有效日期", "台湾通上交日期",
 ]
 
+NOTES_CERT = [
+    "填表说明：",
+    "1. 一人可同时持有多类证件，无某类证件则留空。",
+    "2. 填写某类证件号时，其有效日期与上交日期均为必填。",
+    "3. 日期格式为 YYYYMMDD。",
+    "4. 系统对有效期到期前 30 天进行预警提示。",
+]
+
 
 def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
@@ -204,7 +212,7 @@ def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) 
 
     _style_data(ws, 2, len(rows) + 1, len(HEADERS_CERT))
     _auto_width(ws, len(HEADERS_CERT))
-    return _save_and_return(ws, "证照登记表", operator, [])
+    return _save_and_return(ws, "证照登记表", operator, NOTES_CERT)
 
 
 # =========================================================================

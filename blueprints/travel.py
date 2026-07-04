@@ -33,6 +33,18 @@ def build_filters(args, ids=None):
     if args.get("need_new_passport", "").strip():
         where += " AND need_new_passport = ?"
         params.append(args.get("need_new_passport").strip())
+    # 证件流转状态（在库/领用中/逾期未还），与首页仪表盘卡片口径一致
+    ps = args.get("passport_status", "").strip()
+    if ps == "storage":
+        where += " AND (passport_collect_date IS NULL OR passport_collect_date = '')"
+    elif ps == "inuse":
+        where += " AND passport_collect_date IS NOT NULL AND passport_collect_date != '' " \
+                 "AND (passport_return_date IS NULL OR passport_return_date = '')"
+    elif ps == "overdue":
+        from datetime import datetime as _dt
+        where += " AND passport_collect_date IS NOT NULL AND passport_collect_date != '' " \
+                 "AND passport_return_date IS NOT NULL AND passport_return_date != '' AND passport_return_date < ?"
+        params.append(_dt.now().strftime("%Y%m%d"))
     # 出行日期区间：出行起始日落在 [date_from, date_to] 内（与区间有交集）
     date_from = parse_date_input(args.get("date_from", ""))
     date_to = parse_date_input(args.get("date_to", ""))
@@ -56,6 +68,7 @@ def list():
     search = request.args.get("search", "").strip()
     category_filter = request.args.get("category", "").strip()
     need_passport_filter = request.args.get("need_new_passport", "").strip()
+    passport_status = request.args.get("passport_status", "").strip()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
 
@@ -79,6 +92,7 @@ def list():
         search=search,
         category_filter=category_filter,
         need_passport_filter=need_passport_filter,
+        passport_status=passport_status,
         date_from=date_from,
         date_to=date_to,
         overdue_ids=overdue_ids,
@@ -350,6 +364,10 @@ def _validate_form(data: dict) -> list[str]:
             ok, msg = validate_date_format(val)
             if not ok:
                 errors.append(f"{label}: {msg}")
+
+    # 路径A（已有证件，不做证）时，证件领用日期为必填
+    if data.get("need_new_passport") == "否" and not data.get("passport_collect_date"):
+        errors.append("路径A（已有证件）时，证件领用日期为必填。")
 
     return errors
 
