@@ -44,6 +44,58 @@ document.addEventListener('DOMContentLoaded', function () {
         el.setAttribute('aria-label', el.getAttribute('title'));
     });
 
+    // --- 日期字段即时校验：拒绝不存在的日期（如 20260230） ---
+    function isRealDate(s) {
+        if (!/^\d{8}$/.test(s)) return false;
+        var y = +s.slice(0, 4), m = +s.slice(4, 6), d = +s.slice(6, 8);
+        if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+        var dt = new Date(y, m - 1, d);
+        return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+    }
+    document.querySelectorAll('input[placeholder="YYYYMMDD"]').forEach(function (el) {
+        function check() {
+            var v = el.value.trim();
+            if (v && !isRealDate(v)) {
+                el.setCustomValidity('日期不合法，请输入存在的日期（YYYYMMDD）。');
+            } else {
+                el.setCustomValidity('');
+            }
+        }
+        el.addEventListener('blur', check);
+        el.addEventListener('input', function () { el.setCustomValidity(''); });
+    });
+
+    // --- 身份证号即时校验：18位 + 校验位；并与性别顺序码交叉核对 ---
+    var ID_W = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2], ID_C = '10X98765432';
+    function idCheckMsg(id) {
+        id = (id || '').toUpperCase();
+        if (!id) return '';
+        if (!/^\d{17}[0-9X]$/.test(id)) return '身份证号须为18位（前17位数字，末位数字或X）。';
+        var sum = 0;
+        for (var i = 0; i < 17; i++) sum += (+id[i]) * ID_W[i];
+        if (ID_C[sum % 11] !== id[17]) return '身份证校验位不正确，应为 ' + ID_C[sum % 11] + '。';
+        var b = id.slice(6, 14), y = +b.slice(0, 4), m = +b.slice(4, 6), d = +b.slice(6, 8);
+        var dt = new Date(y, m - 1, d);
+        if (!(dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d)) return '身份证号中出生日期不合法。';
+        return '';
+    }
+    document.querySelectorAll('input[name="id_number"]').forEach(function (el) {
+        if (el.readOnly) return;
+        var genderEl = el.form ? el.form.querySelector('[name="gender"]') : null;
+        function check() {
+            var id = el.value.trim().toUpperCase();
+            var msg = idCheckMsg(id);
+            if (!msg && genderEl && genderEl.value && /^\d{17}[0-9X]$/.test(id)) {
+                var expect = (+id[16]) % 2 === 1 ? '男' : '女';
+                if (genderEl.value !== expect) msg = '性别与身份证号不一致（身份证中为 ' + expect + '）。';
+            }
+            el.setCustomValidity(msg);
+        }
+        el.addEventListener('blur', check);
+        el.addEventListener('input', function () { el.setCustomValidity(''); });
+        if (genderEl) genderEl.addEventListener('change', check);
+    });
+
     // --- 表单前端必填校验：阻止提交并定位首个错误字段 ---
     document.querySelectorAll('form.needs-validation').forEach(function (form) {
         form.addEventListener('submit', function (e) {
@@ -52,8 +104,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 e.stopPropagation();
                 const first = form.querySelector(':invalid');
                 if (first) {
-                    first.focus({ preventScroll: true });
                     first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    // 显示原生校验气泡（含自定义日期/身份证/性别错误信息）
+                    form.reportValidity();
                 }
             }
             form.classList.add('was-validated');

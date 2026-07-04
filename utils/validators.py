@@ -47,6 +47,19 @@ def validate_birth_date_match(id_number: str, birth_date: str) -> tuple[bool, st
     return True, ""
 
 
+def validate_gender_match(id_number: str, gender: str) -> tuple[bool, str]:
+    """
+    校验填写的性别与身份证号第17位（顺序码奇偶）是否一致。
+    第17位为奇数→男，偶数→女。id_number 须为已通过基本校验的18位号码。
+    """
+    if not id_number or len(id_number) != 18 or not id_number[16].isdigit():
+        return True, ""  # 号码本身不合规时交由 validate_id_number 报错，此处不重复
+    expected = "男" if int(id_number[16]) % 2 == 1 else "女"
+    if gender and gender != expected:
+        return False, f"性别与身份证号不一致（身份证中为 {expected}）。"
+    return True, ""
+
+
 def validate_date_format(date_str: str) -> tuple[bool, str]:
     """校验 YYYYMMDD 日期格式"""
     if not date_str or len(date_str) != 8:

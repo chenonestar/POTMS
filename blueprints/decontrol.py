@@ -8,7 +8,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, normalize_residence, get_dict_options, row_snapshot
-from utils.validators import validate_id_number, validate_birth_date_match, validate_date_format, parse_date_input
+from utils.validators import validate_id_number, validate_birth_date_match, validate_gender_match, validate_date_format, parse_date_input
 
 decontrol_bp = Blueprint("decontrol", __name__)
 
@@ -179,6 +179,15 @@ def _validate_form(data: dict) -> list[str]:
         ok, msg = validate_id_number(data["id_number"])
         if not ok:
             errors.append(f"身份证号: {msg}")
+        else:
+            if data.get("birth_date"):
+                ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
+                if not ok2:
+                    errors.append(msg2)
+            if data.get("gender"):
+                ok3, msg3 = validate_gender_match(data["id_number"], data["gender"])
+                if not ok3:
+                    errors.append(msg3)
 
     if data.get("cert_handover_date"):
         ok, msg = validate_date_format(data["cert_handover_date"])

@@ -10,7 +10,7 @@ from utils.helpers import (
     detect_surname_split, normalize_residence, row_snapshot,
 )
 from utils.validators import (
-    validate_id_number, validate_birth_date_match,
+    validate_id_number, validate_birth_date_match, validate_gender_match,
     validate_date_format, parse_date_input, is_party_member,
 )
 
@@ -430,10 +430,15 @@ def _validate_info_form(data: dict) -> list[str]:
         ok, msg = validate_id_number(data["id_number"])
         if not ok:
             errors.append(f"身份证号: {msg}")
-        elif data["birth_date"]:
-            ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
-            if not ok2:
-                errors.append(msg2)
+        else:
+            if data["birth_date"]:
+                ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
+                if not ok2:
+                    errors.append(msg2)
+            if data["gender"]:
+                ok3, msg3 = validate_gender_match(data["id_number"], data["gender"])
+                if not ok3:
+                    errors.append(msg3)
 
     if data["work_start_date"]:
         ok, msg = validate_date_format(data["work_start_date"])
@@ -493,10 +498,15 @@ def _validate_filing_form(data: dict, skip_id_dup_check: bool = False) -> list[s
         ok, msg = validate_id_number(data["id_number"])
         if not ok:
             errors.append(f"身份证号: {msg}")
-        elif data["birth_date"]:
-            ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
-            if not ok2:
-                errors.append(msg2)
+        else:
+            if data["birth_date"]:
+                ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
+                if not ok2:
+                    errors.append(msg2)
+            if data["gender"]:
+                ok3, msg3 = validate_gender_match(data["id_number"], data["gender"])
+                if not ok3:
+                    errors.append(msg3)
 
         if not skip_id_dup_check:
             db = get_db()
