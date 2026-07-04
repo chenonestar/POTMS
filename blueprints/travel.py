@@ -9,7 +9,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, get_dict_options, row_snapshot
-from utils.validators import parse_date_input, validate_date_format, validate_id_number, parse_travel_range
+from utils.validators import (parse_date_input, validate_date_format, validate_id_number,
+                              parse_travel_range, is_cert_overdue, cert_overdue_deadline)
 from config import Config
 
 travel_bp = Blueprint("travel", __name__)
@@ -41,10 +42,15 @@ def build_filters(args, ids=None):
         where += " AND passport_collect_date IS NOT NULL AND passport_collect_date != '' " \
                  "AND (passport_return_date IS NULL OR passport_return_date = '')"
     elif ps == "overdue":
-        from datetime import datetime as _dt
-        where += " AND passport_collect_date IS NOT NULL AND passport_collect_date != '' " \
-                 "AND passport_return_date IS NOT NULL AND passport_return_date != '' AND passport_return_date < ?"
-        params.append(_dt.now().strftime("%Y%m%d"))
+        # 逾期口径为「已领用 + 未归还 + 超过工作日时限」，需按行计算，
+        # 故先在 Python 中算出逾期记录的 id 集合，再以 id 限定。
+        oids = _overdue_ids()
+        if oids:
+            ph = ",".join("?" for _ in oids)
+            where += f" AND id IN ({ph})"
+            params.extend(oids)
+        else:
+            where += " AND 1=0"
     # 出行日期区间：出行起始日落在 [date_from, date_to] 内（与区间有交集）
     date_from = parse_date_input(args.get("date_from", ""))
     date_to = parse_date_input(args.get("date_to", ""))
@@ -59,6 +65,20 @@ def build_filters(args, ids=None):
         where += f" AND id IN ({ph})"
         params.extend(ids)
     return where, tuple(params)
+
+
+def _overdue_ids() -> set:
+    """全量计算「证件逾期未还」记录的 id 集合（已领用 + 未归还 + 超工作日时限）。"""
+    from datetime import datetime
+    today = datetime.now().strftime("%Y%m%d")
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, passport_collect_date, passport_return_date, actual_return_date, "
+        "travel_end, trip_status, cancel_date FROM travel_details "
+        "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
+        "AND (passport_return_date IS NULL OR passport_return_date = '')"
+    ).fetchall()
+    return {r["id"] for r in rows if is_cert_overdue(r, today)}
 
 
 @travel_bp.route("/travel/")
@@ -77,14 +97,15 @@ def list():
 
     pg = paginate(base, params, page)
 
-    # 标记逾期未还
+    # 标记逾期未还（已领用 + 未归还 + 超过工作日时限），并附带应还到期日
     from datetime import datetime
     today = datetime.now().strftime("%Y%m%d")
     overdue_ids = set()
+    deadlines = {}
     for row in pg["rows"]:
-        if (row["passport_return_date"] and row["passport_return_date"] < today
-                and row["passport_collect_date"]):
+        if is_cert_overdue(row, today):
             overdue_ids.add(row["id"])
+            deadlines[row["id"]] = cert_overdue_deadline(row)
 
     return render_template(
         "travel/list.html",
@@ -96,6 +117,7 @@ def list():
         date_from=date_from,
         date_to=date_to,
         overdue_ids=overdue_ids,
+        deadlines=deadlines,
         category_opts=get_dict_options("travel_category"),
     )
 
@@ -190,15 +212,15 @@ def new():
             "INSERT INTO travel_details (personnel_filing_id, unit, department, name, "
             "position, title, id_number, destination_passport, category, travel_dates, "
             "travel_start, travel_end, approval_date, need_new_passport, passport_no, "
-            "passport_collect_date, passport_return_date, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "passport_collect_date, passport_return_date, actual_return_date, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
                 data["passport_collect_date"], data["passport_return_date"],
-                data["operator"],
+                data["actual_return_date"], data["operator"],
             ),
         )
         db.commit()
@@ -261,7 +283,7 @@ def edit(travel_id):
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
             "name=?, position=?, title=?, id_number=?, destination_passport=?, "
             "category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, "
-            "passport_no=?, passport_collect_date=?, passport_return_date=?, "
+            "passport_no=?, passport_collect_date=?, passport_return_date=?, actual_return_date=?, "
             "operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
@@ -269,7 +291,7 @@ def edit(travel_id):
                 data["destination_passport"], data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
                 data["passport_collect_date"], data["passport_return_date"],
-                data["operator"], travel_id,
+                data["actual_return_date"], data["operator"], travel_id,
             ),
         )
         db.commit()
@@ -334,6 +356,64 @@ def delete(travel_id):
     log_action("delete", "travel_details", travel_id, before=before)
     flash("出国申请记录已删除。", "info")
     return redirect(url_for("travel.list"))
+
+
+# =========================================================================
+# 行程取消 / 恢复
+# =========================================================================
+@travel_bp.route("/travel/<int:travel_id>/cancel", methods=["POST"])
+@login_required
+def cancel(travel_id):
+    """取消行程：记录取消日期。已申领证件须在取消日起 5 个工作日内送回保管。"""
+    db = get_db()
+    row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("travel.list"))
+    if row["trip_status"] == "cancelled":
+        flash("该行程已处于取消状态。", "info")
+        return redirect(url_for("travel.view", travel_id=travel_id))
+
+    cancel_date = parse_date_input(request.form.get("cancel_date", ""))
+    if not cancel_date:
+        from datetime import datetime
+        cancel_date = datetime.now().strftime("%Y%m%d")
+    ok, msg = validate_date_format(cancel_date)
+    if not ok:
+        flash(f"取消日期: {msg}", "danger")
+        return redirect(url_for("travel.view", travel_id=travel_id))
+
+    before = row_snapshot("travel_details", travel_id)
+    db.execute(
+        "UPDATE travel_details SET trip_status='cancelled', cancel_date=?, "
+        "updated_at=CURRENT_TIMESTAMP WHERE id=?", (cancel_date, travel_id))
+    db.commit()
+    log_action("cancel", "travel_details", travel_id,
+               before=before, after=row_snapshot("travel_details", travel_id),
+               detail=f"取消行程（{cancel_date}）")
+    flash(f"行程已取消（{cancel_date}）。已申领证件请于 5 个工作日内送回保管。", "warning")
+    return redirect(url_for("travel.view", travel_id=travel_id))
+
+
+@travel_bp.route("/travel/<int:travel_id>/restore", methods=["POST"])
+@login_required
+def restore(travel_id):
+    """恢复已取消的行程为正常状态。"""
+    db = get_db()
+    row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("travel.list"))
+    before = row_snapshot("travel_details", travel_id)
+    db.execute(
+        "UPDATE travel_details SET trip_status='normal', cancel_date=NULL, "
+        "updated_at=CURRENT_TIMESTAMP WHERE id=?", (travel_id,))
+    db.commit()
+    log_action("restore", "travel_details", travel_id,
+               before=before, after=row_snapshot("travel_details", travel_id),
+               detail="恢复行程为正常")
+    flash("行程已恢复为正常状态。", "success")
+    return redirect(url_for("travel.view", travel_id=travel_id))
 
 
 # =========================================================================
@@ -402,6 +482,7 @@ def _extract_form(form):
         "passport_no": form.get("passport_no", "").strip(),
         "passport_collect_date": parse_date_input(form.get("passport_collect_date", "")),
         "passport_return_date": parse_date_input(form.get("passport_return_date", "")),
+        "actual_return_date": parse_date_input(form.get("actual_return_date", "")),
         "operator": session.get("username", "admin"),
     }
 
@@ -427,6 +508,7 @@ def _validate_form(data: dict) -> list[str]:
         ("approval_date", "批准日期"),
         ("passport_collect_date", "证件领用日期"),
         ("passport_return_date", "证件归还日期"),
+        ("actual_return_date", "实际回国日期"),
     ]:
         val = data.get(field)
         if val:

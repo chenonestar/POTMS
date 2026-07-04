@@ -96,7 +96,8 @@
     <tr><td class="label">类别</td><td>{{ row.category }}</td><td class="label">计划出行日期</td><td>{{ row.travel_dates }}</td></tr>
     <tr><td class="label">批准日期</td><td>{{ row.approval_date or '' }}</td><td class="label">是否做证</td><td>{{ row.need_new_passport }}</td></tr>
     <tr><td class="label">证件号码</td><td>{{ row.passport_no or '' }}</td><td class="label">证件领用日期</td><td>{{ row.passport_collect_date or '' }}</td></tr>
-    <tr><td class="label">证件归还日期</td><td colspan="3">{{ row.passport_return_date or '' }}</td></tr>
+    <tr><td class="label">实际回国日期</td><td>{{ row.actual_return_date or '' }}</td><td class="label">证件归还日期</td><td>{{ row.passport_return_date or '' }}</td></tr>
+    <tr><td class="label">行程状态</td><td>{{ '取消行程' if row.trip_status == 'cancelled' else '正常' }}</td><td class="label">取消日期</td><td>{{ row.cancel_date or '' }}</td></tr>
 </table>
 
 <!-- ==================== MODE: decontrol ==================== -->

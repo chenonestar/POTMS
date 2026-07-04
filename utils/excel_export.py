@@ -230,7 +230,8 @@ def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) 
 HEADERS_TRAVEL = [
     "单位", "部门", "姓名", "职务", "职称", "身份证号",
     "地点、证照", "类别", "计划出行日期", "批准日期",
-    "是否做证", "证件号码", "证件领用日期", "证件归还日期",
+    "是否做证", "证件号码", "证件领用日期", "实际回国日期",
+    "证件归还日期", "行程状态", "取消日期",
 ]
 
 
@@ -252,7 +253,10 @@ def export_travel_details(operator: str, where_sql: str = "", params: tuple = ()
             row["title"] or "", row["id_number"], row["destination_passport"],
             row["category"], row["travel_dates"], row["approval_date"] or "",
             row["need_new_passport"], row["passport_no"] or "",
-            row["passport_collect_date"] or "", row["passport_return_date"] or "",
+            row["passport_collect_date"] or "", row["actual_return_date"] or "",
+            row["passport_return_date"] or "",
+            "取消行程" if row["trip_status"] == "cancelled" else "正常",
+            row["cancel_date"] or "",
         ]
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)

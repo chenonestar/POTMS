@@ -10,8 +10,17 @@
         <a href="{{ url_for('export.print_view', print_type='travel', id=travel.id) }}" class="btn btn-outline-primary btn-sm" target="_blank">
             <i class="bi bi-printer"></i> 打印
         </a>
+        {% if travel.trip_status == 'cancelled' %}
+        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#restoreModal"><i class="bi bi-arrow-counterclockwise"></i> 恢复行程</button>
+        {% else %}
+        <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal"><i class="bi bi-x-circle"></i> 取消行程</button>
+        {% endif %}
     </div>
 </div>
+
+{% if travel.trip_status == 'cancelled' %}
+<div class="alert alert-warning"><i class="bi bi-exclamation-triangle-fill me-2"></i>本行程已于 <strong>{{ travel.cancel_date or '-' }}</strong> 取消。已申领的出国（境）证件须于取消日起 <strong>5 个工作日</strong> 内送回因私出国（境）证件管理部门保管。</div>
+{% endif %}
 
 <div class="card mb-3">
     <div class="card-header"><strong>因私出国（境）人员明细表</strong></div>
@@ -39,7 +48,39 @@
             <div class="col-md-2"><label class="text-muted">证件归还</label><p>{{ travel.passport_return_date or '-' }}</p></div>
             <div class="col-md-2"><label class="text-muted">操作人</label><p>{{ travel.operator }}</p></div>
         </div>
+        <div class="row mt-2">
+            <div class="col-md-2"><label class="text-muted">实际回国日期</label><p>{{ travel.actual_return_date or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">行程状态</label><p>{% if travel.trip_status == 'cancelled' %}<span class="badge bg-warning text-dark">取消行程</span>{% else %}<span class="badge bg-success">正常</span>{% endif %}</p></div>
+            {% if travel.trip_status == 'cancelled' %}<div class="col-md-2"><label class="text-muted">取消日期</label><p>{{ travel.cancel_date or '-' }}</p></div>{% endif %}
+        </div>
     </div>
+</div>
+
+<!-- 取消行程 -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <form method="POST" action="{{ url_for('travel.cancel', travel_id=travel.id) }}">
+            <div class="modal-header"><h5 class="modal-title"><i class="bi bi-x-circle text-warning"></i> 取消行程</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p>确认取消 <strong>{{ travel.name }}</strong> 的本次出国（境）行程？</p>
+                <label class="form-label">取消日期</label>
+                <input type="text" class="form-control" name="cancel_date" placeholder="YYYYMMDD（留空则取今日）" maxlength="8">
+                <div class="form-text text-warning">已申领证件须于取消日起 5 个工作日内送回保管。</div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button><button type="submit" class="btn btn-warning">确认取消行程</button></div>
+        </form>
+    </div></div>
+</div>
+
+<!-- 恢复行程 -->
+<div class="modal fade" id="restoreModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <form method="POST" action="{{ url_for('travel.restore', travel_id=travel.id) }}">
+            <div class="modal-header"><h5 class="modal-title"><i class="bi bi-arrow-counterclockwise text-success"></i> 恢复行程</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><p>确认将 <strong>{{ travel.name }}</strong> 的行程恢复为「正常」状态？取消日期将被清除，归还时限恢复为回国后 10 个工作日。</p></div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button><button type="submit" class="btn btn-success">确认恢复</button></div>
+        </form>
+    </div></div>
 </div>
 
 {% if attachments %}

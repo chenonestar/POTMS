@@ -57,14 +57,15 @@
 
 {% elif mode == 'travel' %}
 <table>
-    <thead><tr><th>单位</th><th>部门</th><th>姓名</th><th>职务</th><th>职称</th><th>身份证号</th><th>地点、证照</th><th>类别</th><th>计划出行日期</th><th>批准日期</th><th>是否做证</th><th>证件号码</th><th>领用日期</th><th>归还日期</th></tr></thead>
+    <thead><tr><th>单位</th><th>部门</th><th>姓名</th><th>职务</th><th>职称</th><th>身份证号</th><th>地点、证照</th><th>类别</th><th>计划出行日期</th><th>批准日期</th><th>是否做证</th><th>证件号码</th><th>领用日期</th><th>实际回国日期</th><th>归还日期</th><th>行程状态</th><th>取消日期</th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
         <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.position }}</td><td>{{ r.title or '' }}</td>
         <td>{{ r.id_number }}</td><td>{{ r.destination_passport }}</td><td>{{ r.category }}</td>
         <td>{{ r.travel_dates }}</td><td>{{ r.approval_date or '' }}</td><td>{{ r.need_new_passport }}</td>
-        <td>{{ r.passport_no or '' }}</td><td>{{ r.passport_collect_date or '' }}</td><td>{{ r.passport_return_date or '' }}</td>
+        <td>{{ r.passport_no or '' }}</td><td>{{ r.passport_collect_date or '' }}</td><td>{{ r.actual_return_date or '' }}</td><td>{{ r.passport_return_date or '' }}</td>
+        <td>{{ '取消行程' if r.trip_status == 'cancelled' else '正常' }}</td><td>{{ r.cancel_date or '' }}</td>
     </tr>
     {% endfor %}
     </tbody>

@@ -598,7 +598,10 @@
                 <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证</td></tr>
                 <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>已登记证件可下拉选取，做证新号手输；若"是否做证"为是，证件办好后补录</td></tr>
                 <tr><td>证件领用日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>路径A时必填</td></tr>
-                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国后证件上缴日期</td></tr>
+                <tr><td>实际回国日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国（境）实际日期；作为"10个工作日交回证件"的起算日，留空则以计划出行结束日计</td></tr>
+                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>证件实际交回保管日期；填写即视为已归还，空表示尚未归还</td></tr>
+                <tr><td>行程状态</td><td>ENUM('normal','cancelled')</td><td><span class="badge opt">选填</span></td><td>正常 / 取消行程，默认正常</td></tr>
+                <tr><td>取消日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>取消行程时记录；作为"5个工作日交回证件"的起算日</td></tr>
                 <tr><td>附件</td><td>FILE</td><td><span class="badge must">必填</span></td><td>PDF扫描件（支持多文件上传）</td></tr>
             </tbody>
         </table>
@@ -615,6 +618,8 @@
             <li><strong>录入</strong>：管理员根据《个人申请报告》《审批表》等线下已签批材料，填写《因私出国（境）人员明细表》并上传扫描附件。</li>
             <li><strong>证照操作</strong>：已有证件→记录领用日期；无证件→记录"同意申办函"信息及后续证件号码。</li>
             <li><strong>归档</strong>：信息填写完毕后直接保存归档，系统记录操作时间及操作人。</li>
+            <li><strong>回国交证</strong>：登记备案人员回国（境）后，须在<strong>10个工作日内</strong>向证件管理部门交回因私出国（境）证件；管理员在明细详情中记录"实际回国日期""证件归还日期"。</li>
+            <li><strong>取消行程</strong>：如行程取消，管理员在明细详情中点击"取消行程"并记录取消日期；已申领证件须于取消日起<strong>5个工作日内</strong>送回保管。取消后可"恢复行程"还原为正常状态。</li>
         </ol>
         <p style="margin-top:8px; color:var(--text-muted);">📌 所有审批环节在线下完成，系统仅作为<strong>信息登记与电子归档</strong>平台，不做线上审批流转。</p>
     </div>
@@ -730,7 +735,8 @@
         <h3>7.6 提醒功能 <span class="req-id">REQ-009</span></h3>
         <ul class="styled">
             <li>证照有效期到期前30天，在系统首页以<strong>醒目提示条</strong>展示即将到期的证照信息。</li>
-            <li>证件领用后超过计划归还日期未归还，系统首页<strong>高亮标记</strong>逾期未还记录。</li>
+            <li><strong>证件逾期未还</strong>判定口径：已领用证件（证件领用日期非空）且尚未归还（证件归还日期为空），并已超过应交回时限——系统首页<strong>高亮标记</strong>逾期未还记录。</li>
+            <li><strong>交回时限（按工作日，仅顺延跳过周六/周日）</strong>：正常行程为<strong>实际回国日期起10个工作日内</strong>（实际回国日期留空时以计划出行结束日计）；取消行程为<strong>取消日期起5个工作日内</strong>。到期日当天仍算未逾期，次一日起计逾期。</li>
             <li>以上提醒均在管理员登录后的<strong>首页仪表盘</strong>集中展示，无需外部消息推送。</li>
         </ul>
     </div>

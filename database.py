@@ -109,6 +109,16 @@ def run_migrations():
         if "travel_end" not in travel_cols:
             db.execute("ALTER TABLE travel_details ADD COLUMN travel_end TEXT")
             need_backfill = True
+        # 出国明细：实际回国日期 / 行程状态 / 取消日期（逾期口径修正 + 行程取消）
+        if "actual_return_date" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN actual_return_date TEXT")
+        if "trip_status" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN trip_status TEXT DEFAULT 'normal'")
+            db.commit()
+            db.execute("UPDATE travel_details SET trip_status = 'normal' "
+                       "WHERE trip_status IS NULL OR trip_status = ''")
+        if "cancel_date" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN cancel_date TEXT")
 
         # 操作日志：变更前后数据快照（JSON）
         log_cols = {row[1] for row in db.execute("PRAGMA table_info(operation_logs)").fetchall()}
@@ -321,6 +331,9 @@ CREATE TABLE IF NOT EXISTS travel_details (
     passport_no TEXT,
     passport_collect_date TEXT,
     passport_return_date TEXT,
+    actual_return_date TEXT,
+    trip_status TEXT DEFAULT 'normal',
+    cancel_date TEXT,
     operator TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

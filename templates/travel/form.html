@@ -54,8 +54,12 @@
     <div class="row g-3">
         <div class="col-md-3"><label class="form-label">证件号码</label><input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="{{ data.passport_no or '' }}" placeholder="选已登记证件或手输新证件号" autocomplete="off"><datalist id="certNoList"></datalist><div class="form-text">已有证件可下拉选，做证新号手输。</div></div>
         <div class="col-md-3"><label class="form-label">证件领用日期</label><input type="text" class="form-control" name="passport_collect_date" value="{{ data.passport_collect_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">路径A（已有证件）时必填</div></div>
-        <div class="col-md-3"><label class="form-label">证件归还日期</label><input type="text" class="form-control" name="passport_return_date" value="{{ data.passport_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+        <div class="col-md-3"><label class="form-label">实际回国日期</label><input type="text" class="form-control" name="actual_return_date" value="{{ data.actual_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">回国后须于 10 个工作日内交回证件；留空则以计划结束日计。</div></div>
+        <div class="col-md-3"><label class="form-label">证件归还日期</label><input type="text" class="form-control" name="passport_return_date" value="{{ data.passport_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">已交回证件填写此日期；空表示尚未归还。</div></div>
     </div>
+    {% if editing and data.trip_status == 'cancelled' %}
+    <div class="alert alert-warning mt-2 mb-0 py-2"><i class="bi bi-exclamation-triangle"></i> 本行程已取消（取消日期：{{ data.cancel_date or '-' }}）。已申领证件须于取消日起 <strong>5 个工作日</strong> 内送回保管。</div>
+    {% endif %}
 </div>
 
 <div class="form-section">

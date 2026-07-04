@@ -125,8 +125,8 @@
                 <ul class="list-group list-group-flush">
                     {% for o in overdue %}
                     <li class="list-group-item d-flex justify-content-between">
-                        <span>{{ o.name }}</span>
-                        <span class="text-danger fw-bold">应还: {{ o.passport_return_date }}</span>
+                        <span>{{ o.name }}{% if o.trip_status == 'cancelled' %} <span class="badge bg-warning text-dark">取消行程</span>{% endif %}</span>
+                        <span class="text-danger fw-bold">应还: {{ o.deadline }}</span>
                     </li>
                     {% endfor %}
                 </ul>

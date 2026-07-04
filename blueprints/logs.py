@@ -23,6 +23,7 @@ FIELD_LABELS = {
     "destination_passport": "地点、证照", "category": "类别", "travel_dates": "计划出行日期",
     "travel_start": "出行起", "travel_end": "出行止", "approval_date": "批准日期",
     "need_new_passport": "是否做证", "passport_collect_date": "领用日期", "passport_return_date": "归还日期",
+    "actual_return_date": "实际回国日期", "trip_status": "行程状态", "cancel_date": "取消日期",
     "submit_unit_name": "报送单位", "submit_unit_type": "报送类别", "submit_contact": "联系人",
     "submit_phone": "联系电话", "batch_no": "入库批号", "reason": "撤控原因", "operator": "操作人",
 }
@@ -102,6 +103,8 @@ def index():
         {"code": "create", "value": "新建"},
         {"code": "update", "value": "修改"},
         {"code": "delete", "value": "删除"},
+        {"code": "cancel", "value": "取消行程"},
+        {"code": "restore", "value": "恢复行程"},
         {"code": "export", "value": "导出"},
         {"code": "import", "value": "导入"},
         {"code": "backup", "value": "备份"},

@@ -1,6 +1,6 @@
 """校验工具：身份证、日期、必填字段"""
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # 身份证校验位权重
@@ -102,3 +102,73 @@ def parse_travel_range(text: str) -> tuple[str, str]:
     start = _norm(matches[0])
     end = _norm(matches[-1])
     return (start, end)
+
+
+def add_working_days(start_ymd: str, n: int) -> str:
+    """
+    以 start_ymd（YYYYMMDD）为第 0 天，向后顺延 n 个工作日（仅跳过周六/周日，
+    不含法定节假日日历），返回到期日 YYYYMMDD。
+
+    语义：例如 10 个工作日内归还，即到期日为「回国日之后第 10 个工作日」。
+    超过到期日（严格大于）才算逾期，故到期日当天仍算未逾期。
+    无法解析 start_ymd 时返回空字符串。
+    """
+    if not start_ymd or len(start_ymd) != 8 or not start_ymd.isdigit():
+        return ""
+    try:
+        d = datetime.strptime(start_ymd, "%Y%m%d")
+    except ValueError:
+        return ""
+    counted = 0
+    while counted < n:
+        d += timedelta(days=1)
+        if d.weekday() < 5:  # 0=周一 … 4=周五
+            counted += 1
+    return d.strftime("%Y%m%d")
+
+
+def cert_overdue_deadline(row) -> str:
+    """
+    计算某条出国明细的证件归还到期日（YYYYMMDD）。
+    - 正常行程：以「实际回国日期」优先，否则回退「计划出行结束日 travel_end」，
+      向后顺延 10 个工作日。
+    - 取消行程：以「取消日期 cancel_date」为基准，向后顺延 5 个工作日。
+    row 支持 sqlite3.Row 或 dict。无法确定基准日时返回空字符串。
+    """
+    def _g(key):
+        try:
+            return row[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    status = (_g("trip_status") or "normal")
+    if status == "cancelled":
+        base = _g("cancel_date") or ""
+        return add_working_days(base, 5)
+    base = (_g("actual_return_date") or "") or (_g("travel_end") or "")
+    return add_working_days(base, 10)
+
+
+def is_cert_overdue(row, today: str) -> bool:
+    """
+    判断某条出国明细是否「证件逾期未还」。
+    条件：已领用证件（passport_collect_date 非空）+ 尚未归还（passport_return_date 空）
+    + 已过归还到期日（today 严格大于到期日）。
+    today 为 YYYYMMDD。
+    """
+    def _g(key):
+        try:
+            return row[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    collect = _g("passport_collect_date")
+    ret = _g("passport_return_date")
+    if not collect:
+        return False
+    if ret:  # 已归还
+        return False
+    deadline = cert_overdue_deadline(row)
+    if not deadline:
+        return False
+    return today > deadline
