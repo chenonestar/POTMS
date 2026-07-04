@@ -123,14 +123,19 @@
 </div>
 
 <div class="form-section">
-    <h5>撤控原因 / 证件移交</h5>
+    <h5>撤控原因 / 日期</h5>
     <div class="row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <label class="form-label required">撤控日期</label>
+            <input type="text" class="form-control" name="decontrol_date" value="{{ data.decontrol_date or '' }}" placeholder="YYYYMMDD" maxlength="8" required>
+            <div class="form-text">默认今天，可按实际撤控日期修改。</div>
+        </div>
+        <div class="col-md-3">
             <label class="form-label">证件移交日期</label>
             <input type="text" class="form-control" name="cert_handover_date" value="{{ data.cert_handover_date or '' }}" placeholder="YYYYMMDD" maxlength="8">
-            <div class="form-text">撤控后证件移交出去时填写（选填）。</div>
+            <div class="form-text">证件移交出去时填（选填）。</div>
         </div>
-        <div class="col-md-8">
+        <div class="col-md-6">
             <label class="form-label required">备注（撤控原因等）</label>
             <textarea class="form-control" name="reason" rows="2" required>{{ data.reason or '' }}</textarea>
         </div>

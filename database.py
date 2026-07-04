@@ -115,10 +115,17 @@ def run_migrations():
         if "snapshot" not in log_cols:
             db.execute("ALTER TABLE operation_logs ADD COLUMN snapshot TEXT")
 
-        # 撤控：证件移交日期
+        # 撤控：证件移交日期 / 撤控日期
         dec_cols = {row[1] for row in db.execute("PRAGMA table_info(decontrol_filing)").fetchall()}
         if "cert_handover_date" not in dec_cols:
             db.execute("ALTER TABLE decontrol_filing ADD COLUMN cert_handover_date TEXT")
+        if "decontrol_date" not in dec_cols:
+            db.execute("ALTER TABLE decontrol_filing ADD COLUMN decontrol_date TEXT")
+            db.commit()
+            # 历史记录用 created_at 的日期回填
+            db.execute(
+                "UPDATE decontrol_filing SET decontrol_date = strftime('%Y%m%d', created_at) "
+                "WHERE decontrol_date IS NULL OR decontrol_date = ''")
 
         # 报送单位配置表（名称/联系人/电话）
         db.execute(
@@ -337,6 +344,7 @@ CREATE TABLE IF NOT EXISTS decontrol_filing (
     submit_phone TEXT NOT NULL,
     batch_no TEXT NOT NULL,
     reason TEXT NOT NULL,
+    decontrol_date TEXT,
     cert_handover_date TEXT,
     operator TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
