@@ -101,6 +101,75 @@ def list():
 
 
 # =========================================================================
+# 附件总览（跨记录汇总 + 缺件检查）
+# =========================================================================
+# 各路径要求的必备附件类型
+_REQUIRED_A = ["个人申请报告", "审批表"]
+_REQUIRED_B = ["个人申请报告", "审批表", "同意申办函"]
+
+
+@travel_bp.route("/travel/attachments")
+@login_required
+def attachments():
+    page = request.args.get("page", 1, type=int)
+    search = request.args.get("search", "").strip()
+    type_filter = request.args.get("file_type", "").strip()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+
+    base = (
+        "SELECT a.id, a.file_name, a.file_type, a.file_size, a.uploaded_at, "
+        "t.id AS travel_id, t.name, t.unit, t.destination_passport, t.travel_dates "
+        "FROM attachments a JOIN travel_details t ON a.travel_id = t.id WHERE 1=1"
+    )
+    params: list = []
+    if search:
+        base += " AND (t.name LIKE ? OR a.file_name LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like])
+    if type_filter:
+        base += " AND a.file_type = ?"
+        params.append(type_filter)
+    if date_from:
+        base += " AND date(a.uploaded_at) >= ?"
+        params.append(date_from)
+    if date_to:
+        base += " AND date(a.uploaded_at) <= ?"
+        params.append(date_to)
+    base += " ORDER BY a.uploaded_at DESC"
+
+    pg = paginate(base, tuple(params), page)
+
+    # ——— 缺件检查：逐条申请核对必备附件 ———
+    db = get_db()
+    travels = db.execute(
+        "SELECT id, name, unit, need_new_passport FROM travel_details ORDER BY created_at DESC"
+    ).fetchall()
+    missing = []
+    for tv in travels:
+        have = {r["file_type"] for r in db.execute(
+            "SELECT DISTINCT file_type FROM attachments WHERE travel_id = ?", (tv["id"],)).fetchall()}
+        required = _REQUIRED_B if tv["need_new_passport"] == "是" else _REQUIRED_A
+        lack = [r for r in required if r not in have]
+        if lack:
+            missing.append({"id": tv["id"], "name": tv["name"], "unit": tv["unit"],
+                            "path": "B" if tv["need_new_passport"] == "是" else "A", "lack": lack})
+
+    # 各类型数量统计
+    type_counts = {r["file_type"]: r["cnt"] for r in db.execute(
+        "SELECT file_type, COUNT(*) AS cnt FROM attachments GROUP BY file_type").fetchall()}
+    total_att = db.execute("SELECT COUNT(*) FROM attachments").fetchone()[0]
+
+    return render_template(
+        "travel/attachments.html",
+        items=pg, search=search, type_filter=type_filter,
+        date_from=date_from, date_to=date_to,
+        missing=missing, type_counts=type_counts, total_att=total_att,
+        types=["个人申请报告", "审批表", "同意申办函"],
+    )
+
+
+# =========================================================================
 # 新增
 # =========================================================================
 @travel_bp.route("/travel/new", methods=["GET", "POST"])
