@@ -234,9 +234,13 @@ xcopy /E /I /Y D:\POTMS\uploads %BACKUP_DIR%\uploads_%DATE%
 
 ---
 
-## 修改管理员密码
+## 修改用户名 / 密码
 
-密码采用 **bcrypt** 加盐哈希存储。生成新密码哈希：
+**推荐：界面内修改。** 登录后点击右上角用户名 →「账户设置」（或侧边栏「系统设置 → 账户设置」），可修改**用户名**与**密码**：任何修改都需先验证当前密码；改密码后会要求用新密码重新登录。
+
+---
+
+**备用：命令行改密码。** 密码采用 **bcrypt** 加盐哈希存储。生成新密码哈希：
 
 ```bash
 python -c "from utils.security import hash_password; print(hash_password('新密码'))"

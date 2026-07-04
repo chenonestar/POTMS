@@ -21,12 +21,16 @@
                 <i class="bi bi-passport"></i> 因私出国（境）审批管理
             </a>
             <div class="d-flex align-items-center">
-                <span class="text-light me-3">
-                    <i class="bi bi-person-circle"></i> {{ session.username }}
-                </span>
-                <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light btn-sm">
-                    <i class="bi bi-box-arrow-right"></i> 退出
-                </a>
+                <div class="dropdown">
+                    <a class="text-light dropdown-toggle text-decoration-none" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle"></i> {{ session.username }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="{{ url_for('auth.account') }}"><i class="bi bi-person-gear"></i> 账户设置</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> 退出登录</a></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </nav>
@@ -55,6 +59,11 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('dict_admin.index') }}">
                                 <i class="bi bi-card-list"></i> 数据字典
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('auth.account') }}">
+                                <i class="bi bi-person-gear"></i> 账户设置
                             </a>
                         </li>
                     </ul>
