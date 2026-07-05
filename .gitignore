@@ -7,3 +7,4 @@ exports/
 # Python 缓存
 *.pyc
 __pycache__/
+.pytest_cache/
