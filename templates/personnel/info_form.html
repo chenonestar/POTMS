@@ -6,7 +6,21 @@
     {{ '编辑' if editing else '新增' }}备案人员信息登记表
 </h4>
 
-<form method="POST" class="needs-validation" novalidate>
+{% if not editing %}
+<div class="d-flex align-items-center mb-4" style="max-width:520px;">
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-primary" style="width:26px;height:26px;line-height:18px;">1</span>
+        <div class="small mt-1 fw-bold text-primary">信息登记表</div>
+    </div>
+    <div class="flex-fill border-top border-2 mx-2" style="margin-top:-14px;"></div>
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-secondary" style="width:26px;height:26px;line-height:18px;">2</span>
+        <div class="small mt-1 text-muted">登记备案表</div>
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_info"{% endif %}>
 <div class="form-section">
     <h5>基本信息</h5>
     <div class="row g-3">
@@ -14,19 +28,18 @@
             <label class="form-label required">单位</label>
             <select class="form-select" name="unit" id="orgUnit" required onchange="updateDept()">
                 <option value="">请选择单位</option>
-                {% for o in org_tree_opts() %}
-                {% set cn = o.name | replace('　', '') | replace('└ ', '') %}
-                <option value="{{ cn }}" data-oid="{{ o.id }}" {{ 'selected' if data.get('unit') == cn }}>{{ o.name }}</option>
+                {% for o in org_flat() if o.parent_id == 0 %}
+                <option value="{{ o.name }}" data-oid="{{ o.id }}" {{ 'selected' if data.get('unit') == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
+            <div class="form-text">单位为顶级组织；部门为其下级。可在"组织架构"中维护层级。</div>
         </div>
         <div class="col-md-6">
             <label class="form-label required">部门</label>
             <select class="form-select" name="department" id="orgDept" required>
                 <option value="">请先选择单位</option>
-                {% for o in org_tree_opts() %}
-                {% set cn = o.name | replace('　', '') | replace('└ ', '') %}
-                <option value="{{ cn }}" data-pid="{{ o.parent_id }}" data-oid="{{ o.id }}" style="display:none" {{ 'selected' if data.get('department') == cn }}>{{ cn }}</option>
+                {% for o in org_flat() %}
+                <option value="{{ o.name }}" data-pid="{{ o.parent_id }}" data-oid="{{ o.id }}" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -49,9 +62,17 @@
                    placeholder="YYYYMMDD 如19800103" maxlength="8" required>
         </div>
         <div class="col-md-3">
-            <label class="form-label">参加工作日期</label>
+            <label class="form-label required">参加工作日期</label>
             <input type="text" class="form-control" name="work_start_date" value="{{ data.work_start_date or '' }}"
-                   placeholder="YYYYMMDD" maxlength="8">
+                   placeholder="YYYYMMDD" maxlength="8" required>
+        </div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-6">
+            <label class="form-label required">身份证号</label>
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+                   placeholder="18位，需与出生日期一致" maxlength="18" required>
+            <div class="form-text">系统校验校验位并核对出生日期；登记备案表、明细表将自动带入此身份证。</div>
         </div>
     </div>
 </div>
@@ -61,7 +82,7 @@
     <div class="row g-3">
         <div class="col-md-3">
             <label class="form-label required">学历</label>
-            <select class="form-select" name="education">
+            <select class="form-select" name="education" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('education') %}
                 <option value="{{ o.code }}" {{ 'selected' if data.get('education') == o.code }}>{{ o.value }}</option>
@@ -70,7 +91,7 @@
         </div>
         <div class="col-md-3">
             <label class="form-label required">学位</label>
-            <select class="form-select" name="degree">
+            <select class="form-select" name="degree" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('degree') %}
                 <option value="{{ o.code }}" {{ 'selected' if data.get('degree') == o.code }}>{{ o.value }}</option>
@@ -78,8 +99,8 @@
             </select>
         </div>
         <div class="col-md-3">
-            <label class="form-label">职称</label>
-            <select class="form-select" name="title">
+            <label class="form-label required">职称</label>
+            <select class="form-select" name="title" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('title') %}
                 <option value="{{ o.code }}" {{ 'selected' if data.get('title') == o.code }}>{{ o.value }}</option>
@@ -122,14 +143,6 @@
     </div>
 </div>
 
-<div class="form-section">
-    <h5>操作信息</h5>
-    <div class="col-md-4">
-        <label class="form-label required">操作人</label>
-        <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
-    </div>
-</div>
-
 <div class="mt-3">
     <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
     <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
@@ -139,38 +152,38 @@
 {% endblock %}
 {% block scripts %}
 <script>
-// 单位→部门级联
-function updateDept() {
+// 单位→部门级联：单位为顶级组织，部门为其直接下级
+function updateDept(preserve) {
     var unitSel = document.getElementById('orgUnit');
     var deptSel = document.getElementById('orgDept');
-    var selectedOid = unitSel.options[unitSel.selectedIndex].getAttribute('data-oid') || '';
-    var opts = deptSel.options;
-    // Show all options whose data-pid matches the selected org id
+    var keep = preserve ? deptSel.value : '';
+    var oid = unitSel.options[unitSel.selectedIndex].getAttribute('data-oid') || '';
+    var opts = deptSel.options, firstChild = -1, selfIdx = -1;
     for (var i = 0; i < opts.length; i++) {
-        var pid = opts[i].getAttribute('data-pid') || '';
-        opts[i].style.display = (pid === selectedOid) ? '' : 'none';
+        if (!opts[i].value) { continue; }  // 占位项
+        var isChild = ((opts[i].getAttribute('data-pid') || '') === oid);
+        opts[i].style.display = isChild ? '' : 'none';
+        if (isChild && firstChild < 0) firstChild = i;
+        if ((opts[i].getAttribute('data-oid') || '') === oid) selfIdx = i;
     }
-    // Reset selection
-    deptSel.selectedIndex = 0;
-    // If no matching children, add a self option
-    if (selectedOid) {
-        var hasChildren = false;
-        for (var j = 0; j < opts.length; j++) {
-            if ((opts[j].getAttribute('data-pid') || '') === selectedOid) { hasChildren = true; break; }
-        }
-        if (!hasChildren) {
-            // Select self
-            for (var k = 0; k < opts.length; k++) {
-                if ((opts[k].getAttribute('data-oid') || '') === selectedOid) {
-                    deptSel.selectedIndex = k; break;
-                }
-            }
+    // 保留已保存的部门（编辑态）
+    if (keep) deptSel.value = keep;
+    var cur = deptSel.selectedIndex;
+    var valid = cur > 0 && opts[cur].style.display !== 'none';
+    if (!valid) {
+        if (firstChild >= 0) {
+            deptSel.selectedIndex = firstChild;              // 默认选中第一个下级部门
+        } else if (selfIdx >= 0) {
+            opts[selfIdx].style.display = '';                // 无下级部门时回退为单位本身
+            deptSel.selectedIndex = selfIdx;
+        } else {
+            deptSel.selectedIndex = 0;
         }
     }
 }
 // Init on page load
 document.addEventListener('DOMContentLoaded', function() {
-    if (document.getElementById('orgUnit').value) updateDept();
+    if (document.getElementById('orgUnit').value) updateDept(true);
 });
 // 入党日期联动：中共党员/预备党员时显示
 (function() {

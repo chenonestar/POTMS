@@ -8,7 +8,7 @@
     <strong>注意：</strong>提交撤控后，该人员的备案状态将标记为"已撤控"。如信息变更，需重新填写登记备案表。
 </div>
 
-<form method="POST">
+<form method="POST" class="needs-validation" novalidate data-draft="decontrol">
 <div class="form-section">
     <h5>身份信息</h5>
     <div class="row g-3">
@@ -42,7 +42,12 @@
     <div class="row g-3 mt-1">
         <div class="col-md-4">
             <label class="form-label required">户口所在地</label>
-            <input type="text" class="form-control" name="residence" value="{{ data.residence or '' }}" required>
+            <div class="row g-1 mb-1">
+                <div class="col-4"><select class="form-select form-select-sm" id="resProv"><option value="">省</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resCity"><option value="">市</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resDist"><option value="">区/县</option></select></div>
+            </div>
+            <input type="text" class="form-control" name="residence" id="resInput" value="{{ data.residence or '' }}" placeholder="三级联动或手动输入" required>
         </div>
         <div class="col-md-4">
             <label class="form-label required">工作单位</label>
@@ -50,7 +55,16 @@
         </div>
         <div class="col-md-4">
             <label class="form-label required">人事主管单位</label>
-            <input type="text" class="form-control" name="supervisor_unit" value="{{ data.supervisor_unit or '' }}" required>
+            {% set sup_opts = dict_opts('supervisor_unit') %}
+            <select class="form-select" name="supervisor_unit" required>
+                <option value="">请选择</option>
+                {% for o in sup_opts %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('supervisor_unit') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+                {% if data.get('supervisor_unit') and data.get('supervisor_unit') not in (sup_opts | map(attribute='value') | list) %}
+                <option value="{{ data.supervisor_unit }}" selected>{{ data.supervisor_unit }}（历史值）</option>
+                {% endif %}
+            </select>
         </div>
     </div>
 </div>
@@ -60,7 +74,17 @@
     <div class="row g-3">
         <div class="col-md-4">
             <label class="form-label required">报送单位名称</label>
-            <input type="text" class="form-control" name="submit_unit_name" value="{{ data.submit_unit_name or '' }}" required>
+            {% set su_opts = submit_units() %}
+            <select class="form-select" name="submit_unit_name" id="submitUnitName" required onchange="fillSubmitUnit()">
+                <option value="">请选择</option>
+                {% for u in su_opts %}
+                <option value="{{ u.name }}" data-contact="{{ u.contact }}" data-phone="{{ u.phone }}" {{ 'selected' if data.get('submit_unit_name') == u.name }}>{{ u.name }}</option>
+                {% endfor %}
+                {% if data.get('submit_unit_name') and data.get('submit_unit_name') not in (su_opts | map(attribute='name') | list) %}
+                <option value="{{ data.submit_unit_name }}" data-contact="{{ data.submit_contact or '' }}" data-phone="{{ data.submit_phone or '' }}" selected>{{ data.submit_unit_name }}（历史值）</option>
+                {% endif %}
+            </select>
+            <div class="form-text">在「系统设置 → 报送单位」中维护；选中自动带出联系人/电话。</div>
         </div>
         <div class="col-md-3">
             <label class="form-label required">报送单位类别</label>
@@ -73,11 +97,11 @@
         </div>
         <div class="col-md-2">
             <label class="form-label required">联系人</label>
-            <input type="text" class="form-control" name="submit_contact" value="{{ data.submit_contact or '' }}" required>
+            <input type="text" class="form-control" name="submit_contact" id="submitContact" value="{{ data.submit_contact or '' }}" required>
         </div>
         <div class="col-md-3">
             <label class="form-label required">联系电话</label>
-            <input type="text" class="form-control" name="submit_phone" value="{{ data.submit_phone or '' }}" required>
+            <input type="text" class="form-control" name="submit_phone" id="submitPhone" value="{{ data.submit_phone or '' }}" required>
         </div>
     </div>
     <div class="row g-3 mt-1">
@@ -99,13 +123,19 @@
 </div>
 
 <div class="form-section">
-    <h5>撤控原因</h5>
+    <h5>撤控原因 / 日期</h5>
     <div class="row g-3">
-        <div class="col-md-4">
-            <label class="form-label required">操作人</label>
-            <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
+        <div class="col-md-3">
+            <label class="form-label required">撤控日期</label>
+            <input type="text" class="form-control" name="decontrol_date" value="{{ data.decontrol_date or '' }}" placeholder="YYYYMMDD" maxlength="8" required>
+            <div class="form-text">默认今天，可按实际撤控日期修改。</div>
         </div>
-        <div class="col-md-8">
+        <div class="col-md-3">
+            <label class="form-label">证件移交日期</label>
+            <input type="text" class="form-control" name="cert_handover_date" value="{{ data.cert_handover_date or '' }}" placeholder="YYYYMMDD" maxlength="8">
+            <div class="form-text">证件移交出去时填（选填）。</div>
+        </div>
+        <div class="col-md-6">
             <label class="form-label required">备注（撤控原因等）</label>
             <textarea class="form-control" name="reason" rows="2" required>{{ data.reason or '' }}</textarea>
         </div>
@@ -117,4 +147,18 @@
     <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
 </div>
 </form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/regions.js') }}"></script>
+<script>
+// 选择报送单位 → 自动带出联系人/电话（可再改）
+function fillSubmitUnit() {
+    var sel = document.getElementById('submitUnitName');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById('submitContact').value = opt.getAttribute('data-contact') || '';
+    document.getElementById('submitPhone').value = opt.getAttribute('data-phone') || '';
+}
+document.addEventListener('DOMContentLoaded', function () { initRegionCascade('resProv', 'resCity', 'resDist', 'resInput'); });
+</script>
 {% endblock %}

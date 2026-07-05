@@ -1,0 +1,10 @@
+# 运行时生成的持久化数据 / 密钥（不纳入版本库）
+.secret_key
+backup/
+uploads/
+exports/
+
+# Python 缓存
+*.pyc
+__pycache__/
+.pytest_cache/

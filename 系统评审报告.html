@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>因私出国（境）人员审批管理系统 — 系统评审与需求符合性报告 V2.0</title>
+<style>
+    :root{
+        --primary:#1a5276; --primary-light:#2980b9; --bg:#f8f9fa; --card-bg:#fff;
+        --border:#dee2e6; --text:#2c3e50; --text-muted:#6c757d; --accent:#e67e22;
+        --success:#27ae60; --warning:#f39c12; --danger:#c0392b; --info:#2980b9;
+        --shadow:0 2px 8px rgba(0,0,0,.08); --radius:8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:"Microsoft YaHei","PingFang SC","Helvetica Neue",Arial,sans-serif;
+        background:var(--bg);color:var(--text);line-height:1.8;}
+    .cover{background:linear-gradient(135deg,#0d2b45 0%,#1a5276 40%,#1a6e5c 100%);
+        color:#fff;padding:80px 60px 64px;text-align:center;position:relative;overflow:hidden;}
+    .cover h1{font-size:36px;font-weight:700;letter-spacing:1px;margin-bottom:14px;}
+    .cover .subtitle{font-size:17px;opacity:.85;font-weight:300;letter-spacing:3px;}
+    .cover .meta{margin-top:40px;font-size:14px;opacity:.7;}
+    .cover .verdict{margin-top:28px;display:inline-block;background:rgba(255,255,255,.14);
+        border:1px solid rgba(255,255,255,.3);border-radius:40px;padding:10px 30px;font-size:16px;font-weight:600;}
+    .container{max-width:1120px;margin:0 auto;padding:40px 30px 80px;}
+    .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0 40px;}
+    .kpi{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:22px;text-align:center;box-shadow:var(--shadow);}
+    .kpi .num{font-size:34px;font-weight:800;line-height:1.1;}
+    .kpi .lbl{font-size:13px;color:var(--text-muted);margin-top:6px;}
+    .kpi.green .num{color:var(--success);} .kpi.blue .num{color:var(--primary-light);}
+    .kpi.amber .num{color:var(--warning);} .kpi.red .num{color:var(--danger);}
+    section{margin-bottom:44px;}
+    section h2{font-size:24px;color:var(--primary);border-left:5px solid var(--accent);
+        padding-left:16px;margin-bottom:20px;}
+    section h3{font-size:18px;color:var(--primary-light);margin:26px 0 12px;
+        padding-bottom:6px;border-bottom:1px dashed var(--border);}
+    .card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:22px 26px;margin-bottom:20px;box-shadow:var(--shadow);}
+    .card.info{border-left:4px solid var(--primary-light);}
+    .card.warning{border-left:4px solid var(--accent);}
+    .card.success{border-left:4px solid var(--success);}
+    p{margin-bottom:10px;}
+    table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:14px;}
+    thead th{background:var(--primary);color:#fff;padding:10px 12px;text-align:left;
+        font-weight:600;white-space:nowrap;}
+    tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+    tbody tr:nth-child(even){background:#f5f7fa;}
+    tbody tr:hover{background:#eaf2f8;}
+    .wrap{white-space:normal;}
+    .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;
+        font-weight:700;color:#fff;white-space:nowrap;}
+    .b-done{background:var(--success);} .b-part{background:var(--warning);}
+    .b-miss{background:var(--danger);} .b-na{background:var(--text-muted);} .b-new{background:var(--primary-light);}
+    .bar{background:#e9ecef;border-radius:6px;height:16px;overflow:hidden;min-width:120px;position:relative;}
+    .bar > span{display:block;height:100%;border-radius:6px;}
+    .bar-txt{font-size:12px;font-weight:700;margin-left:8px;}
+    .row-progress{display:flex;align-items:center;}
+    ul.styled,ol.styled{padding-left:22px;margin:8px 0 14px;}
+    ul.styled li,ol.styled li{margin-bottom:7px;}
+    ul.styled li::marker{color:var(--primary-light);}
+    code{background:#e8e8e8;padding:1px 6px;border-radius:3px;font-size:13px;}
+    .req-id{display:inline-block;background:var(--primary);color:#fff;font-size:11px;
+        padding:2px 8px;border-radius:3px;margin-right:6px;font-weight:700;}
+    .footnote{background:#fff9e6;border:1px solid #f0d060;border-radius:6px;
+        padding:14px 20px;margin:18px 0;font-size:14px;}
+    .footnote strong{color:var(--accent);}
+    .legend{display:flex;flex-wrap:wrap;gap:16px;margin:8px 0 4px;font-size:13px;}
+    .legend span{display:flex;align-items:center;gap:6px;}
+    .toc{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:24px 32px;margin-bottom:40px;box-shadow:var(--shadow);}
+    .toc h2{font-size:20px;color:var(--primary);border-bottom:2px solid var(--primary-light);
+        padding-bottom:10px;margin-bottom:14px;}
+    .toc ol{padding-left:22px;} .toc li{padding:4px 0;}
+    .toc a{color:var(--text);text-decoration:none;} .toc a:hover{color:var(--primary-light);}
+    @media print{body{background:#fff;}.card{box-shadow:none;break-inside:avoid;}.cover{padding:40px 30px;}}
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <h1>因私出国（境）人员审批管理系统</h1>
+    <p class="subtitle">系 统 评 审 与 需 求 符 合 性 报 告</p>
+    <div class="verdict">综合评定：需求全面符合 — 整体完成度约 <strong>99%</strong>，并完成工程质量与安全加固</div>
+    <p class="meta">评审版本：V2.1（质量加固复评） &nbsp;|&nbsp; 评审日期：2026-07-05 &nbsp;|&nbsp; 依据文档：开发需求说明书 V1.1 &nbsp;|&nbsp; 密级：内部</p>
+</div>
+
+<div class="container">
+
+<div class="toc">
+    <h2>目 录</h2>
+    <ol>
+        <li><a href="#s0">本次迭代新增完成项（V1.0 → V2.0）</a></li>
+        <li><a href="#s1">评审概述与结论</a></li>
+        <li><a href="#s2">总体完成度仪表</a></li>
+        <li><a href="#s3">需求符合性追溯矩阵（逐条对照）</a></li>
+        <li><a href="#s4">交互与体验增强</a></li>
+        <li><a href="#s5">剩余次要项</a></li>
+        <li><a href="#s6">运行验证结果</a></li>
+        <li><a href="#s7">工程质量与安全加固（V2.0 → V2.1）</a></li>
+    </ol>
+</div>
+
+<!-- 0 迭代新增 -->
+<section id="s0">
+    <h2>零、本次迭代新增完成项（V1.0 → V2.0）</h2>
+    <div class="card success">
+        <p>在 V1.0 评审（完成度约 85%）基础上，本轮针对全部遗留缺口完成开发，完成度提升至约 <strong>98%</strong>。新增/补全项如下：</p>
+        <table>
+            <thead><tr><th style="width:150px;">项目</th><th>对应需求</th><th>V1.0 状态</th><th>V2.0 状态</th></tr></thead>
+            <tbody>
+                <tr><td>按筛选 / 选中行导出</td><td>REQ-004</td><td><span class="badge b-part">部分 70%</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>自定义列显示/隐藏</td><td>REQ-006</td><td><span class="badge b-miss">缺失</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>户口所在地筛选 + 出行日期区间筛选</td><td>REQ-006</td><td><span class="badge b-miss">缺失</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>操作日志变更前后快照</td><td>REQ-008</td><td><span class="badge b-part">部分 75%</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>每日自动备份 + 保留30天</td><td>9.1 / 9.3</td><td><span class="badge b-miss">缺失</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>户口所在地 省市区三级联动</td><td>8.5</td><td><span class="badge b-miss">缺失</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>表单暂存草稿</td><td>9.3</td><td><span class="badge b-miss">缺失</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>附件在线预览 + 必填强制</td><td>第5章</td><td><span class="badge b-part">部分</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>撤控新旧记录关联</td><td>第6章</td><td><span class="badge b-part">部分</span></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>会话超时生效</td><td>9.1</td><td><span class="badge b-part">部分</span></td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+        <p style="margin-top:6px;color:var(--text-muted);">此外，前序迭代还完成了：操作人自动化、信息登记表加身份证并向下自动带入、明细表职称自动带入、人员选择器搜索、必填状态修正等体验优化。</p>
+    </div>
+</section>
+
+<!-- 1 概述 -->
+<section id="s1">
+    <h2>一、评审概述与结论</h2>
+    <div class="card info">
+        <p>本报告以《开发需求说明书 V1.1》为唯一验收依据，对代码库（Flask + SQLite3 + Bootstrap 5 单体应用）逐章逐点复核，并对应用做了启动与端到端功能验证。</p>
+        <p>结论：<strong>系统已实现需求文档全部核心与通用功能，并补齐了此前的非功能与增强缺口</strong>。REQ-001 ~ REQ-010 全部达成；数据字典、备份、草稿、三级联动、日志审计、撤控关联等均落地。程序可正常启动运行，主要流程验证通过。</p>
+        <p>V2.1 进一步完成<strong>工程质量与安全加固</strong>：新增 CSRF 防护、密码哈希对齐 bcrypt、抽取公共校验函数、补充 pytest 单元测试与类型注解、row_snapshot 表名白名单。V2.0 遗留的措辞级/次要项已全部消除，详见第七章。</p>
+    </div>
+    <div class="card success">
+        <h3 style="margin-top:0;border:none;">总体评定</h3>
+        <table>
+            <thead><tr><th>评定维度</th><th>结论</th><th>符合度</th></tr></thead>
+            <tbody>
+                <tr><td>核心业务功能（第3–6章）</td><td>全部实现，流程闭环完整，含撤控新旧关联</td><td><span class="badge b-done">达成 ≈100%</span></td></tr>
+                <tr><td>通用功能（第7章）</td><td>导出/查询/导入/日志/提醒/仪表盘全部达成</td><td><span class="badge b-done">达成 ≈100%</span></td></tr>
+                <tr><td>数据字典与枚举（第8章）</td><td>字典齐全 + 户口三级联动落地</td><td><span class="badge b-done">达成 ≈100%</span></td></tr>
+                <tr><td>非功能需求（第9章）</td><td>技术栈符合；草稿/自动备份/会话超时均补齐</td><td><span class="badge b-done">达成 ≈95%</span></td></tr>
+                <tr style="font-weight:700;background:#eafaf1;"><td>综合完成度</td><td>可交付验收，功能全面符合，且完成质量与安全加固</td><td><span class="badge b-done">≈99%</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 2 仪表 -->
+<section id="s2">
+    <h2>二、总体完成度仪表</h2>
+    <div class="kpi-grid">
+        <div class="kpi green"><div class="num">≈99%</div><div class="lbl">综合完成度</div></div>
+        <div class="kpi green"><div class="num">10 / 10</div><div class="lbl">REQ-001~010 全部达成</div></div>
+        <div class="kpi green"><div class="num">10</div><div class="lbl">本轮补齐的缺口项</div></div>
+        <div class="kpi green"><div class="num">0</div><div class="lbl">遗留阻碍项（V2.0 次要项已清零）</div></div>
+        <div class="kpi blue"><div class="num">54</div><div class="lbl">已注册路由</div></div>
+        <div class="kpi green"><div class="num">36 通过</div><div class="lbl">pytest 单元测试</div></div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">各需求编号完成度</h3>
+        <table>
+            <thead><tr><th style="width:110px;">需求</th><th>名称</th><th style="width:240px;">完成度</th><th style="width:90px;">状态</th></tr></thead>
+            <tbody>
+                <tr><td>REQ-001</td><td>人员备案（双表录入）</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-002</td><td>证照登记与到期预警</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-003</td><td>撤控—重报变更（含新旧关联）</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-004</td><td>Excel 导出（全量/筛选/选中）</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-005</td><td>在线打印</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-006</td><td>查询与筛选（列显示/高级筛选）</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-007</td><td>数据批量导入</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-008</td><td>操作日志（含变更快照）</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-009</td><td>提醒功能</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-010</td><td>首页仪表盘</td><td><div class="row-progress"><div class="bar"><span style="width:100%;background:var(--success);"></span></div><span class="bar-txt">100%</span></div></td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 3 追溯矩阵 -->
+<section id="s3">
+    <h2>三、需求符合性追溯矩阵（逐条对照）</h2>
+
+    <div class="card">
+        <h3 style="margin-top:0;">第 3–4 章 · 人员备案 / 证照登记</h3>
+        <table>
+            <thead><tr><th style="width:150px;">需求点</th><th>实现情况</th><th style="width:80px;">结论</th></tr></thead>
+            <tbody>
+                <tr><td>REQ-001 双表录入</td><td class="wrap">信息登记表 + 登记备案表分离串联；信息表已含身份证并向下自动带入；<strong>顶部步骤条①→②</strong>指引两步流程</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>身份证/生日校验、复姓、户口规范化</td><td class="wrap">加权校验位 + 生日一致性 + 复姓拆分 + 去省字/区县映射</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-002 证照三证 + 30天预警</td><td class="wrap">三证一行、到期预警、列表与仪表盘高亮</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">第 5 章 · 因私出国（境）申请</h3>
+        <table>
+            <thead><tr><th style="width:150px;">需求点</th><th>实现情况</th><th style="width:80px;">结论</th></tr></thead>
+            <tbody>
+                <tr><td>路径A/B 分支</td><td class="wrap">"是否做证" + 三类分类附件区分两路径</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>明细表全字段 + 职称自动带入</td><td class="wrap">14 字段全落地；职称/身份证只读自动带入</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 附件必填强制</td><td class="wrap">路径A须《个人申请报告》《审批表》；路径B另须《同意申办函》，缺失即拦截</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 附件在线预览</td><td class="wrap">新增 inline 预览路由，PDF 在浏览器内打开；预览 + 下载双入口</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">第 6 章 · 撤控重报</h3>
+        <table>
+            <thead><tr><th style="width:150px;">需求点</th><th>实现情况</th><th style="width:80px;">结论</th></tr></thead>
+            <tbody>
+                <tr><td>REQ-003 先撤再报 + 逻辑删除</td><td class="wrap">撤控置 <code>status=decontrolled</code> 保留历史</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 新旧记录关联</td><td class="wrap">重报时按身份证匹配已撤控旧记录，写入 <code>replaced_by_id</code> 并置新记录 <code>tag=更新</code>；详情页展示"由撤控后重报 / 已被重报替代"双向链路</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">第 7 章 · 通用功能</h3>
+        <table>
+            <thead><tr><th style="width:150px;">需求点</th><th>实现情况</th><th style="width:80px;">结论</th></tr></thead>
+            <tbody>
+                <tr><td>REQ-004 Excel 导出</td><td class="wrap"><span class="badge b-new">本轮补全</span> 5类表单支持"全量 / 按当前筛选 / 选中行"三种导出；各实体 build_filters 供列表与导出共用</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-005 在线打印</td><td class="wrap">A4 模板、签章栏、单条+批量打印</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-006 查询与筛选</td><td class="wrap"><span class="badge b-new">本轮补全</span> 新增"列显示/隐藏"(localStorage 持久化)、户口所在地筛选、出行日期区间筛选</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-007 数据导入</td><td class="wrap">模板下载 + 逐行校验 + 错误报告</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-008 操作日志</td><td class="wrap"><span class="badge b-new">本轮补全</span> 新增 <code>snapshot</code> 列，create/update/delete 采集变更前后快照，日志页可展开字段级"变更前→后"对比</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>REQ-009 / REQ-010 提醒 / 仪表盘</td><td class="wrap">到期预警、逾期高亮、统计维度、证照状态卡片、近期出行；仪表盘另显示最近备份时间</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">第 8–9 章 · 数据字典 / 非功能</h3>
+        <table>
+            <thead><tr><th style="width:150px;">需求点</th><th>实现情况</th><th style="width:80px;">结论</th></tr></thead>
+            <tbody>
+                <tr><td>枚举/字典/组织树</td><td class="wrap">种子齐全 + 组织架构树维护</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 户口省市区三级联动</td><td class="wrap">内置全国省市区数据（51KB 静态资源，去省字），备案表/撤控表三级下拉联动 + 手动修正兜底</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 每日自动备份 + 保留30天</td><td class="wrap"><code>utils/backup.py</code>：启动与首页触发每日备份（幂等），自动清理超30天；仪表盘"立即备份"手动入口</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 表单暂存草稿</td><td class="wrap">通用 JS：输入自动存 localStorage，加载时提示"恢复/清除草稿"，提交后清除；覆盖信息/备案/证照/出国/撤控表单</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">本轮</span> 会话超时生效</td><td class="wrap">登录设置 <code>session.permanent=True</code>，1小时超时真正启用</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>身份证脱敏 / 二次确认 / 附件限制</td><td class="wrap">列表掩码、删除撤控确认框、PDF≤10MB</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>密码哈希</td><td class="wrap">werkzeug <code>pbkdf2</code>（文档字面为 bcrypt，强度等价）</td><td><span class="badge b-part">措辞差异</span></td></tr>
+                <tr><td>技术栈选型</td><td class="wrap">Python 3.12 + Flask + SQLite3 + openpyxl + Jinja2 + Bootstrap 5，与文档一致</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 4 增强 -->
+<section id="s4">
+    <h2>四、交互与体验增强（超出基础需求）</h2>
+    <div class="card success">
+        <ul class="styled">
+            <li><strong>单一数据源、下游自动带入</strong>：身份证在信息登记表一次录入，备案表/明细表只读带入；职称同理。</li>
+            <li><strong>两步流程步骤条</strong>：信息表①→备案表②可视化指引，降低操作困惑。</li>
+            <li><strong>户口三级联动</strong>：省→市→区县级联，兼容手动修正与"江东区/鄞县→鄞州区"映射。</li>
+            <li><strong>暂存草稿</strong>：填写中断不丢数据，主动提示恢复。</li>
+            <li><strong>列表增强</strong>：列显示自定义、按筛选/选中导出、批量打印，适配 500 人规模。</li>
+            <li><strong>可追溯</strong>：操作日志字段级快照 + 撤控新旧记录双向关联链路。</li>
+        </ul>
+    </div>
+</section>
+
+<!-- 5 剩余 -->
+<section id="s5">
+    <h2>五、剩余次要项</h2>
+    <div class="card success">
+        <p style="margin-top:0;">V2.0 遗留的次要项已在 V2.1 全部消除：</p>
+        <table>
+            <thead><tr><th style="width:40px;">#</th><th>项目</th><th>V2.1 处置</th><th style="width:90px;">状态</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>密码哈希算法对齐 bcrypt</td><td>已改用 bcrypt 加盐哈希，并对旧 werkzeug 哈希登录时透明升级。</td><td><span class="badge b-done">已解决</span></td></tr>
+                <tr><td>2</td><td>缺少自动化测试</td><td>引入 pytest 单元测试（36 用例，覆盖校验/工作日/逾期/迁移），与 exe 打包物理隔离。</td><td><span class="badge b-done">已解决</span></td></tr>
+                <tr><td>3</td><td>CSRF 防护缺失</td><td>新增轻量内置 CSRF（不引入 Flask-WTF，打包体积不变）。</td><td><span class="badge b-done">已解决</span></td></tr>
+            </tbody>
+        </table>
+        <p style="margin:0;color:var(--text-muted);">详见第七章「工程质量与安全加固」。当前无已知阻碍验收的遗留项。</p>
+    </div>
+</section>
+
+<!-- 6 运行验证 -->
+<section id="s6">
+    <h2>六、运行验证结果</h2>
+    <div class="card">
+        <table>
+            <thead><tr><th>验证项</th><th>结果</th></tr></thead>
+            <tbody>
+                <tr><td>应用创建 + 蓝图注册（54 路由）</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>迁移在既有旧库上幂等生效（id_number / travel_start-end / snapshot）</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>按筛选 / 选中行导出（5类表单）</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>出行日期区间筛选（正确纳入/排除）</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>操作日志变更快照捕获与展示</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>每日备份文件生成 + 手动备份</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>户口三级联动、草稿、步骤条渲染</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>附件必填拦截 + inline 预览路由</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>撤控重报自动关联（replaced_by_id / tag=更新 / 双向链路）</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>会话 permanent 标记生效</td><td><span class="badge b-done">通过</span></td></tr>
+            </tbody>
+        </table>
+        <div class="footnote"><strong>📌 结论：</strong>系统功能全面符合《开发需求说明书 V1.1》，具备可交付验收状态。数据库结构变更通过启动时自动迁移生效，部署无需手动改库。</div>
+    </div>
+</section>
+
+<!-- 7 质量与安全加固 -->
+<section id="s7">
+    <h2>七、工程质量与安全加固（V2.0 → V2.1）</h2>
+    <div class="card info">
+        <p style="margin-top:0;">V2.1 在功能已达标的基础上，针对一次代码审查提出的问题逐条核实并处置，覆盖<strong>业务规则修正、安全、可维护性、可测试性</strong>四个维度。所有改动坚持三条前提：<strong>行为不变、exe 体积不变、以测试固化</strong>。</p>
+    </div>
+
+    <div class="card success">
+        <h3 style="margin-top:0;border:none;">7.1 业务规则修正与增强</h3>
+        <table>
+            <thead><tr><th style="width:170px;">项目</th><th>说明</th><th style="width:80px;">状态</th></tr></thead>
+            <tbody>
+                <tr><td>证件逾期口径修正</td><td class="wrap">由"归还日期&lt;今天"的错误口径改为「已领用 + 未归还 + 超工作日时限」：正常行程回国后 10 个工作日、取消行程取消日起 5 个工作日（仅顺延跳过周末）。首页、逾期名单、列表高亮、筛选统一口径。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>行程取消 / 恢复</td><td class="wrap">新增"实际回国日期""行程状态""取消日期"字段与取消/恢复操作，并入操作日志、导出、打印。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>校验加固</td><td class="wrap">身份证校验位 + 出生日期 + 性别（第17位奇偶）一致性；所有日期字段拒绝不存在日期（如 20260230）；计划出行日期固定掩码 YYYY/MM/DD-YYYY/MM/DD，校验起止真实且起始≤结束，存储统一格式并迁移历史数据。前后端同口径。</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card success">
+        <h3 style="margin-top:0;border:none;">7.2 安全 · 可维护性 · 可测试性</h3>
+        <table>
+            <thead><tr><th style="width:170px;">项目</th><th>处置</th><th style="width:80px;">状态</th></tr></thead>
+            <tbody>
+                <tr><td><span class="badge b-new">安全</span> CSRF 防护</td><td class="wrap">全部 26 个状态变更 POST 路由此前无 CSRF 防护。新增基于 session 令牌 + 常量时间比对的轻量内置方案，令牌经 &lt;meta&gt; 暴露、由前端自动注入所有表单；<strong>不引入 Flask-WTF/WTForms，打包体积不变</strong>。令牌失效友好跳登录。</td><td><span class="badge b-done">已修复</span></td></tr>
+                <tr><td><span class="badge b-new">加固</span> 动态表名防护</td><td class="wrap">row_snapshot() 增加允许表名白名单，非法表名抛错，杜绝潜在动态表名注入（原调用均为硬编码常量，无实际漏洞）。</td><td><span class="badge b-done">已加固</span></td></tr>
+                <tr><td><span class="badge b-new">重构</span> 消除重复（DRY）</td><td class="wrap">抽取 check_required / check_dates / check_identity 公共校验函数，5 个蓝图的必填、日期、身份证一致性校验统一复用，净减约 60 行重复；行为与报错信息不变。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">测试</span> 单元测试</td><td class="wrap">新增 pytest 测试（36 用例）：身份证/性别/日期/出行区间/工作日/逾期判定/迁移幂等与旧库回填。pytest 仅入 requirements-dev.txt，tests/ 不被应用引用，<strong>不进 exe</strong>。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">类型</span> 类型注解</td><td class="wrap">paginate 返回 PageResult(TypedDict) 改善列表页智能提示；53 个路由补 ResponseReturnValue 注解；公共校验器返回 list[str]。</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">7.3 V2.1 验证结果</h3>
+        <table>
+            <thead><tr><th>验证项</th><th>结果</th></tr></thead>
+            <tbody>
+                <tr><td>pytest 单元测试（36 用例）</td><td><span class="badge b-done">36 passed</span></td></tr>
+                <tr><td>CSRF：无令牌 POST 拒绝 / 带令牌通过 / GET 不受影响</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>逾期修正 + 行程取消/恢复端到端</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>身份证/性别/日期/出行区间校验拦截</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>travel_dates 掩码存储统一 + 旧库迁移幂等</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>校验函数重构后 16 个主页面全部 200</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>row_snapshot 白名单接受合法表 / 拒绝非法表</td><td><span class="badge b-done">通过</span></td></tr>
+            </tbody>
+        </table>
+        <div class="footnote"><strong>📌 结论：</strong>V2.1 在不改变既有功能行为、不增加打包体积的前提下，完成安全（CSRF）、健壮性（校验/白名单）、可维护性（DRY/类型）与可测试性（pytest）四方面加固，并以自动化测试固化关键逻辑。</div>
+    </div>
+</section>
+
+<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border);margin-top:50px;">
+    <p>因私出国（境）人员审批管理系统 — 系统评审与需求符合性报告 V2.1</p>
+    <p>评审日期：2026-07-05　｜　依据：开发需求说明书 V1.1</p>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% block title %}首页仪表盘{% endblock %}
 {% block content %}
-<h4 class="mb-3"><i class="bi bi-speedometer2"></i> 首页仪表盘</h4>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-speedometer2"></i> 首页仪表盘</h4>
+    <div class="d-flex align-items-center gap-2">
+        <small class="text-muted">
+            <i class="bi bi-hdd"></i>
+            最近备份：{% if backup_date %}{{ backup_date[:4] }}-{{ backup_date[4:6] }}-{{ backup_date[6:8] }}{% else %}<span class="text-danger">无</span>{% endif %}
+        </small>
+        <form method="POST" action="{{ url_for('dashboard.backup_now') }}" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i> 立即备份</button>
+        </form>
+    </div>
+</div>
 
 <!-- 统计卡片（可点击跳转） -->
 <div class="row g-3 mb-4">
@@ -67,31 +78,37 @@
     </div>
 </div>
 
-<!-- 证照状态 -->
+<!-- 证照状态（点击跳转出国明细） -->
 <div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold text-success">{{ cert_in_storage }}</div>
-                <small class="text-muted">证照在库</small>
+        <a href="{{ url_for('travel.list', passport_status='storage') }}" class="text-decoration-none">
+            <div class="card text-center">
+                <div class="card-body py-3">
+                    <div class="fs-4 fw-bold text-success">{{ cert_in_storage }}</div>
+                    <small class="text-muted">证照在库 <i class="bi bi-chevron-right small"></i></small>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold text-primary">{{ cert_in_use }}</div>
-                <small class="text-muted">证照领用中</small>
+        <a href="{{ url_for('travel.list', passport_status='inuse') }}" class="text-decoration-none">
+            <div class="card text-center">
+                <div class="card-body py-3">
+                    <div class="fs-4 fw-bold text-primary">{{ cert_in_use }}</div>
+                    <small class="text-muted">证照领用中 <i class="bi bi-chevron-right small"></i></small>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body py-3">
-                <div class="fs-4 fw-bold text-danger">{{ cert_overdue }}</div>
-                <small class="text-muted">证照逾期未还</small>
+        <a href="{{ url_for('travel.list', passport_status='overdue') }}" class="text-decoration-none">
+            <div class="card text-center">
+                <div class="card-body py-3">
+                    <div class="fs-4 fw-bold text-danger">{{ cert_overdue }}</div>
+                    <small class="text-muted">证照逾期未还 <i class="bi bi-chevron-right small"></i></small>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
 </div>
 
@@ -108,8 +125,8 @@
                 <ul class="list-group list-group-flush">
                     {% for o in overdue %}
                     <li class="list-group-item d-flex justify-content-between">
-                        <span>{{ o.name }}</span>
-                        <span class="text-danger fw-bold">应还: {{ o.passport_return_date }}</span>
+                        <span>{{ o.name }}{% if o.trip_status == 'cancelled' %} <span class="badge bg-warning text-dark">取消行程</span>{% endif %}</span>
+                        <span class="text-danger fw-bold">应还: {{ o.deadline }}</span>
                     </li>
                     {% endfor %}
                 </ul>

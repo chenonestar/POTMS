@@ -1,17 +1,18 @@
 """人员备案蓝图 — 信息登记表 + 登记备案表"""
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
 from utils.helpers import (
     get_dict_options, get_dict_value, log_action, paginate,
-    detect_surname_split, normalize_residence,
+    detect_surname_split, normalize_residence, row_snapshot,
 )
 from utils.validators import (
-    validate_id_number, validate_birth_date_match,
-    validate_date_format, parse_date_input, is_party_member,
+    parse_date_input, is_party_member,
+    check_required, check_dates, check_identity,
 )
 
 personnel_bp = Blueprint("personnel", __name__)
@@ -20,9 +21,43 @@ personnel_bp = Blueprint("personnel", __name__)
 # =========================================================================
 # 列表页
 # =========================================================================
+def build_filters(args, ids=None):
+    """构建人员备案列表的 WHERE 子句（pf/pi 别名），供列表与导出复用。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (pf.surname||pf.given_name LIKE ? OR pf.id_number LIKE ? OR pf.work_unit LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like, like])
+    if args.get("status", "").strip():
+        where += " AND pf.status = ?"
+        params.append(args.get("status").strip())
+    if args.get("political_status", "").strip():
+        where += " AND pf.political_status = ?"
+        params.append(args.get("political_status").strip())
+    if args.get("rank", "").strip():
+        where += " AND pi.rank = ?"
+        params.append(args.get("rank").strip())
+    if args.get("gender", "").strip():
+        where += " AND pf.gender = ?"
+        params.append(args.get("gender").strip())
+    if args.get("tag", "").strip():
+        where += " AND pf.tag = ?"
+        params.append(args.get("tag").strip())
+    if args.get("residence", "").strip():
+        where += " AND pf.residence LIKE ?"
+        params.append(f"%{args.get('residence').strip()}%")
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND pf.id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
+
+
 @personnel_bp.route("/personnel/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     status_filter = request.args.get("status", "").strip()
@@ -30,42 +65,18 @@ def list():
     rank_filter = request.args.get("rank", "").strip()
     gender_filter = request.args.get("gender", "").strip()
     tag_filter = request.args.get("tag", "").strip()
+    residence_filter = request.args.get("residence", "").strip()
     sort_by = request.args.get("sort", "created_at_desc").strip()
 
+    where, params = build_filters(request.args)
     base = (
         "SELECT pf.id, pf.surname, pf.given_name, pf.gender, pf.birth_date, "
         "pf.id_number, pf.work_unit, pf.position_or_title, pf.tag, pf.status, "
         "pf.created_at, pi.id AS info_id "
         "FROM personnel_filing pf "
         "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
-        "WHERE 1=1"
+        "WHERE 1=1" + where
     )
-    params: list = []
-
-    if search:
-        base += " AND (pf.surname||pf.given_name LIKE ? OR pf.id_number LIKE ? OR pf.work_unit LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like, like])
-
-    if status_filter:
-        base += " AND pf.status = ?"
-        params.append(status_filter)
-
-    if political_filter:
-        base += " AND pf.political_status = ?"
-        params.append(political_filter)
-
-    if rank_filter:
-        base += " AND pi.rank = ?"
-        params.append(rank_filter)
-
-    if gender_filter:
-        base += " AND pf.gender = ?"
-        params.append(gender_filter)
-
-    if tag_filter:
-        base += " AND pf.tag = ?"
-        params.append(tag_filter)
 
     # 排序
     sort_map = {
@@ -76,7 +87,7 @@ def list():
     }
     base += f" ORDER BY {sort_map.get(sort_by, 'pf.created_at DESC')}"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
 
     return render_template(
         "personnel/list.html",
@@ -87,6 +98,7 @@ def list():
         rank_filter=rank_filter,
         gender_filter=gender_filter,
         tag_filter=tag_filter,
+        residence_filter=residence_filter,
         sort_by=sort_by,
         statuses=[{"code": "active", "value": "有效"}, {"code": "decontrolled", "value": "已撤控"}],
         political_opts=get_dict_options("political_status"),
@@ -107,7 +119,7 @@ def list():
 # =========================================================================
 @personnel_bp.route("/personnel/info/new", methods=["GET", "POST"])
 @login_required
-def info_new():
+def info_new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_info_form(request.form)
         errors = _validate_info_form(data)
@@ -119,19 +131,19 @@ def info_new():
         db = get_db()
         db.execute(
             "INSERT INTO personnel_info (unit, department, name, gender, birth_date, "
-            "work_start_date, education, degree, title, rank, political_status, "
+            "id_number, work_start_date, education, degree, title, rank, political_status, "
             "party_join_date, position, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["unit"], data["department"], data["name"], data["gender"],
-                data["birth_date"], data["work_start_date"], data["education"],
+                data["birth_date"], data["id_number"], data["work_start_date"], data["education"],
                 data["degree"], data["title"], data["rank"], data["political_status"],
                 data["party_join_date"], data["position"], data["operator"],
             ),
         )
         db.commit()
         info_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "personnel_info", info_id)
+        log_action("create", "personnel_info", info_id, after=row_snapshot("personnel_info", info_id))
         flash("备案人员信息登记表已保存。请继续填写登记备案表。", "success")
         return redirect(url_for("personnel.filing_new", info_id=info_id))
 
@@ -143,7 +155,7 @@ def info_new():
 # =========================================================================
 @personnel_bp.route("/personnel/info/<int:info_id>/edit", methods=["GET", "POST"])
 @login_required
-def info_edit(info_id):
+def info_edit(info_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM personnel_info WHERE id = ?", (info_id,)).fetchone()
     if not row:
@@ -158,20 +170,22 @@ def info_edit(info_id):
                 flash(e, "danger")
             return render_template("personnel/info_form.html", data=data, editing=True, info_id=info_id)
 
+        before = row_snapshot("personnel_info", info_id)
         db.execute(
             "UPDATE personnel_info SET unit=?, department=?, name=?, gender=?, "
-            "birth_date=?, work_start_date=?, education=?, degree=?, title=?, rank=?, "
+            "birth_date=?, id_number=?, work_start_date=?, education=?, degree=?, title=?, rank=?, "
             "political_status=?, party_join_date=?, position=?, operator=?, updated_at=CURRENT_TIMESTAMP "
             "WHERE id=?",
             (
                 data["unit"], data["department"], data["name"], data["gender"],
-                data["birth_date"], data["work_start_date"], data["education"],
+                data["birth_date"], data["id_number"], data["work_start_date"], data["education"],
                 data["degree"], data["title"], data["rank"], data["political_status"],
                 data["party_join_date"], data["position"], data["operator"], info_id,
             ),
         )
         db.commit()
-        log_action("update", "personnel_info", info_id)
+        log_action("update", "personnel_info", info_id,
+                   before=before, after=row_snapshot("personnel_info", info_id))
         flash("信息登记表已更新。", "success")
         return redirect(url_for("personnel.list"))
 
@@ -188,7 +202,7 @@ def info_edit(info_id):
 # =========================================================================
 @personnel_bp.route("/personnel/filing/new", methods=["GET", "POST"])
 @login_required
-def filing_new():
+def filing_new() -> ResponseReturnValue:
     info_id = request.args.get("info_id", type=int)
     info_row = None
     if info_id:
@@ -222,7 +236,20 @@ def filing_new():
         )
         db.commit()
         filing_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "personnel_filing", filing_id)
+
+        # 撤控重报关联：若存在同一身份证的已撤控旧记录，建立新旧关联并标记为"更新"
+        prior = db.execute(
+            "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'decontrolled' "
+            "AND replaced_by_id IS NULL AND id != ? ORDER BY id DESC LIMIT 1",
+            (data["id_number"], filing_id),
+        ).fetchone()
+        if prior:
+            db.execute("UPDATE personnel_filing SET replaced_by_id = ? WHERE id = ?", (filing_id, prior["id"]))
+            db.execute("UPDATE personnel_filing SET tag = '更新' WHERE id = ?", (filing_id,))
+            db.commit()
+            flash(f"已与原撤控记录（#{prior['id']}）建立关联，本记录标记为“更新”。", "info")
+
+        log_action("create", "personnel_filing", filing_id, after=row_snapshot("personnel_filing", filing_id))
         flash("登记备案表已保存。", "success")
         return redirect(url_for("personnel.list"))
 
@@ -235,6 +262,7 @@ def filing_new():
             "given_name": given_name,
             "gender": info_row["gender"],
             "birth_date": info_row["birth_date"],
+            "id_number": info_row["id_number"] or "",
             "political_status": info_row["political_status"],
             "work_unit": info_row["unit"],
             "position_or_title": info_row["position"] or info_row["rank"],
@@ -253,7 +281,7 @@ def filing_new():
 # =========================================================================
 @personnel_bp.route("/personnel/filing/<int:filing_id>/edit", methods=["GET", "POST"])
 @login_required
-def filing_edit(filing_id):
+def filing_edit(filing_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)).fetchone()
     if not row:
@@ -271,6 +299,7 @@ def filing_edit(filing_id):
                 data=data, editing=True, filing_id=filing_id,
             )
 
+        before = row_snapshot("personnel_filing", filing_id)
         db.execute(
             "UPDATE personnel_filing SET surname=?, given_name=?, gender=?, birth_date=?, "
             "id_number=?, residence=?, political_status=?, work_unit=?, "
@@ -285,7 +314,8 @@ def filing_edit(filing_id):
             ),
         )
         db.commit()
-        log_action("update", "personnel_filing", filing_id)
+        log_action("update", "personnel_filing", filing_id,
+                   before=before, after=row_snapshot("personnel_filing", filing_id))
         flash("登记备案表已更新。", "success")
         return redirect(url_for("personnel.list"))
 
@@ -302,7 +332,7 @@ def filing_edit(filing_id):
 # =========================================================================
 @personnel_bp.route("/personnel/<int:filing_id>")
 @login_required
-def view(filing_id):
+def view(filing_id) -> ResponseReturnValue:
     db = get_db()
     filing = db.execute(
         "SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)
@@ -318,10 +348,24 @@ def view(filing_id):
             (filing["personnel_info_id"],),
         ).fetchone()
 
+    # 撤控重报关联链路
+    successor = None  # 本（旧）记录被哪条新记录替代
+    if filing["replaced_by_id"]:
+        successor = db.execute(
+            "SELECT id, surname, given_name, created_at FROM personnel_filing WHERE id = ?",
+            (filing["replaced_by_id"],),
+        ).fetchone()
+    predecessor = db.execute(  # 本记录替代了哪条旧记录（即本记录为重报）
+        "SELECT id, surname, given_name, created_at FROM personnel_filing WHERE replaced_by_id = ?",
+        (filing_id,),
+    ).fetchone()
+
     return render_template(
         "personnel/view.html",
         filing=filing,
         info=info_row,
+        successor=successor,
+        predecessor=predecessor,
     )
 
 
@@ -330,11 +374,12 @@ def view(filing_id):
 # =========================================================================
 @personnel_bp.route("/personnel/<int:filing_id>/delete", methods=["POST"])
 @login_required
-def delete(filing_id):
+def delete(filing_id) -> ResponseReturnValue:
     db = get_db()
+    before = row_snapshot("personnel_filing", filing_id)
     db.execute("DELETE FROM personnel_filing WHERE id = ?", (filing_id,))
     db.commit()
-    log_action("delete", "personnel_filing", filing_id)
+    log_action("delete", "personnel_filing", filing_id, before=before)
     flash("备案记录已删除。", "info")
     return redirect(url_for("personnel.list"))
 
@@ -350,6 +395,7 @@ def _extract_info_form(form):
         "name": form.get("name", "").strip(),
         "gender": form.get("gender", "").strip(),
         "birth_date": parse_date_input(form.get("birth_date", "")),
+        "id_number": form.get("id_number", "").strip().upper(),
         "work_start_date": parse_date_input(form.get("work_start_date", "")),
         "education": form.get("education", "").strip(),
         "degree": form.get("degree", "").strip(),
@@ -358,7 +404,7 @@ def _extract_info_form(form):
         "political_status": form.get("political_status", "").strip(),
         "party_join_date": parse_date_input(form.get("party_join_date", "")),
         "position": form.get("position", "").strip(),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -366,28 +412,19 @@ def _validate_info_form(data: dict) -> list[str]:
     errors = []
     required = [
         ("unit", "单位"), ("department", "部门"), ("name", "姓名"),
-        ("gender", "性别"), ("birth_date", "出生日期"),
+        ("gender", "性别"), ("birth_date", "出生日期"), ("id_number", "身份证号"),
+        ("work_start_date", "参加工作日期"),
+        ("education", "学历"), ("degree", "学位"), ("title", "职称"),
         ("rank", "职级"), ("political_status", "政治面貌"),
-        ("position", "职务（岗位名称）"), ("operator", "操作人"),
+        ("position", "职务（岗位名称）"),
     ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
-
-    if data["birth_date"]:
-        ok, msg = validate_date_format(data["birth_date"])
-        if not ok:
-            errors.append(f"出生日期: {msg}")
-
-    if data["work_start_date"]:
-        ok, msg = validate_date_format(data["work_start_date"])
-        if not ok:
-            errors.append(f"参加工作日期: {msg}")
-
-    if data["party_join_date"]:
-        ok, msg = validate_date_format(data["party_join_date"])
-        if not ok:
-            errors.append(f"入党日期: {msg}")
+    errors += check_required(data, required)
+    errors += check_dates(data, [
+        ("birth_date", "出生日期"),
+        ("work_start_date", "参加工作日期"),
+        ("party_join_date", "入党日期"),
+    ])
+    errors += check_identity(data)
 
     if is_party_member(data["political_status"]) and not data["party_join_date"]:
         errors.append("中共党员/预备党员须填写入党日期。")
@@ -410,7 +447,7 @@ def _extract_filing_form(form):
         "tag": form.get("tag", "新增").strip(),
         "informed": form.get("informed", "否").strip(),
         "remarks": form.get("remarks", "").strip(),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -422,33 +459,19 @@ def _validate_filing_form(data: dict, skip_id_dup_check: bool = False) -> list[s
         ("residence", "户口所在地"), ("political_status", "政治面貌"),
         ("work_unit", "工作单位"), ("position_or_title", "职务（级）或职称"),
         ("supervisor_unit", "人事主管单位"), ("tag", "标记"),
-        ("informed", "已告知本人"), ("operator", "操作人"),
+        ("informed", "已告知本人"),
     ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
+    errors += check_required(data, required)
+    errors += check_dates(data, [("birth_date", "出生日期")])
+    errors += check_identity(data)
 
-    if data["birth_date"]:
-        ok, msg = validate_date_format(data["birth_date"])
-        if not ok:
-            errors.append(f"出生日期: {msg}")
-
-    if data["id_number"]:
-        ok, msg = validate_id_number(data["id_number"])
-        if not ok:
-            errors.append(f"身份证号: {msg}")
-        elif data["birth_date"]:
-            ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
-            if not ok2:
-                errors.append(msg2)
-
-        if not skip_id_dup_check:
-            db = get_db()
-            dup = db.execute(
-                "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'active'",
-                (data["id_number"],),
-            ).fetchone()
-            if dup:
-                errors.append("该身份证号已存在有效备案记录，请勿重复登记。")
+    if data["id_number"] and not skip_id_dup_check:
+        db = get_db()
+        dup = db.execute(
+            "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'active'",
+            (data["id_number"],),
+        ).fetchone()
+        if dup:
+            errors.append("该身份证号已存在有效备案记录，请勿重复登记。")
 
     return errors

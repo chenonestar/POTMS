@@ -389,6 +389,7 @@
             </tbody>
         </table>
         <p style="margin-top:12px; color:var(--text-muted);">📌 系统仅设置单一管理员账户，登录后直接进入功能界面，无需角色切换、权限分配或审批流转。</p>
+        <p style="margin-top:8px; color:var(--text-muted);">📌 因系统为单用户统管，各业务表单<strong>无需手动填写"操作人"</strong>，系统在保存时自动记录当前登录管理员为操作人并写入操作日志。</p>
     </div>
 </section>
 
@@ -425,10 +426,11 @@
                 <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>与身份证一致（注：备案表中姓/名分开，此处可整体填写）</td></tr>
                 <tr><td>性别</td><td>ENUM('男','女')</td><td><span class="badge must">必填</span></td><td>下拉选择</td></tr>
                 <tr><td>出生日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD，需与身份证号对应</td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>校验位验证 + 出生日期一致性校验；作为唯一身份源，登记备案表 / 明细表自动带入</td></tr>
                 <tr><td>参加工作日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>格式 YYYYMMDD</td></tr>
                 <tr><td>学历</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
                 <tr><td>学位</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（字典维护）</td></tr>
-                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>副高/正高/其他（字典维护）</td></tr>
+                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>副高/正高/其他（字典维护）</td></tr>
                 <tr><td>职级</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>处级/副处级/正科/其他（字典维护）</td></tr>
                 <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（枚举值见第8章）</td></tr>
                 <tr><td>入党日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>中共党员/预备党员时必填</td></tr>
@@ -461,7 +463,7 @@
                 <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>下拉选择（枚举值见第8章）</td></tr>
                 <tr><td>工作单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>写全称</td></tr>
                 <tr><td>职务（级）或职称</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>处级领导→"处级"/"副处级"；副处级单位班子成员→"正科"；其他→"副高"/"正高"</td></tr>
-                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>名称需与印章一致</td></tr>
+                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>下拉选择（数据字典维护，可复用）；名称需与印章一致</td></tr>
                 <tr><td>标记</td><td>ENUM('新增','更新')</td><td><span class="badge must">必填</span></td><td>首次备案为"新增"，信息变更重报为"更新"</td></tr>
                 <tr><td>已告知本人</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>备注</td><td>VARCHAR(500)</td><td><span class="badge opt">选填</span></td><td></td></tr>
@@ -471,6 +473,9 @@
         <h4>校验规则</h4>
         <ul class="styled">
             <li><strong>身份证校验</strong>：18位公民身份证号须通过校验位算法，且出生日期段（第7–14位）须与"出生日期"字段一致。</li>
+            <li><strong>性别一致性校验</strong>：填写的"性别"须与身份证号第17位顺序码奇偶一致（奇数→男，偶数→女），不一致则拒绝保存。</li>
+            <li><strong>日期合法性校验</strong>：所有日期类字段（出生日期、参加工作日期、批准日期、领用/归还/实际回国/取消日期、证照有效/上交日期、撤控/移交日期等）均须为真实存在的日期（YYYYMMDD），拒绝形如 20260230、20261340 的非法日期；前端即时提示 + 后端强制校验。</li>
+            <li><strong>计划出行日期区间校验</strong>：形如"2026-8-1-2026-8-11"的区间，须能解析出<strong>起、止两个真实存在的日期</strong>，且<strong>起始日期不晚于结束日期</strong>；否则拒绝保存并提示具体原因。</li>
             <li><strong>户口所在地格式</strong>：省份不加"省"字，如"浙江"非"浙江省"；江东区、鄞县在系统中统一映射为"浙江宁波市鄞州区"。</li>
             <li><strong>复姓识别</strong>：前端提供常见复姓列表提示（欧阳、司马、上官、诸葛、令狐等），协助操作员正确拆分姓/名。</li>
         </ul>
@@ -528,7 +533,7 @@
         </table>
 
         <div class="footnote">
-            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。
+            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。<strong>填写某类证件号时，其"有效日期"与"上交日期"均为必填。</strong>系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。
         </div>
     </div>
 </section>
@@ -586,17 +591,20 @@
                 <tr><td>单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>部门</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>姓名</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>职务</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td></td></tr>
-                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>职务</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
+                <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>自动带入（取自信息登记表），无需重复选择</td></tr>
+                <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
                 <tr><td>地点、证照</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>目的地国家/地区及使用证照类型</td></tr>
                 <tr><td>类别</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>出国/出境类别（字典维护）</td></tr>
-                <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>日期区间，如"2023-6-20-2023-6-26"</td></tr>
+                <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>统一格式 YYYY/MM/DD-YYYY/MM/DD（如 2026/08/01-2026/08/11），前端固定掩码输入；历史数据自动转换</td></tr>
                 <tr><td>批准日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>审批通过后回填</td></tr>
                 <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证</td></tr>
-                <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>若"是否做证"为是，证件办好后补录</td></tr>
+                <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>已登记证件可下拉选取，做证新号手输；若"是否做证"为是，证件办好后补录</td></tr>
                 <tr><td>证件领用日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>路径A时必填</td></tr>
-                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国后证件上缴日期</td></tr>
+                <tr><td>实际回国日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国（境）实际日期；作为"10个工作日交回证件"的起算日，留空则以计划出行结束日计</td></tr>
+                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>证件实际交回保管日期；填写即视为已归还，空表示尚未归还</td></tr>
+                <tr><td>行程状态</td><td>ENUM('normal','cancelled')</td><td><span class="badge opt">选填</span></td><td>正常 / 取消行程，默认正常</td></tr>
+                <tr><td>取消日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>取消行程时记录；作为"5个工作日交回证件"的起算日</td></tr>
                 <tr><td>附件</td><td>FILE</td><td><span class="badge must">必填</span></td><td>PDF扫描件（支持多文件上传）</td></tr>
             </tbody>
         </table>
@@ -613,6 +621,8 @@
             <li><strong>录入</strong>：管理员根据《个人申请报告》《审批表》等线下已签批材料，填写《因私出国（境）人员明细表》并上传扫描附件。</li>
             <li><strong>证照操作</strong>：已有证件→记录领用日期；无证件→记录"同意申办函"信息及后续证件号码。</li>
             <li><strong>归档</strong>：信息填写完毕后直接保存归档，系统记录操作时间及操作人。</li>
+            <li><strong>回国交证</strong>：登记备案人员回国（境）后，须在<strong>10个工作日内</strong>向证件管理部门交回因私出国（境）证件；管理员在明细详情中记录"实际回国日期""证件归还日期"。</li>
+            <li><strong>取消行程</strong>：如行程取消，管理员在明细详情中点击"取消行程"并记录取消日期；已申领证件须于取消日起<strong>5个工作日内</strong>送回保管。取消后可"恢复行程"还原为正常状态。</li>
         </ol>
         <p style="margin-top:8px; color:var(--text-muted);">📌 所有审批环节在线下完成，系统仅作为<strong>信息登记与电子归档</strong>平台，不做线上审批流转。</p>
     </div>
@@ -654,12 +664,14 @@
                 <tr><td>户口所在地</td><td>VARCHAR(100)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>政治面貌</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
                 <tr><td>工作单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>报送单位名称</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>人事主管单位</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>下拉选择（数据字典维护）</td></tr>
+                <tr><td>报送单位名称</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>下拉配置（报送单位维护）；选中自动带出联系人/电话</td></tr>
                 <tr><td>报送单位类别</td><td>ENUM</td><td><span class="badge must">必填</span></td><td>党政机关 / 金融系统 / 教科文卫系统 / 国有大中型企业单位 / 其他单位</td></tr>
-                <tr><td>报送单位联系人</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td></td></tr>
-                <tr><td>报送单位联系电话</td><td>VARCHAR(20)</td><td><span class="badge must">必填</span></td><td></td></tr>
+                <tr><td>报送单位联系人</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>随报送单位自动带出，可修改</td></tr>
+                <tr><td>报送单位联系电话</td><td>VARCHAR(20)</td><td><span class="badge must">必填</span></td><td>随报送单位自动带出，可修改</td></tr>
                 <tr><td>入库批号</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>原备案批号</td></tr>
+                <tr><td>撤控日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>默认今天，可按实际撤控日期修改；历史记录以录入时间回填</td></tr>
+                <tr><td>证件移交日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>撤控后证件移交出去的日期</td></tr>
                 <tr><td>备注（撤控原因等）</td><td>VARCHAR(500)</td><td><span class="badge must">必填</span></td><td>须写明撤控原因</td></tr>
             </tbody>
         </table>
@@ -698,6 +710,7 @@
         <h3>7.3 查询与筛选 <span class="req-id">REQ-006</span></h3>
         <ul class="styled">
             <li>全局搜索：按<strong>姓名、身份证号、单位</strong>进行全系统快速检索。</li>
+            <li>人员选择器：在证照登记、出国申请等需选择备案人员处，提供<strong>按姓名 / 身份证号 / 单位实时过滤</strong>的搜索框，适应约 500 人规模下的快速定位。</li>
             <li>高级筛选：按<strong>政治面貌、职级、户口所在地、备案状态、证照类型、出行日期范围</strong>等多条件组合筛选。</li>
             <li>列表页支持：排序、分页、自定义列显示/隐藏。</li>
         </ul>
@@ -725,7 +738,8 @@
         <h3>7.6 提醒功能 <span class="req-id">REQ-009</span></h3>
         <ul class="styled">
             <li>证照有效期到期前30天，在系统首页以<strong>醒目提示条</strong>展示即将到期的证照信息。</li>
-            <li>证件领用后超过计划归还日期未归还，系统首页<strong>高亮标记</strong>逾期未还记录。</li>
+            <li><strong>证件逾期未还</strong>判定口径：已领用证件（证件领用日期非空）且尚未归还（证件归还日期为空），并已超过应交回时限——系统首页<strong>高亮标记</strong>逾期未还记录。</li>
+            <li><strong>交回时限（按工作日，仅顺延跳过周六/周日）</strong>：正常行程为<strong>实际回国日期起10个工作日内</strong>（实际回国日期留空时以计划出行结束日计）；取消行程为<strong>取消日期起5个工作日内</strong>。到期日当天仍算未逾期，次一日起计逾期。</li>
             <li>以上提醒均在管理员登录后的<strong>首页仪表盘</strong>集中展示，无需外部消息推送。</li>
         </ul>
     </div>
@@ -812,10 +826,13 @@
                 <tr><td>职称</td><td>正高、副高、中级、初级、无</td></tr>
                 <tr><td>职级</td><td>处级、副处级、正科、副科、科员、其他</td></tr>
                 <tr><td>出国（境）类别</td><td>旅游、探亲、访友、商务、留学、其他</td></tr>
+                <tr><td>人事主管单位</td><td>下拉配置，可复用；支持从已有数据自动引导 + 手动维护</td></tr>
+                <tr><td>报送单位</td><td>配置化（名称+联系人+电话），撤控表选名称自动带出联系人/电话；支持从已有数据引导 + 维护页维护</td></tr>
                 <tr><td>户口所在地</td><td>省市区三级联动（不含"省"字后缀）</td></tr>
                 <tr><td>单位/部门</td><td>树形组织结构维护</td></tr>
             </tbody>
         </table>
+        <p style="margin-top:12px; color:var(--text-muted);">📌 维护入口：学历/学位/职称/职级/政治面貌/出国（境）类别/报送单位类别 由「系统设置 → <strong>数据字典</strong>」页统一增改删（已被业务记录引用的项禁止删除）；单位/部门由「系统设置 → 组织架构」维护；户口所在地为内置省市区三级联动。</p>
     </div>
 </section>
 
@@ -826,9 +843,12 @@
     <div class="card">
         <h3>9.1 安全性</h3>
         <ul class="styled">
-            <li><strong>身份认证</strong>：管理员用户名/密码登录，密码哈希存储（bcrypt）。</li>
-            <li><strong>会话管理</strong>：基于 Session 或 JWT Token，支持登录超时自动退出。</li>
+            <li><strong>身份认证</strong>：管理员用户名/密码登录，密码使用 bcrypt 加盐哈希存储（旧 werkzeug 哈希登录时透明升级）。</li>
+            <li><strong>会话管理</strong>：基于服务端 Session（签名 Cookie），支持登录超时自动退出。</li>
+            <li><strong>CSRF 防护</strong>：所有会改变状态的请求（POST/PUT/PATCH/DELETE）经 CSRF 令牌校验；令牌基于会话随机生成、常量时间比对，前端自动注入各表单。轻量内置实现，不引入额外依赖、不增加打包体积。</li>
+            <li><strong>SQL 注入防护</strong>：一律使用参数化查询；涉及表名的内部工具（如快照读取）采用<strong>表名白名单</strong>校验，杜绝动态标识符注入。</li>
             <li><strong>数据脱敏</strong>：身份证号在前端列表展示时部分掩码（如 <code>330***********1234</code>）。</li>
+            <li><strong>输入校验</strong>：身份证校验位 + 出生日期 + 性别一致性；日期字段拒绝不存在日期；计划出行日期固定格式并校验区间合理性。前后端同口径。</li>
             <li><strong>附件安全</strong>：上传文件限制为 PDF 格式，单文件大小 ≤10MB。</li>
             <li><strong>备份安全</strong>：SQLite 数据库文件定期备份至指定目录。</li>
         </ul>
@@ -972,6 +992,17 @@
             <strong>推荐技术组合：</strong>Python 3.12+ + Flask + SQLite3 + openpyxl + Jinja2 + Bootstrap 5（前端 UI）<br>
             <strong>打包分发：</strong>PyInstaller 生成单文件 .exe，内置 Python 运行时 + SQLite 数据库模板
         </div>
+    </div>
+
+    <div class="card">
+        <h3>9.6 代码质量与可测试性</h3>
+        <ul class="styled">
+            <li><strong>公共校验函数</strong>：必填、日期合法性、身份证一致性等校验逻辑抽取为 <code>check_required</code> / <code>check_dates</code> / <code>check_identity</code> 公共函数，各业务模块统一复用，避免重复实现导致口径不一致。</li>
+            <li><strong>单元测试</strong>：采用 pytest 覆盖关键纯逻辑（身份证/性别/日期/出行区间校验、工作日推算、证件逾期判定、数据库迁移幂等与历史回填）。测试依赖仅置于 <code>requirements-dev.txt</code>，<strong>不参与 exe 打包</strong>，不影响分发体积。</li>
+            <li><strong>类型注解</strong>：分页等公共返回结构使用 TypedDict，路由处理函数标注返回类型，提升 IDE 智能提示与静态检查覆盖。</li>
+            <li><strong>数据迁移</strong>：数据库结构变更通过启动时的幂等迁移自动生效（新增字段、历史数据回填与格式规整），部署升级无需手动改库。</li>
+        </ul>
+        <div class="footnote">📌 上述质量措施均以"不改变既有功能行为、不增加打包体积"为前提，并以自动化测试固化关键业务逻辑。</div>
     </div>
 </section>
 

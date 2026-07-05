@@ -18,19 +18,28 @@ THIN_BORDER = Border(
     left=Side(style="thin"), right=Side(style="thin"),
     top=Side(style="thin"), bottom=Side(style="thin"),
 )
-TITLE_FONT = Font(name="微软雅黑", bold=True, size=14)
+TITLE_FONT = Font(name="微软雅黑", bold=True, size=16)
+TITLE_ALIGN = Alignment(horizontal="center", vertical="center")
 
 
-def _style_header(ws, headers: list, col_count: int):
-    """写入表头并应用样式"""
+def _style_header(ws, title: str, headers: list):
+    """写入标题行（表名，合并居中）+ 列头行，并冻结。数据从第 3 行开始。"""
+    col_count = len(headers)
+    # 第1行：表名标题（跨列合并居中）
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col_count)
+    tcell = ws.cell(row=1, column=1, value=title)
+    tcell.font = TITLE_FONT
+    tcell.alignment = TITLE_ALIGN
+    ws.row_dimensions[1].height = 30
+    # 第2行：列头
     for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
+        cell = ws.cell(row=2, column=col, value=h)
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
         cell.alignment = HEADER_ALIGN
         cell.border = THIN_BORDER
-    # 冻结首行
-    ws.freeze_panes = "A2"
+    # 冻结标题 + 列头
+    ws.freeze_panes = "A3"
 
 
 def _style_data(ws, start_row: int, end_row: int, col_count: int):
@@ -42,11 +51,11 @@ def _style_data(ws, start_row: int, end_row: int, col_count: int):
             cell.border = THIN_BORDER
 
 
-def _auto_width(ws, col_count: int, max_width: int = 40):
-    """自动列宽"""
+def _auto_width(ws, col_count: int, max_width: int = 40, min_row: int = 2):
+    """自动列宽（默认从列头行起算，跳过合并的标题行）"""
     for col in range(1, col_count + 1):
         max_len = 0
-        for row in ws.iter_rows(min_col=col, max_col=col, values_only=True):
+        for row in ws.iter_rows(min_row=min_row, min_col=col, max_col=col, values_only=True):
             for val in row:
                 if val:
                     max_len = max(max_len, len(str(val)))
@@ -73,7 +82,7 @@ def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
 # 1. 备案人员信息登记表
 # =========================================================================
 HEADERS_INFO = [
-    "单位", "部门", "姓名", "性别", "出生日期", "参加工作日期",
+    "单位", "部门", "姓名", "性别", "出生日期", "身份证号", "参加工作日期",
     "学历", "学位", "职称", "职级", "政治面貌", "入党日期", "职务（岗位名称）",
 ]
 
@@ -85,19 +94,25 @@ NOTES_INFO = [
 ]
 
 
-def export_personnel_info(operator: str) -> str:
+def export_personnel_info(operator: str, where_sql: str = "", params: tuple = (), joined: bool = False) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM personnel_info ORDER BY created_at DESC").fetchall()
+    if joined:
+        sql = ("SELECT pi.* FROM personnel_info pi "
+               "JOIN personnel_filing pf ON pf.personnel_info_id = pi.id "
+               "WHERE 1=1 " + where_sql + " ORDER BY pi.created_at DESC")
+    else:
+        sql = "SELECT * FROM personnel_info WHERE 1=1 " + where_sql + " ORDER BY created_at DESC"
+    rows = db.execute(sql, params).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "备案人员信息登记表"
-    _style_header(ws, HEADERS_INFO, len(HEADERS_INFO))
+    _style_header(ws, "备案人员信息登记表", HEADERS_INFO)
 
-    for i, row in enumerate(rows, 2):
+    for i, row in enumerate(rows, 3):
         values = [
             row["unit"], row["department"], row["name"], row["gender"],
-            row["birth_date"], row["work_start_date"] or "",
+            row["birth_date"], row["id_number"] or "", row["work_start_date"] or "",
             row["education"] or "", row["degree"] or "", row["title"] or "",
             row["rank"], row["political_status"], row["party_join_date"] or "",
             row["position"],
@@ -105,7 +120,7 @@ def export_personnel_info(operator: str) -> str:
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)
 
-    _style_data(ws, 2, len(rows) + 1, len(HEADERS_INFO))
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_INFO))
     _auto_width(ws, len(HEADERS_INFO))
     return _save_and_return(ws, "备案人员信息登记表", operator, NOTES_INFO)
 
@@ -132,16 +147,21 @@ NOTES_FILING = [
 ]
 
 
-def export_personnel_filing(operator: str) -> str:
+def export_personnel_filing(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM personnel_filing ORDER BY created_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT pf.* FROM personnel_filing pf "
+        "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
+        "WHERE 1=1 " + where_sql + " ORDER BY pf.created_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "登记备案表"
-    _style_header(ws, HEADERS_FILING, len(HEADERS_FILING))
+    _style_header(ws, "因私事出国（境）人员登记备案表", HEADERS_FILING)
 
-    for i, row in enumerate(rows, 2):
+    for i, row in enumerate(rows, 3):
         values = [
             row["surname"], row["given_name"], row["gender"], row["birth_date"],
             row["id_number"], row["residence"], row["political_status"],
@@ -153,7 +173,7 @@ def export_personnel_filing(operator: str) -> str:
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)
 
-    _style_data(ws, 2, len(rows) + 1, len(HEADERS_FILING))
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_FILING))
     _auto_width(ws, len(HEADERS_FILING))
     return _save_and_return(ws, "登记备案表", operator, NOTES_FILING)
 
@@ -168,17 +188,28 @@ HEADERS_CERT = [
     "台湾通行证", "台湾通行证号", "台湾通有效日期", "台湾通上交日期",
 ]
 
+NOTES_CERT = [
+    "填表说明：",
+    "1. 一人可同时持有多类证件，无某类证件则留空。",
+    "2. 填写某类证件号时，其有效日期与上交日期均为必填。",
+    "3. 日期格式为 YYYYMMDD。",
+    "4. 系统对有效期到期前 30 天进行预警提示。",
+]
 
-def export_certificates(operator: str) -> str:
+
+def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM certificates ORDER BY updated_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT * FROM certificates WHERE 1=1 " + where_sql + " ORDER BY updated_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "证照登记表"
-    _style_header(ws, HEADERS_CERT, len(HEADERS_CERT))
+    _style_header(ws, "因私出国（境）备案人员证照登记表", HEADERS_CERT)
 
-    for i, row in enumerate(rows, 2):
+    for i, row in enumerate(rows, 3):
         values = [
             row["unit"], row["department"], row["name"],
             "普通护照", row["passport_no"] or "", row["passport_expiry"] or "", row["passport_submit_date"] or "",
@@ -188,9 +219,9 @@ def export_certificates(operator: str) -> str:
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)
 
-    _style_data(ws, 2, len(rows) + 1, len(HEADERS_CERT))
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_CERT))
     _auto_width(ws, len(HEADERS_CERT))
-    return _save_and_return(ws, "证照登记表", operator, [])
+    return _save_and_return(ws, "证照登记表", operator, NOTES_CERT)
 
 
 # =========================================================================
@@ -199,31 +230,38 @@ def export_certificates(operator: str) -> str:
 HEADERS_TRAVEL = [
     "单位", "部门", "姓名", "职务", "职称", "身份证号",
     "地点、证照", "类别", "计划出行日期", "批准日期",
-    "是否做证", "证件号码", "证件领用日期", "证件归还日期",
+    "是否做证", "证件号码", "证件领用日期", "实际回国日期",
+    "证件归还日期", "行程状态", "取消日期",
 ]
 
 
-def export_travel_details(operator: str) -> str:
+def export_travel_details(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM travel_details ORDER BY created_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT * FROM travel_details WHERE 1=1 " + where_sql + " ORDER BY created_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "出国明细表"
-    _style_header(ws, HEADERS_TRAVEL, len(HEADERS_TRAVEL))
+    _style_header(ws, "因私出国（境）人员明细表", HEADERS_TRAVEL)
 
-    for i, row in enumerate(rows, 2):
+    for i, row in enumerate(rows, 3):
         values = [
             row["unit"], row["department"], row["name"], row["position"],
             row["title"] or "", row["id_number"], row["destination_passport"],
             row["category"], row["travel_dates"], row["approval_date"] or "",
             row["need_new_passport"], row["passport_no"] or "",
-            row["passport_collect_date"] or "", row["passport_return_date"] or "",
+            row["passport_collect_date"] or "", row["actual_return_date"] or "",
+            row["passport_return_date"] or "",
+            "取消行程" if row["trip_status"] == "cancelled" else "正常",
+            row["cancel_date"] or "",
         ]
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)
 
-    _style_data(ws, 2, len(rows) + 1, len(HEADERS_TRAVEL))
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_TRAVEL))
     _auto_width(ws, len(HEADERS_TRAVEL))
     return _save_and_return(ws, "出国明细表", operator, [
         "1. 计划出行日期格式：起始日期-结束日期，如 2023-6-20-2023-6-26。",
@@ -238,31 +276,34 @@ HEADERS_DEC = [
     "中文姓", "中文名", "性别", "出生日期", "身份证号", "户口所在地",
     "政治面貌", "工作单位", "人事主管单位", "报送单位名称",
     "报送单位类别", "报送单位联系人", "报送单位联系电话",
-    "入库批号", "撤控原因",
+    "入库批号", "撤控日期", "证件移交日期", "撤控原因",
 ]
 
 
-def export_decontrol(operator: str) -> str:
+def export_decontrol(operator: str, where_sql: str = "", params: tuple = ()) -> str:
     db = get_db()
-    rows = db.execute("SELECT * FROM decontrol_filing ORDER BY created_at DESC").fetchall()
+    rows = db.execute(
+        "SELECT * FROM decontrol_filing WHERE 1=1 " + where_sql + " ORDER BY created_at DESC",
+        params,
+    ).fetchall()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "撤控备案表"
-    _style_header(ws, HEADERS_DEC, len(HEADERS_DEC))
+    _style_header(ws, "因私事出国（境）人员撤控备案表", HEADERS_DEC)
 
-    for i, row in enumerate(rows, 2):
+    for i, row in enumerate(rows, 3):
         values = [
             row["surname"], row["given_name"], row["gender"], row["birth_date"],
             row["id_number"], row["residence"], row["political_status"],
             row["work_unit"], row["supervisor_unit"], row["submit_unit_name"],
             row["submit_unit_type"], row["submit_contact"], row["submit_phone"],
-            row["batch_no"], row["reason"],
+            row["batch_no"], row["decontrol_date"] or "", row["cert_handover_date"] or "", row["reason"],
         ]
         for col, val in enumerate(values, 1):
             ws.cell(row=i, column=col, value=val)
 
-    _style_data(ws, 2, len(rows) + 1, len(HEADERS_DEC))
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_DEC))
     _auto_width(ws, len(HEADERS_DEC))
     return _save_and_return(ws, "撤控备案表", operator, [
         "1. 出生日期格式为YYYYMMDD，生日需与身份证号对应。",

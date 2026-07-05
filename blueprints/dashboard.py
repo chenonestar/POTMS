@@ -1,17 +1,41 @@
 """首页仪表盘 — 增强版（维度分类 + 可点击）"""
 from datetime import datetime, timedelta
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, redirect, url_for, flash
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
+from utils.backup import run_daily_backup, latest_backup
+from utils.helpers import log_action
+from utils.validators import is_cert_overdue, cert_overdue_deadline
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
 
+@dashboard_bp.route("/backup/now", methods=["POST"])
+@login_required
+def backup_now() -> ResponseReturnValue:
+    """手动立即备份数据库"""
+    try:
+        result = run_daily_backup(force=True)
+        log_action("backup", "database", detail=f"手动备份 {result['date']}，清理旧备份 {result['pruned']} 个")
+        flash(f"数据库已备份（{result['date']}）。", "success")
+    except Exception as e:
+        flash(f"备份失败：{e}", "danger")
+    return redirect(url_for("dashboard.index"))
+
+
 @dashboard_bp.route("/")
 @login_required
-def index():
+def index() -> ResponseReturnValue:
+    # 长时间运行时，登录首页也触发每日备份检查（当天已备份则跳过）
+    try:
+        run_daily_backup()
+    except Exception:
+        pass
+    _, backup_date = latest_backup()
+
     db = get_db()
     today = datetime.now().strftime("%Y%m%d")
     warn_date = (datetime.now() + timedelta(days=30)).strftime("%Y%m%d")
@@ -45,14 +69,26 @@ def index():
     cert_in_storage = db.execute(
         "SELECT COUNT(*) FROM travel_details WHERE passport_collect_date IS NULL OR passport_collect_date = ''"
     ).fetchone()[0]
-    cert_in_use = db.execute(
-        "SELECT COUNT(*) FROM travel_details WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
+    # 已领用未归还的证件（正常/取消行程均含在内），用于「使用中」与「逾期」判定
+    in_use_rows = db.execute(
+        "SELECT id, name, passport_collect_date, passport_return_date, "
+        "actual_return_date, travel_end, trip_status, cancel_date "
+        "FROM travel_details "
+        "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
         "AND (passport_return_date IS NULL OR passport_return_date = '')"
-    ).fetchone()[0]
-    cert_overdue = db.execute(
-        "SELECT COUNT(*) FROM travel_details WHERE passport_return_date IS NOT NULL AND passport_return_date != '' "
-        "AND passport_return_date < ?", (today,)
-    ).fetchone()[0]
+    ).fetchall()
+    cert_in_use = len(in_use_rows)
+    # 逾期未还：已领用 + 未归还 + 超过归还工作日时限（正常 10 / 取消 5）
+    overdue = []
+    for r in in_use_rows:
+        if is_cert_overdue(r, today):
+            overdue.append({
+                "name": r["name"],
+                "deadline": cert_overdue_deadline(r),
+                "trip_status": r["trip_status"] or "normal",
+            })
+    overdue.sort(key=lambda x: x["deadline"])
+    cert_overdue = len(overdue)
 
     # ——— 证照到期预警 ———
     cert_expiry_warnings = db.execute(
@@ -69,18 +105,12 @@ def index():
             if expiry and today <= expiry <= warn_date:
                 expiring.append({"name": row["name"], "type": label, "expiry": expiry})
 
-    # ——— 逾期未还 ———
-    overdue = db.execute(
-        "SELECT name, passport_return_date FROM travel_details "
-        "WHERE passport_return_date < ? AND passport_collect_date IS NOT NULL AND passport_collect_date != '' "
-        "ORDER BY passport_return_date",
-        (today,),
-    ).fetchall()
-
     # ——— 近期出行（按出行日期排序） ———
     recent_travel = db.execute(
         "SELECT name, destination_passport, travel_dates, created_at "
-        "FROM travel_details ORDER BY travel_dates DESC LIMIT 5"
+        "FROM travel_details "
+        "ORDER BY CASE WHEN travel_start IS NULL OR travel_start = '' THEN 1 ELSE 0 END, "
+        "travel_start DESC, created_at DESC LIMIT 5"
     ).fetchall()
 
     return render_template(
@@ -96,6 +126,7 @@ def index():
         cert_in_use=cert_in_use,
         cert_overdue=cert_overdue,
         expiring=expiring,
-        overdue=[dict(r) for r in overdue],
+        overdue=overdue,
         recent_travel=recent_travel,
+        backup_date=backup_date,
     )

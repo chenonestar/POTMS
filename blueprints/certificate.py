@@ -1,46 +1,61 @@
 """证照登记蓝图 — 护照 / 港澳通行证 / 台湾通行证"""
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate
-from utils.validators import parse_date_input, validate_date_format
+from utils.helpers import log_action, paginate, row_snapshot
+from utils.validators import parse_date_input, check_required, check_dates
 
 certificate_bp = Blueprint("certificate", __name__)
 
 
+def build_filters(args, ids=None):
+    """构建证照列表 WHERE 子句，供列表与导出复用。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (name LIKE ? OR unit LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like])
+    has_passport = args.get("has_passport", "").strip()
+    if has_passport == "1":
+        where += " AND passport_no IS NOT NULL AND passport_no != ''"
+    elif has_passport == "0":
+        where += " AND (passport_no IS NULL OR passport_no = '')"
+    has_hm = args.get("has_hm", "").strip()
+    if has_hm == "1":
+        where += " AND hm_pass_no IS NOT NULL AND hm_pass_no != ''"
+    elif has_hm == "0":
+        where += " AND (hm_pass_no IS NULL OR hm_pass_no = '')"
+    has_tw = args.get("has_tw", "").strip()
+    if has_tw == "1":
+        where += " AND tw_pass_no IS NOT NULL AND tw_pass_no != ''"
+    elif has_tw == "0":
+        where += " AND (tw_pass_no IS NULL OR tw_pass_no = '')"
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
+
+
 @certificate_bp.route("/certificate/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     has_passport = request.args.get("has_passport", "").strip()
     has_hm = request.args.get("has_hm", "").strip()
     has_tw = request.args.get("has_tw", "").strip()
 
-    base = "SELECT * FROM certificates WHERE 1=1"
-    params: list = []
-    if search:
-        base += " AND (name LIKE ? OR unit LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like])
-    if has_passport == "1":
-        base += " AND passport_no IS NOT NULL AND passport_no != ''"
-    elif has_passport == "0":
-        base += " AND (passport_no IS NULL OR passport_no = '')"
-    if has_hm == "1":
-        base += " AND hm_pass_no IS NOT NULL AND hm_pass_no != ''"
-    elif has_hm == "0":
-        base += " AND (hm_pass_no IS NULL OR hm_pass_no = '')"
-    if has_tw == "1":
-        base += " AND tw_pass_no IS NOT NULL AND tw_pass_no != ''"
-    elif has_tw == "0":
-        base += " AND (tw_pass_no IS NULL OR tw_pass_no = '')"
-    base += " ORDER BY updated_at DESC"
+    where, params = build_filters(request.args)
+    base = "SELECT * FROM certificates WHERE 1=1" + where + " ORDER BY updated_at DESC"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
 
     # 标记即将到期的证照
     from datetime import datetime, timedelta
@@ -71,7 +86,7 @@ def list():
 
 @certificate_bp.route("/certificate/new", methods=["GET", "POST"])
 @login_required
-def new():
+def new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
@@ -98,7 +113,7 @@ def new():
         )
         db.commit()
         cert_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "certificate", cert_id)
+        log_action("create", "certificate", cert_id, after=row_snapshot("certificates", cert_id))
         flash("证照登记已保存。", "success")
         return redirect(url_for("certificate.list"))
 
@@ -126,7 +141,7 @@ def new():
 
 @certificate_bp.route("/certificate/<int:cert_id>/edit", methods=["GET", "POST"])
 @login_required
-def edit(cert_id):
+def edit(cert_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM certificates WHERE id = ?", (cert_id,)).fetchone()
     if not row:
@@ -141,6 +156,7 @@ def edit(cert_id):
                 flash(e, "danger")
             return render_template("certificate/form.html", data=data, editing=True, cert_id=cert_id)
 
+        before = row_snapshot("certificates", cert_id)
         db.execute(
             "UPDATE certificates SET personnel_filing_id=?, unit=?, department=?, name=?, "
             "passport_no=?, passport_expiry=?, passport_submit_date=?, "
@@ -157,7 +173,8 @@ def edit(cert_id):
             ),
         )
         db.commit()
-        log_action("update", "certificate", cert_id)
+        log_action("update", "certificate", cert_id,
+                   before=before, after=row_snapshot("certificates", cert_id))
         flash("证照信息已更新。", "success")
         return redirect(url_for("certificate.list"))
 
@@ -166,11 +183,12 @@ def edit(cert_id):
 
 @certificate_bp.route("/certificate/<int:cert_id>/delete", methods=["POST"])
 @login_required
-def delete(cert_id):
+def delete(cert_id) -> ResponseReturnValue:
     db = get_db()
+    before = row_snapshot("certificates", cert_id)
     db.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))
     db.commit()
-    log_action("delete", "certificate", cert_id)
+    log_action("delete", "certificate", cert_id, before=before)
     flash("证照记录已删除。", "info")
     return redirect(url_for("certificate.list"))
 
@@ -191,38 +209,32 @@ def _extract_form(form):
         "tw_pass_no": form.get("tw_pass_no", "").strip(),
         "tw_pass_expiry": parse_date_input(form.get("tw_pass_expiry", "")),
         "tw_pass_submit_date": parse_date_input(form.get("tw_pass_submit_date", "")),
-        "operator": form.get("operator", "").strip(),
+        "operator": session.get("username", "admin"),
     }
 
 
 def _validate_form(data: dict) -> list[str]:
     errors = []
-    required = [
+    errors += check_required(data, [
         ("personnel_filing_id", "备案人员"), ("unit", "单位"),
-        ("department", "部门"), ("name", "姓名"), ("operator", "操作人"),
-    ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
-
-    # 日期格式校验
-    for field, label in [
+        ("department", "部门"), ("name", "姓名"),
+    ])
+    errors += check_dates(data, [
         ("passport_expiry", "护照有效日期"), ("passport_submit_date", "护照上交日期"),
         ("hm_pass_expiry", "港澳通行证有效日期"), ("hm_pass_submit_date", "港澳通行证上交日期"),
         ("tw_pass_expiry", "台湾通行证有效日期"), ("tw_pass_submit_date", "台湾通行证上交日期"),
-    ]:
-        val = data.get(field)
-        if val:
-            ok, msg = validate_date_format(val)
-            if not ok:
-                errors.append(f"{label}: {msg}")
+    ])
 
-    # 证件号与有效日期至少有一个配套
-    if data.get("passport_no") and not data.get("passport_expiry"):
-        errors.append("填写护照证件号时，有效日期为必填。")
-    if data.get("hm_pass_no") and not data.get("hm_pass_expiry"):
-        errors.append("填写港澳通行证号时，有效日期为必填。")
-    if data.get("tw_pass_no") and not data.get("tw_pass_expiry"):
-        errors.append("填写台湾通行证号时，有效日期为必填。")
+    # 填写证件号时，有效日期与上交日期均为必填
+    for no_field, exp_field, sub_field, label in [
+        ("passport_no", "passport_expiry", "passport_submit_date", "护照"),
+        ("hm_pass_no", "hm_pass_expiry", "hm_pass_submit_date", "港澳通行证"),
+        ("tw_pass_no", "tw_pass_expiry", "tw_pass_submit_date", "台湾通行证"),
+    ]:
+        if data.get(no_field):
+            if not data.get(exp_field):
+                errors.append(f"填写{label}证件号时，有效日期为必填。")
+            if not data.get(sub_field):
+                errors.append(f"填写{label}证件号时，上交日期为必填。")
 
     return errors

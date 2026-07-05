@@ -3,8 +3,6 @@ import sqlite3
 import os
 from datetime import datetime
 
-from werkzeug.security import generate_password_hash
-
 from config import Config
 
 # ---------------------------------------------------------------------------
@@ -62,6 +60,8 @@ SEED_DICT = [
     ("submit_unit_type", "03", "教科文卫系统", 3),
     ("submit_unit_type", "04", "国有大中型企业单位", 4),
     ("submit_unit_type", "99", "其他单位", 5),
+    # 人事主管单位（下拉配置，可在数据字典维护）
+    ("supervisor_unit", "S01", "人事处", 1),
 ]
 
 
@@ -92,6 +92,128 @@ def init_db():
     db.close()
 
 
+def run_migrations():
+    """轻量迁移：为已存在的数据库补齐新增字段（幂等）"""
+    db = sqlite3.connect(Config.DATABASE)
+    try:
+        info_cols = {row[1] for row in db.execute("PRAGMA table_info(personnel_info)").fetchall()}
+        if "id_number" not in info_cols:
+            db.execute("ALTER TABLE personnel_info ADD COLUMN id_number TEXT")
+
+        # 出国明细：规范化的出行起止日期（用于日期区间筛选）
+        travel_cols = {row[1] for row in db.execute("PRAGMA table_info(travel_details)").fetchall()}
+        need_backfill = False
+        if "travel_start" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN travel_start TEXT")
+            need_backfill = True
+        if "travel_end" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN travel_end TEXT")
+            need_backfill = True
+        # 出国明细：实际回国日期 / 行程状态 / 取消日期（逾期口径修正 + 行程取消）
+        if "actual_return_date" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN actual_return_date TEXT")
+        if "trip_status" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN trip_status TEXT DEFAULT 'normal'")
+            db.commit()
+            db.execute("UPDATE travel_details SET trip_status = 'normal' "
+                       "WHERE trip_status IS NULL OR trip_status = ''")
+        if "cancel_date" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN cancel_date TEXT")
+
+        # 操作日志：变更前后数据快照（JSON）
+        log_cols = {row[1] for row in db.execute("PRAGMA table_info(operation_logs)").fetchall()}
+        if "snapshot" not in log_cols:
+            db.execute("ALTER TABLE operation_logs ADD COLUMN snapshot TEXT")
+
+        # 撤控：证件移交日期 / 撤控日期
+        dec_cols = {row[1] for row in db.execute("PRAGMA table_info(decontrol_filing)").fetchall()}
+        if "cert_handover_date" not in dec_cols:
+            db.execute("ALTER TABLE decontrol_filing ADD COLUMN cert_handover_date TEXT")
+        if "decontrol_date" not in dec_cols:
+            db.execute("ALTER TABLE decontrol_filing ADD COLUMN decontrol_date TEXT")
+            db.commit()
+            # 历史记录用 created_at 的日期回填
+            db.execute(
+                "UPDATE decontrol_filing SET decontrol_date = strftime('%Y%m%d', created_at) "
+                "WHERE decontrol_date IS NULL OR decontrol_date = ''")
+
+        # 报送单位配置表（名称/联系人/电话）
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS sys_submit_unit ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+            "contact TEXT, phone TEXT, sort_order INTEGER DEFAULT 0)")
+
+        db.commit()
+
+        # 回填历史出行记录的起止日期
+        if need_backfill:
+            from utils.validators import parse_travel_range
+            rows = db.execute("SELECT id, travel_dates FROM travel_details").fetchall()
+            for tid, dates in rows:
+                start, end = parse_travel_range(dates or "")
+                db.execute("UPDATE travel_details SET travel_start=?, travel_end=? WHERE id=?",
+                           (start, end, tid))
+            db.commit()
+
+        # 统一"计划出行日期"存储格式为 YYYY/MM/DD-YYYY/MM/DD（转换历史 - 分隔写法）
+        # 转换后含 '/'，故以 NOT LIKE '%/%' 作幂等守卫，后续启动不再重复处理
+        from utils.validators import parse_travel_range, format_travel_range
+        legacy = db.execute(
+            "SELECT id, travel_dates FROM travel_details "
+            "WHERE travel_dates IS NOT NULL AND travel_dates != '' AND travel_dates NOT LIKE '%/%'"
+        ).fetchall()
+        for tid, td in legacy:
+            s, e = parse_travel_range(td or "")
+            canon = format_travel_range(s, e)
+            if canon:
+                db.execute("UPDATE travel_details SET travel_dates=? WHERE id=?", (canon, tid))
+        if legacy:
+            db.commit()
+
+        # 引导"人事主管单位"字典：把已有记录中的去重值补入字典（幂等）
+        existing = {r[0] for r in db.execute(
+            "SELECT value FROM sys_dict WHERE category = 'supervisor_unit'").fetchall()}
+        distinct = db.execute(
+            "SELECT DISTINCT supervisor_unit FROM personnel_filing "
+            "WHERE supervisor_unit IS NOT NULL AND supervisor_unit != '' "
+            "UNION SELECT DISTINCT supervisor_unit FROM decontrol_filing "
+            "WHERE supervisor_unit IS NOT NULL AND supervisor_unit != ''"
+        ).fetchall()
+        maxn = 0
+        for r in db.execute("SELECT code FROM sys_dict WHERE category = 'supervisor_unit'").fetchall():
+            cc = r[0] or ""
+            if cc.startswith("S") and cc[1:].isdigit():
+                maxn = max(maxn, int(cc[1:]))
+        order = len(existing)
+        for (val,) in distinct:
+            if val not in existing:
+                maxn += 1
+                order += 1
+                db.execute(
+                    "INSERT OR IGNORE INTO sys_dict (category, code, value, sort_order) "
+                    "VALUES ('supervisor_unit', ?, ?, ?)", (f"S{maxn:02d}", val, order))
+                existing.add(val)
+
+        # 引导"报送单位"配置：从已有撤控记录补齐（名称去重，带联系人/电话）
+        su_existing = {r[0] for r in db.execute("SELECT name FROM sys_submit_unit").fetchall()}
+        su_rows = db.execute(
+            "SELECT submit_unit_name, submit_contact, submit_phone FROM decontrol_filing "
+            "WHERE submit_unit_name IS NOT NULL AND submit_unit_name != '' "
+            "GROUP BY submit_unit_name"
+        ).fetchall()
+        su_order = len(su_existing)
+        for name, contact, phone in su_rows:
+            if name not in su_existing:
+                su_order += 1
+                db.execute(
+                    "INSERT INTO sys_submit_unit (name, contact, phone, sort_order) VALUES (?, ?, ?, ?)",
+                    (name, contact or "", phone or "", su_order))
+                su_existing.add(name)
+        db.commit()
+    finally:
+        db.close()
+
+
 def seed_data():
     """写入种子数据（幂等）"""
     db = sqlite3.connect(Config.DATABASE)
@@ -100,9 +222,10 @@ def seed_data():
     # --- 管理员账户 ---
     existing = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
     if not existing:
+        from utils.security import hash_password
         db.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            ("admin", generate_password_hash("admin123")),
+            ("admin", hash_password("admin123")),
         )
 
     # --- 数据字典 ---
@@ -149,6 +272,7 @@ CREATE TABLE IF NOT EXISTS personnel_info (
     name TEXT NOT NULL,
     gender TEXT NOT NULL,
     birth_date TEXT NOT NULL,
+    id_number TEXT,
     work_start_date TEXT,
     education TEXT,
     degree TEXT,
@@ -222,6 +346,9 @@ CREATE TABLE IF NOT EXISTS travel_details (
     passport_no TEXT,
     passport_collect_date TEXT,
     passport_return_date TEXT,
+    actual_return_date TEXT,
+    trip_status TEXT DEFAULT 'normal',
+    cancel_date TEXT,
     operator TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -245,8 +372,18 @@ CREATE TABLE IF NOT EXISTS decontrol_filing (
     submit_phone TEXT NOT NULL,
     batch_no TEXT NOT NULL,
     reason TEXT NOT NULL,
+    decontrol_date TEXT,
+    cert_handover_date TEXT,
     operator TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sys_submit_unit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    contact TEXT,
+    phone TEXT,
+    sort_order INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS attachments (

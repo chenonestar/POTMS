@@ -54,8 +54,8 @@
                 <tr>
                     <td><small>{{ log.created_at }}</small></td>
                     <td>
-                        {% set action_labels = {'create': '新建', 'update': '修改', 'delete': '删除', 'export': '导出', 'import': '导入'} %}
-                        <span class="badge bg-{{ 'success' if log.action == 'create' else 'warning' if log.action == 'update' else 'danger' if log.action == 'delete' else 'info' }}">{{ action_labels.get(log.action, log.action) }}</span>
+                        {% set action_labels = {'create': '新建', 'update': '修改', 'delete': '删除', 'cancel': '取消行程', 'restore': '恢复行程', 'export': '导出', 'import': '导入', 'backup': '备份'} %}
+                        <span class="badge bg-{{ 'success' if log.action == 'create' else 'warning' if log.action == 'update' else 'danger' if log.action == 'delete' else 'secondary' if log.action == 'backup' else 'info' }}">{{ action_labels.get(log.action, log.action) }}</span>
                     </td>
                     <td>
                         {% set target_labels = {'personnel_info': '信息表', 'personnel_filing': '备案表', 'certificates': '证照表', 'travel_details': '明细表', 'decontrol_filing': '撤控表', 'batch': '批量导入'} %}
@@ -64,6 +64,30 @@
                     <td>
                         <small class="text-muted">{{ log.detail or '—' }}</small>
                         {% if log.target_id %}<small class="text-muted"> (ID: {{ log.target_id }})</small>{% endif %}
+                        {% if log.changes %}
+                        <a class="small ms-1" data-bs-toggle="collapse" href="#snap{{ log.id }}" role="button">变更详情 ▾</a>
+                        <div class="collapse mt-1" id="snap{{ log.id }}">
+                            {% if log.changes.type == 'update' %}
+                            <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                                <thead><tr><th>字段</th><th>变更前</th><th>变更后</th></tr></thead>
+                                <tbody>
+                                {% for d in log.changes.diffs %}
+                                <tr><td>{{ d.field }}</td><td class="text-muted">{{ d.before if d.before not in (None, '') else '—' }}</td><td class="text-success">{{ d.after if d.after not in (None, '') else '—' }}</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                                <thead><tr><th colspan="2">{{ '新建内容' if log.changes.type == 'create' else '删除前内容' }}</th></tr></thead>
+                                <tbody>
+                                {% for d in log.changes.data %}
+                                <tr><td style="width:35%">{{ d.field }}</td><td>{{ d.value }}</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </td>
                     <td>{{ log.operator }}</td>
                     <td><small class="text-muted">{{ log.ip_address or '—' }}</small></td>

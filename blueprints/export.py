@@ -1,5 +1,6 @@
 """导出 & 打印蓝图"""
 from flask import Blueprint, render_template, send_file, flash, redirect, url_for, session, request
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -19,15 +20,34 @@ def _operator():
     return session.get("username", "unknown")
 
 
+def _selected_ids():
+    """从查询串解析选中行 ID（?ids=1,2,3）"""
+    raw = request.args.get("ids", "")
+    return [int(x) for x in raw.split(",") if x.strip().isdigit()]
+
+
+def _scope_note(where_sql, ids) -> str:
+    if ids:
+        return f"选中{len(ids)}行"
+    if where_sql:
+        return "按筛选条件"
+    return "全量"
+
+
 # =========================================================================
-# Excel 导出 — 5 类表单
+# Excel 导出 — 5 类表单（支持 全量 / 按筛选 / 选中行）
 # =========================================================================
 @export_bp.route("/export/info")
 @login_required
-def info_export():
+def info_export() -> ResponseReturnValue:
+    from blueprints.personnel import build_filters
     try:
-        filepath, filename = export_personnel_info(_operator())
-        log_action("export", "personnel_info", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        # 有筛选或选中时经 filing 关联导出；否则全量导出信息表
+        joined = bool(where)
+        filepath, filename = export_personnel_info(_operator(), where, params, joined=joined)
+        log_action("export", "personnel_info", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -36,10 +56,13 @@ def info_export():
 
 @export_bp.route("/export/filing")
 @login_required
-def filing_export():
+def filing_export() -> ResponseReturnValue:
+    from blueprints.personnel import build_filters
     try:
-        filepath, filename = export_personnel_filing(_operator())
-        log_action("export", "personnel_filing", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_personnel_filing(_operator(), where, params)
+        log_action("export", "personnel_filing", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -48,10 +71,13 @@ def filing_export():
 
 @export_bp.route("/export/certificate")
 @login_required
-def certificate_export():
+def certificate_export() -> ResponseReturnValue:
+    from blueprints.certificate import build_filters
     try:
-        filepath, filename = export_certificates(_operator())
-        log_action("export", "certificates", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_certificates(_operator(), where, params)
+        log_action("export", "certificates", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -60,10 +86,13 @@ def certificate_export():
 
 @export_bp.route("/export/travel")
 @login_required
-def travel_export():
+def travel_export() -> ResponseReturnValue:
+    from blueprints.travel import build_filters
     try:
-        filepath, filename = export_travel_details(_operator())
-        log_action("export", "travel_details", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_travel_details(_operator(), where, params)
+        log_action("export", "travel_details", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -72,10 +101,13 @@ def travel_export():
 
 @export_bp.route("/export/decontrol")
 @login_required
-def decontrol_export():
+def decontrol_export() -> ResponseReturnValue:
+    from blueprints.decontrol import build_filters
     try:
-        filepath, filename = export_decontrol(_operator())
-        log_action("export", "decontrol_filing", detail=filename)
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_decontrol(_operator(), where, params)
+        log_action("export", "decontrol_filing", detail=f"{filename}（{_scope_note(where, ids)}）")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
@@ -87,7 +119,7 @@ def decontrol_export():
 # =========================================================================
 @export_bp.route("/print/<string:print_type>/<int:id>")
 @login_required
-def print_view(print_type, id):
+def print_view(print_type, id) -> ResponseReturnValue:
     """渲染打印模板（新标签中打开）"""
     db = get_db()
 
@@ -143,7 +175,7 @@ def print_view(print_type, id):
 # =========================================================================
 @export_bp.route("/print/batch/<string:print_type>")
 @login_required
-def batch_print(print_type):
+def batch_print(print_type) -> ResponseReturnValue:
     """批量打印 — 支持多选ID"""
     ids_str = request.args.get("ids", "")
     if not ids_str:

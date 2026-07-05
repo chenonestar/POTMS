@@ -1,35 +1,49 @@
 """撤控备案蓝图"""
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from datetime import datetime
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate, normalize_residence, get_dict_options
-from utils.validators import validate_id_number, validate_birth_date_match, validate_date_format, parse_date_input
+from utils.helpers import log_action, paginate, normalize_residence, get_dict_options, row_snapshot
+from utils.validators import parse_date_input, check_required, check_dates, check_identity
 
 decontrol_bp = Blueprint("decontrol", __name__)
 
 
+def build_filters(args, ids=None):
+    """构建撤控列表 WHERE 子句，供列表与导出复用。"""
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (surname||given_name LIKE ? OR id_number LIKE ? OR reason LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like, like])
+    if args.get("submit_unit_type", "").strip():
+        where += " AND submit_unit_type = ?"
+        params.append(args.get("submit_unit_type").strip())
+    if ids:
+        ph = ",".join("?" for _ in ids)
+        where += f" AND id IN ({ph})"
+        params.extend(ids)
+    return where, tuple(params)
+
+
 @decontrol_bp.route("/decontrol/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     unit_type_filter = request.args.get("submit_unit_type", "").strip()
 
-    base = "SELECT * FROM decontrol_filing WHERE 1=1"
-    params: list = []
-    if search:
-        base += " AND (surname||given_name LIKE ? OR id_number LIKE ? OR reason LIKE ?)"
-        like = f"%{search}%"
-        params.extend([like, like, like])
-    if unit_type_filter:
-        base += " AND submit_unit_type = ?"
-        params.append(unit_type_filter)
-    base += " ORDER BY created_at DESC"
+    where, params = build_filters(request.args)
+    base = "SELECT * FROM decontrol_filing WHERE 1=1" + where + " ORDER BY created_at DESC"
 
-    pg = paginate(base, tuple(params), page)
+    pg = paginate(base, params, page)
     return render_template(
         "decontrol/list.html",
         items=pg,
@@ -41,7 +55,7 @@ def list():
 
 @decontrol_bp.route("/decontrol/new/<int:filing_id>", methods=["GET", "POST"])
 @login_required
-def new(filing_id):
+def new(filing_id) -> ResponseReturnValue:
     db = get_db()
     filing = db.execute(
         "SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)
@@ -68,15 +82,15 @@ def new(filing_id):
             "INSERT INTO decontrol_filing (personnel_filing_id, surname, given_name, "
             "gender, birth_date, id_number, residence, political_status, work_unit, "
             "supervisor_unit, submit_unit_name, submit_unit_type, submit_contact, "
-            "submit_phone, batch_no, reason, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "submit_phone, batch_no, reason, decontrol_date, cert_handover_date, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 filing_id, data["surname"], data["given_name"], data["gender"],
                 data["birth_date"], data["id_number"], data["residence"],
                 data["political_status"], data["work_unit"], data["supervisor_unit"],
                 data["submit_unit_name"], data["submit_unit_type"],
                 data["submit_contact"], data["submit_phone"], data["batch_no"],
-                data["reason"], data["operator"],
+                data["reason"], data["decontrol_date"], data["cert_handover_date"], data["operator"],
             ),
         )
         # 将原备案标记为已撤控
@@ -86,11 +100,11 @@ def new(filing_id):
         )
         db.commit()
         dec_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "decontrol_filing", dec_id)
+        log_action("create", "decontrol_filing", dec_id, after=row_snapshot("decontrol_filing", dec_id))
         flash("撤控备案已提交。该人员备案状态已标记为'已撤控'。", "success")
         return redirect(url_for("personnel.list"))
 
-    # 预填备案数据
+    # 预填备案数据（撤控日期默认今天）
     prefill = {
         "surname": filing["surname"],
         "given_name": filing["given_name"],
@@ -101,6 +115,7 @@ def new(filing_id):
         "political_status": filing["political_status"],
         "work_unit": filing["work_unit"],
         "supervisor_unit": filing["supervisor_unit"],
+        "decontrol_date": datetime.now().strftime("%Y%m%d"),
     }
     return render_template(
         "decontrol/form.html", data=prefill, filing=filing, filing_id=filing_id,
@@ -109,7 +124,7 @@ def new(filing_id):
 
 @decontrol_bp.route("/decontrol/<int:dec_id>")
 @login_required
-def view(dec_id):
+def view(dec_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM decontrol_filing WHERE id = ?", (dec_id,)).fetchone()
     if not row:
@@ -135,7 +150,9 @@ def _extract_form(form):
         "submit_phone": form.get("submit_phone", "").strip(),
         "batch_no": form.get("batch_no", "").strip(),
         "reason": form.get("reason", "").strip(),
-        "operator": form.get("operator", "").strip(),
+        "decontrol_date": parse_date_input(form.get("decontrol_date", "")) or datetime.now().strftime("%Y%m%d"),
+        "cert_handover_date": parse_date_input(form.get("cert_handover_date", "")),
+        "operator": session.get("username", "admin"),
     }
 
 
@@ -148,20 +165,14 @@ def _validate_form(data: dict) -> list[str]:
         ("work_unit", "工作单位"), ("supervisor_unit", "人事主管单位"),
         ("submit_unit_name", "报送单位名称"), ("submit_unit_type", "报送单位类别"),
         ("submit_contact", "报送单位联系人"), ("submit_phone", "报送单位联系电话"),
-        ("batch_no", "入库批号"), ("reason", "撤控原因"), ("operator", "操作人"),
+        ("batch_no", "入库批号"), ("reason", "撤控原因"),
     ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
-
-    if data.get("birth_date"):
-        ok, msg = validate_date_format(data["birth_date"])
-        if not ok:
-            errors.append(f"出生日期: {msg}")
-
-    if data.get("id_number"):
-        ok, msg = validate_id_number(data["id_number"])
-        if not ok:
-            errors.append(f"身份证号: {msg}")
+    errors += check_required(data, required)
+    errors += check_dates(data, [
+        ("birth_date", "出生日期"),
+        ("cert_handover_date", "证件移交日期"),
+        ("decontrol_date", "撤控日期"),
+    ])
+    errors += check_identity(data)
 
     return errors

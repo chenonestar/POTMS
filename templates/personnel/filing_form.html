@@ -6,7 +6,21 @@
     {{ '编辑' if editing else '新增' }}因私事出国（境）人员登记备案表
 </h4>
 
-<form method="POST" class="needs-validation" novalidate>
+{% if not editing %}
+<div class="d-flex align-items-center mb-4" style="max-width:520px;">
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-success" style="width:26px;height:26px;line-height:18px;"><i class="bi bi-check"></i></span>
+        <div class="small mt-1 text-success">信息登记表</div>
+    </div>
+    <div class="flex-fill border-top border-2 border-success mx-2" style="margin-top:-14px;"></div>
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-primary" style="width:26px;height:26px;line-height:18px;">2</span>
+        <div class="small mt-1 fw-bold text-primary">登记备案表</div>
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_filing"{% endif %}>
 <div class="form-section">
     <h5>身份信息</h5>
     <div class="row g-3">
@@ -35,15 +49,21 @@
         <div class="col-md-3">
             <label class="form-label required">身份证号</label>
             <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
-                   placeholder="18位" maxlength="18" required>
+                   placeholder="18位" maxlength="18" required {{ 'readonly' if info_id and data.id_number }}>
+            {% if info_id and data.id_number %}<div class="form-text">取自信息登记表，不可修改。</div>{% endif %}
         </div>
     </div>
     <div class="row g-3 mt-1">
         <div class="col-md-8">
             <label class="form-label required">户口所在地</label>
-            <input type="text" class="form-control" name="residence" value="{{ data.residence or '' }}"
-                   placeholder="省份不加省字，填至区级，如：浙江宁波市江北区" required>
-            <div class="form-text">省份不加"省"字；江东区、鄞县统一为"鄞州区"。</div>
+            <div class="row g-1 mb-1">
+                <div class="col-4"><select class="form-select form-select-sm" id="resProv"><option value="">省/直辖市</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resCity"><option value="">市</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resDist"><option value="">区/县</option></select></div>
+            </div>
+            <input type="text" class="form-control" name="residence" id="resInput" value="{{ data.residence or '' }}"
+                   placeholder="三级联动选择或手动输入，如：浙江宁波市江北区" required>
+            <div class="form-text">可用上方下拉三级联动，也可手动修正；省份不加"省"字，江东区/鄞县自动归为"鄞州区"。</div>
         </div>
         <div class="col-md-4">
             <label class="form-label required">政治面貌</label>
@@ -79,8 +99,17 @@
         </div>
         <div class="col-md-4">
             <label class="form-label required">人事主管单位</label>
-            <input type="text" class="form-control" name="supervisor_unit" value="{{ data.supervisor_unit or '' }}"
-                   placeholder="名称需与印章一致" required>
+            {% set sup_opts = dict_opts('supervisor_unit') %}
+            <select class="form-select" name="supervisor_unit" required>
+                <option value="">请选择</option>
+                {% for o in sup_opts %}
+                <option value="{{ o.value }}" {{ 'selected' if data.get('supervisor_unit') == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+                {% if data.get('supervisor_unit') and data.get('supervisor_unit') not in (sup_opts | map(attribute='value') | list) %}
+                <option value="{{ data.supervisor_unit }}" selected>{{ data.supervisor_unit }}（历史值）</option>
+                {% endif %}
+            </select>
+            <div class="form-text">在「系统设置 → 数据字典 → 人事主管单位」中维护选项。</div>
         </div>
     </div>
 </div>
@@ -109,17 +138,13 @@
     </div>
 </div>
 
-<div class="form-section">
-    <h5>操作信息</h5>
-    <div class="col-md-4">
-        <label class="form-label required">操作人</label>
-        <input type="text" class="form-control" name="operator" value="{{ data.operator or session.username or '' }}" required>
-    </div>
-</div>
-
 <div class="mt-3">
     <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
     <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
 </div>
 </form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/regions.js') }}"></script>
+<script>document.addEventListener('DOMContentLoaded', function () { initRegionCascade('resProv', 'resCity', 'resDist', 'resInput'); });</script>
 {% endblock %}
