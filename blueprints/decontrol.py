@@ -8,7 +8,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, normalize_residence, get_dict_options, row_snapshot
-from utils.validators import validate_id_number, validate_birth_date_match, validate_gender_match, validate_date_format, parse_date_input
+from utils.validators import parse_date_input, check_required, check_dates, check_identity
 
 decontrol_bp = Blueprint("decontrol", __name__)
 
@@ -166,37 +166,12 @@ def _validate_form(data: dict) -> list[str]:
         ("submit_contact", "报送单位联系人"), ("submit_phone", "报送单位联系电话"),
         ("batch_no", "入库批号"), ("reason", "撤控原因"),
     ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
-
-    if data.get("birth_date"):
-        ok, msg = validate_date_format(data["birth_date"])
-        if not ok:
-            errors.append(f"出生日期: {msg}")
-
-    if data.get("id_number"):
-        ok, msg = validate_id_number(data["id_number"])
-        if not ok:
-            errors.append(f"身份证号: {msg}")
-        else:
-            if data.get("birth_date"):
-                ok2, msg2 = validate_birth_date_match(data["id_number"], data["birth_date"])
-                if not ok2:
-                    errors.append(msg2)
-            if data.get("gender"):
-                ok3, msg3 = validate_gender_match(data["id_number"], data["gender"])
-                if not ok3:
-                    errors.append(msg3)
-
-    if data.get("cert_handover_date"):
-        ok, msg = validate_date_format(data["cert_handover_date"])
-        if not ok:
-            errors.append(f"证件移交日期: {msg}")
-
-    if data.get("decontrol_date"):
-        ok, msg = validate_date_format(data["decontrol_date"])
-        if not ok:
-            errors.append(f"撤控日期: {msg}")
+    errors += check_required(data, required)
+    errors += check_dates(data, [
+        ("birth_date", "出生日期"),
+        ("cert_handover_date", "证件移交日期"),
+        ("decontrol_date", "撤控日期"),
+    ])
+    errors += check_identity(data)
 
     return errors

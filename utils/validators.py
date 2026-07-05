@@ -47,6 +47,48 @@ def validate_birth_date_match(id_number: str, birth_date: str) -> tuple[bool, st
     return True, ""
 
 
+def check_required(data: dict, fields: list) -> list:
+    """必填项校验。fields 为 [(字段名, 中文标签), ...]，返回错误信息列表。"""
+    return [f"{label} 为必填项。" for field, label in fields if not data.get(field)]
+
+
+def check_dates(data: dict, fields: list) -> list:
+    """日期格式校验：对每个非空字段校验 YYYYMMDD 合法性（拒绝不存在的日期）。"""
+    errors = []
+    for field, label in fields:
+        val = data.get(field)
+        if val:
+            ok, msg = validate_date_format(val)
+            if not ok:
+                errors.append(f"{label}: {msg}")
+    return errors
+
+
+def check_identity(data: dict, id_field: str = "id_number",
+                   birth_field: str = "birth_date", gender_field: str = "gender") -> list:
+    """
+    身份证综合校验：18位校验位；通过后再校验其与"出生日期""性别"的一致性
+    （对应字段存在且非空时才校验）。返回错误信息列表。
+    """
+    errors = []
+    id_no = data.get(id_field)
+    if not id_no:
+        return errors
+    ok, msg = validate_id_number(id_no)
+    if not ok:
+        errors.append(f"身份证号: {msg}")
+        return errors
+    if birth_field and data.get(birth_field):
+        ok2, msg2 = validate_birth_date_match(id_no, data[birth_field])
+        if not ok2:
+            errors.append(msg2)
+    if gender_field and data.get(gender_field):
+        ok3, msg3 = validate_gender_match(id_no, data[gender_field])
+        if not ok3:
+            errors.append(msg3)
+    return errors
+
+
 def validate_gender_match(id_number: str, gender: str) -> tuple[bool, str]:
     """
     校验填写的性别与身份证号第17位（顺序码奇偶）是否一致。

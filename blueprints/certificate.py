@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, row_snapshot
-from utils.validators import parse_date_input, validate_date_format
+from utils.validators import parse_date_input, check_required, check_dates
 
 certificate_bp = Blueprint("certificate", __name__)
 
@@ -214,25 +214,15 @@ def _extract_form(form):
 
 def _validate_form(data: dict) -> list[str]:
     errors = []
-    required = [
+    errors += check_required(data, [
         ("personnel_filing_id", "备案人员"), ("unit", "单位"),
         ("department", "部门"), ("name", "姓名"),
-    ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
-
-    # 日期格式校验
-    for field, label in [
+    ])
+    errors += check_dates(data, [
         ("passport_expiry", "护照有效日期"), ("passport_submit_date", "护照上交日期"),
         ("hm_pass_expiry", "港澳通行证有效日期"), ("hm_pass_submit_date", "港澳通行证上交日期"),
         ("tw_pass_expiry", "台湾通行证有效日期"), ("tw_pass_submit_date", "台湾通行证上交日期"),
-    ]:
-        val = data.get(field)
-        if val:
-            ok, msg = validate_date_format(val)
-            if not ok:
-                errors.append(f"{label}: {msg}")
+    ])
 
     # 填写证件号时，有效日期与上交日期均为必填
     for no_field, exp_field, sub_field, label in [

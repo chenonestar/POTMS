@@ -9,9 +9,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from auth import login_required
 from database import get_db
 from utils.helpers import log_action, paginate, get_dict_options, row_snapshot
-from utils.validators import (parse_date_input, validate_date_format, validate_id_number,
+from utils.validators import (parse_date_input, validate_date_format,
                               parse_travel_range, validate_travel_range, format_travel_range,
-                              is_cert_overdue, cert_overdue_deadline)
+                              is_cert_overdue, cert_overdue_deadline,
+                              check_required, check_dates, check_identity)
 from config import Config
 
 travel_bp = Blueprint("travel", __name__)
@@ -498,14 +499,9 @@ def _validate_form(data: dict) -> list[str]:
         ("destination_passport", "地点、证照"), ("category", "类别"),
         ("travel_dates", "计划出行日期"), ("need_new_passport", "是否做证"),
     ]
-    for field, label in required:
-        if not data.get(field):
-            errors.append(f"{label} 为必填项。")
-
-    if data.get("id_number"):
-        ok, msg = validate_id_number(data["id_number"])
-        if not ok:
-            errors.append(f"身份证号: {msg}")
+    errors += check_required(data, required)
+    # 明细表身份证由备案信息自动带入、无性别/出生字段，仅校验号码本身
+    errors += check_identity(data, birth_field=None, gender_field=None)
 
     # 计划出行日期区间：起止须为真实日期且起始不晚于结束
     if data.get("travel_dates"):
@@ -513,17 +509,12 @@ def _validate_form(data: dict) -> list[str]:
         if not ok:
             errors.append(f"计划出行日期: {msg}")
 
-    for field, label in [
+    errors += check_dates(data, [
         ("approval_date", "批准日期"),
         ("passport_collect_date", "证件领用日期"),
         ("passport_return_date", "证件归还日期"),
         ("actual_return_date", "实际回国日期"),
-    ]:
-        val = data.get(field)
-        if val:
-            ok, msg = validate_date_format(val)
-            if not ok:
-                errors.append(f"{label}: {msg}")
+    ])
 
     # 路径A（已有证件，不做证）时，证件领用日期为必填
     if data.get("need_new_passport") == "否" and not data.get("passport_collect_date"):
