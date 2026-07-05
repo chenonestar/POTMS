@@ -1,6 +1,32 @@
 /**
  * 通用前端功能
  */
+
+// ================= CSRF：向所有 POST 表单自动注入令牌 =================
+(function () {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    window.CSRF_TOKEN = token;
+
+    function injectInto(form) {
+        if (!form || (form.method || '').toLowerCase() !== 'post') return;
+        var existing = form.querySelector('input[name="csrf_token"]');
+        if (existing) { existing.value = token; return; }
+        var inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'csrf_token';
+        inp.value = token;
+        form.appendChild(inp);
+    }
+
+    // 提交瞬间注入（捕获阶段，先于其它 submit 处理），覆盖动态创建/改 action 的表单
+    document.addEventListener('submit', function (e) { injectInto(e.target); }, true);
+    // 载入时预注入一遍（应对通过 form.submit() 触发、不派发 submit 事件的场景）
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('form').forEach(injectInto);
+    });
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
     // --- 确认删除对话框 ---
     const confirmModal = document.getElementById('confirmModal');

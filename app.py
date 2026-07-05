@@ -73,6 +73,10 @@ def create_app() -> Flask:
     app.register_blueprint(dict_bp)
     app.register_blueprint(submit_unit_bp)
 
+    # CSRF 防护（轻量内置，覆盖所有状态变更请求）
+    from utils.csrf import init_csrf
+    init_csrf(app)
+
     # 数据库连接关闭
     from database import close_db
     app.teardown_appcontext(close_db)
