@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -44,7 +45,7 @@ def build_filters(args, ids=None):
 
 @certificate_bp.route("/certificate/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     has_passport = request.args.get("has_passport", "").strip()
@@ -85,7 +86,7 @@ def list():
 
 @certificate_bp.route("/certificate/new", methods=["GET", "POST"])
 @login_required
-def new():
+def new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
@@ -140,7 +141,7 @@ def new():
 
 @certificate_bp.route("/certificate/<int:cert_id>/edit", methods=["GET", "POST"])
 @login_required
-def edit(cert_id):
+def edit(cert_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM certificates WHERE id = ?", (cert_id,)).fetchone()
     if not row:
@@ -182,7 +183,7 @@ def edit(cert_id):
 
 @certificate_bp.route("/certificate/<int:cert_id>/delete", methods=["POST"])
 @login_required
-def delete(cert_id):
+def delete(cert_id) -> ResponseReturnValue:
     db = get_db()
     before = row_snapshot("certificates", cert_id)
     db.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))

@@ -1,5 +1,6 @@
 """批量导入蓝图"""
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from utils.excel_import import parse_import_file, generate_import_template
@@ -10,7 +11,7 @@ import_bp = Blueprint("import_data", __name__)
 
 @import_bp.route("/import/", methods=["GET", "POST"])
 @login_required
-def index():
+def index() -> ResponseReturnValue:
     result = None
     if request.method == "POST":
         if "file" not in request.files:
@@ -42,7 +43,7 @@ def index():
 
 @import_bp.route("/import/template")
 @login_required
-def download_template():
+def download_template() -> ResponseReturnValue:
     """下载 Excel 导入模板"""
     buf = generate_import_template()
     return send_file(

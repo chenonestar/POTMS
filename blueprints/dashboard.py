@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -14,7 +15,7 @@ dashboard_bp = Blueprint("dashboard", __name__)
 
 @dashboard_bp.route("/backup/now", methods=["POST"])
 @login_required
-def backup_now():
+def backup_now() -> ResponseReturnValue:
     """手动立即备份数据库"""
     try:
         result = run_daily_backup(force=True)
@@ -27,7 +28,7 @@ def backup_now():
 
 @dashboard_bp.route("/")
 @login_required
-def index():
+def index() -> ResponseReturnValue:
     # 长时间运行时，登录首页也触发每日备份检查（当天已备份则跳过）
     try:
         run_daily_backup()

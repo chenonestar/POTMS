@@ -2,6 +2,7 @@
 from functools import wraps
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask.typing import ResponseReturnValue
 
 from database import get_db
 
@@ -22,7 +23,7 @@ def login_required(view):
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
-def login():
+def login() -> ResponseReturnValue:
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -59,7 +60,7 @@ def login():
 
 
 @auth_bp.route("/logout")
-def logout():
+def logout() -> ResponseReturnValue:
     session.clear()
     flash("已退出登录。", "info")
     return redirect(url_for("auth.login"))
@@ -67,7 +68,7 @@ def logout():
 
 @auth_bp.route("/account", methods=["GET", "POST"])
 @login_required
-def account():
+def account() -> ResponseReturnValue:
     """账户设置：修改用户名 / 密码"""
     db = get_db()
     user = db.execute(

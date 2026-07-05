@@ -5,6 +5,7 @@ import os
 import uuid
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -85,7 +86,7 @@ def _overdue_ids() -> set:
 
 @travel_bp.route("/travel/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     category_filter = request.args.get("category", "").strip()
@@ -134,7 +135,7 @@ _REQUIRED_B = ["个人申请报告", "审批表", "同意申办函"]
 
 @travel_bp.route("/travel/attachments")
 @login_required
-def attachments():
+def attachments() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     type_filter = request.args.get("file_type", "").strip()
@@ -198,7 +199,7 @@ def attachments():
 # =========================================================================
 @travel_bp.route("/travel/new", methods=["GET", "POST"])
 @login_required
-def new():
+def new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
@@ -265,7 +266,7 @@ def new():
 # =========================================================================
 @travel_bp.route("/travel/<int:travel_id>/edit", methods=["GET", "POST"])
 @login_required
-def edit(travel_id):
+def edit(travel_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
     if not row:
@@ -326,7 +327,7 @@ def edit(travel_id):
 # =========================================================================
 @travel_bp.route("/travel/<int:travel_id>")
 @login_required
-def view(travel_id):
+def view(travel_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
     if not row:
@@ -343,7 +344,7 @@ def view(travel_id):
 # =========================================================================
 @travel_bp.route("/travel/<int:travel_id>/delete", methods=["POST"])
 @login_required
-def delete(travel_id):
+def delete(travel_id) -> ResponseReturnValue:
     db = get_db()
     # 清理附件文件
     atts = db.execute(
@@ -367,7 +368,7 @@ def delete(travel_id):
 # =========================================================================
 @travel_bp.route("/travel/<int:travel_id>/cancel", methods=["POST"])
 @login_required
-def cancel(travel_id):
+def cancel(travel_id) -> ResponseReturnValue:
     """取消行程：记录取消日期。已申领证件须在取消日起 5 个工作日内送回保管。"""
     db = get_db()
     row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
@@ -401,7 +402,7 @@ def cancel(travel_id):
 
 @travel_bp.route("/travel/<int:travel_id>/restore", methods=["POST"])
 @login_required
-def restore(travel_id):
+def restore(travel_id) -> ResponseReturnValue:
     """恢复已取消的行程为正常状态。"""
     db = get_db()
     row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
@@ -425,7 +426,7 @@ def restore(travel_id):
 # =========================================================================
 @travel_bp.route("/travel/attachment/<int:att_id>/download")
 @login_required
-def attachment_download(att_id):
+def attachment_download(att_id) -> ResponseReturnValue:
     db = get_db()
     att = db.execute("SELECT * FROM attachments WHERE id = ?", (att_id,)).fetchone()
     if not att:
@@ -437,7 +438,7 @@ def attachment_download(att_id):
 
 @travel_bp.route("/travel/attachment/<int:att_id>/preview")
 @login_required
-def attachment_preview(att_id):
+def attachment_preview(att_id) -> ResponseReturnValue:
     """在浏览器内联预览 PDF 附件"""
     db = get_db()
     att = db.execute("SELECT * FROM attachments WHERE id = ?", (att_id,)).fetchone()
@@ -450,7 +451,7 @@ def attachment_preview(att_id):
 
 @travel_bp.route("/travel/attachment/<int:att_id>/delete", methods=["POST"])
 @login_required
-def attachment_delete(att_id):
+def attachment_delete(att_id) -> ResponseReturnValue:
     db = get_db()
     att = db.execute("SELECT * FROM attachments WHERE id = ?", (att_id,)).fetchone()
     if att:

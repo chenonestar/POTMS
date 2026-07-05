@@ -2,6 +2,7 @@
 import json
 
 from flask import Blueprint, render_template, request
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from utils.helpers import paginate
@@ -61,7 +62,7 @@ def _compute_changes(snapshot_json):
 
 @logs_bp.route("/logs/")
 @login_required
-def index():
+def index() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     action_filter = request.args.get("action", "").strip()
     target_filter = request.args.get("target_type", "").strip()

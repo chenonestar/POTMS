@@ -1,5 +1,6 @@
 """单位/部门树形组织结构维护"""
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -10,7 +11,7 @@ org_bp = Blueprint("organization", __name__)
 
 @org_bp.route("/org/")
 @login_required
-def index():
+def index() -> ResponseReturnValue:
     db = get_db()
     orgs = db.execute("SELECT * FROM sys_org ORDER BY parent_id, sort_order").fetchall()
     return render_template("organization/tree.html", orgs=orgs)
@@ -18,7 +19,7 @@ def index():
 
 @org_bp.route("/org/add", methods=["POST"])
 @login_required
-def add():
+def add() -> ResponseReturnValue:
     name = request.form.get("name", "").strip()
     parent_id = request.form.get("parent_id", 0, type=int)
     if not name:
@@ -35,7 +36,7 @@ def add():
 
 @org_bp.route("/org/<int:org_id>/edit", methods=["POST"])
 @login_required
-def edit(org_id):
+def edit(org_id) -> ResponseReturnValue:
     name = request.form.get("name", "").strip()
     parent_id = request.form.get("parent_id", 0, type=int)
     if not name:
@@ -52,7 +53,7 @@ def edit(org_id):
 
 @org_bp.route("/org/<int:org_id>/delete", methods=["POST"])
 @login_required
-def delete(org_id):
+def delete(org_id) -> ResponseReturnValue:
     db = get_db()
     # 检查是否有子节点
     children = db.execute("SELECT COUNT(*) FROM sys_org WHERE parent_id = ?", (org_id,)).fetchone()[0]
@@ -68,7 +69,7 @@ def delete(org_id):
 
 @org_bp.route("/org/tree-data")
 @login_required
-def tree_data():
+def tree_data() -> ResponseReturnValue:
     """供前端 AJAX 获取树形数据"""
     db = get_db()
     orgs = db.execute("SELECT id, name, parent_id FROM sys_org ORDER BY parent_id, sort_order").fetchall()

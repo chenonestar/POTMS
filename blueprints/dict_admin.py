@@ -1,5 +1,6 @@
 """数据字典维护 — 学历/学位/职称/职级/政治面貌/出国类别/报送单位类别"""
 from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -40,7 +41,7 @@ def _usage_count(db, category: str, code: str, value: str) -> int:
 
 @dict_bp.route("/dict/")
 @login_required
-def index():
+def index() -> ResponseReturnValue:
     db = get_db()
     groups = []
     for cat in CATEGORIES:
@@ -53,7 +54,7 @@ def index():
 
 @dict_bp.route("/dict/add", methods=["POST"])
 @login_required
-def add():
+def add() -> ResponseReturnValue:
     category = request.form.get("category", "").strip()
     code = request.form.get("code", "").strip()
     value = request.form.get("value", "").strip()
@@ -90,7 +91,7 @@ def add():
 
 @dict_bp.route("/dict/<int:dict_id>/edit", methods=["POST"])
 @login_required
-def edit(dict_id):
+def edit(dict_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM sys_dict WHERE id = ?", (dict_id,)).fetchone()
     if not row:
@@ -114,7 +115,7 @@ def edit(dict_id):
 
 @dict_bp.route("/dict/<int:dict_id>/delete", methods=["POST"])
 @login_required
-def delete(dict_id):
+def delete(dict_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM sys_dict WHERE id = ?", (dict_id,)).fetchone()
     if not row:

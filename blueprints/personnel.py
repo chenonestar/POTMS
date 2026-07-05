@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -56,7 +57,7 @@ def build_filters(args, ids=None):
 
 @personnel_bp.route("/personnel/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     status_filter = request.args.get("status", "").strip()
@@ -118,7 +119,7 @@ def list():
 # =========================================================================
 @personnel_bp.route("/personnel/info/new", methods=["GET", "POST"])
 @login_required
-def info_new():
+def info_new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_info_form(request.form)
         errors = _validate_info_form(data)
@@ -154,7 +155,7 @@ def info_new():
 # =========================================================================
 @personnel_bp.route("/personnel/info/<int:info_id>/edit", methods=["GET", "POST"])
 @login_required
-def info_edit(info_id):
+def info_edit(info_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM personnel_info WHERE id = ?", (info_id,)).fetchone()
     if not row:
@@ -201,7 +202,7 @@ def info_edit(info_id):
 # =========================================================================
 @personnel_bp.route("/personnel/filing/new", methods=["GET", "POST"])
 @login_required
-def filing_new():
+def filing_new() -> ResponseReturnValue:
     info_id = request.args.get("info_id", type=int)
     info_row = None
     if info_id:
@@ -280,7 +281,7 @@ def filing_new():
 # =========================================================================
 @personnel_bp.route("/personnel/filing/<int:filing_id>/edit", methods=["GET", "POST"])
 @login_required
-def filing_edit(filing_id):
+def filing_edit(filing_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)).fetchone()
     if not row:
@@ -331,7 +332,7 @@ def filing_edit(filing_id):
 # =========================================================================
 @personnel_bp.route("/personnel/<int:filing_id>")
 @login_required
-def view(filing_id):
+def view(filing_id) -> ResponseReturnValue:
     db = get_db()
     filing = db.execute(
         "SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)
@@ -373,7 +374,7 @@ def view(filing_id):
 # =========================================================================
 @personnel_bp.route("/personnel/<int:filing_id>/delete", methods=["POST"])
 @login_required
-def delete(filing_id):
+def delete(filing_id) -> ResponseReturnValue:
     db = get_db()
     before = row_snapshot("personnel_filing", filing_id)
     db.execute("DELETE FROM personnel_filing WHERE id = ?", (filing_id,))

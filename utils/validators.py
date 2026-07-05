@@ -47,12 +47,12 @@ def validate_birth_date_match(id_number: str, birth_date: str) -> tuple[bool, st
     return True, ""
 
 
-def check_required(data: dict, fields: list) -> list:
+def check_required(data: dict, fields: list) -> list[str]:
     """必填项校验。fields 为 [(字段名, 中文标签), ...]，返回错误信息列表。"""
     return [f"{label} 为必填项。" for field, label in fields if not data.get(field)]
 
 
-def check_dates(data: dict, fields: list) -> list:
+def check_dates(data: dict, fields: list) -> list[str]:
     """日期格式校验：对每个非空字段校验 YYYYMMDD 合法性（拒绝不存在的日期）。"""
     errors = []
     for field, label in fields:
@@ -65,7 +65,7 @@ def check_dates(data: dict, fields: list) -> list:
 
 
 def check_identity(data: dict, id_field: str = "id_number",
-                   birth_field: str = "birth_date", gender_field: str = "gender") -> list:
+                   birth_field: str = "birth_date", gender_field: str = "gender") -> list[str]:
     """
     身份证综合校验：18位校验位；通过后再校验其与"出生日期""性别"的一致性
     （对应字段存在且非空时才校验）。返回错误信息列表。

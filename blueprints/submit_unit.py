@@ -1,5 +1,6 @@
 """报送单位维护 — 名称 / 联系人 / 电话（撤控表下拉联动）"""
 from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -15,7 +16,7 @@ def _sort(raw: str) -> int:
 
 @submit_unit_bp.route("/submit-unit/")
 @login_required
-def index():
+def index() -> ResponseReturnValue:
     db = get_db()
     rows = db.execute("SELECT * FROM sys_submit_unit ORDER BY sort_order, name").fetchall()
     return render_template("submit_unit/list.html", rows=rows)
@@ -23,7 +24,7 @@ def index():
 
 @submit_unit_bp.route("/submit-unit/add", methods=["POST"])
 @login_required
-def add():
+def add() -> ResponseReturnValue:
     name = request.form.get("name", "").strip()
     contact = request.form.get("contact", "").strip()
     phone = request.form.get("phone", "").strip()
@@ -45,7 +46,7 @@ def add():
 
 @submit_unit_bp.route("/submit-unit/<int:uid>/edit", methods=["POST"])
 @login_required
-def edit(uid):
+def edit(uid) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM sys_submit_unit WHERE id = ?", (uid,)).fetchone()
     if not row:
@@ -67,7 +68,7 @@ def edit(uid):
 
 @submit_unit_bp.route("/submit-unit/<int:uid>/delete", methods=["POST"])
 @login_required
-def delete(uid):
+def delete(uid) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM sys_submit_unit WHERE id = ?", (uid,)).fetchone()
     if not row:

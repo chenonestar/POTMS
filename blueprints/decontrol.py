@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
@@ -34,7 +35,7 @@ def build_filters(args, ids=None):
 
 @decontrol_bp.route("/decontrol/")
 @login_required
-def list():
+def list() -> ResponseReturnValue:
     page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     unit_type_filter = request.args.get("submit_unit_type", "").strip()
@@ -54,7 +55,7 @@ def list():
 
 @decontrol_bp.route("/decontrol/new/<int:filing_id>", methods=["GET", "POST"])
 @login_required
-def new(filing_id):
+def new(filing_id) -> ResponseReturnValue:
     db = get_db()
     filing = db.execute(
         "SELECT * FROM personnel_filing WHERE id = ?", (filing_id,)
@@ -123,7 +124,7 @@ def new(filing_id):
 
 @decontrol_bp.route("/decontrol/<int:dec_id>")
 @login_required
-def view(dec_id):
+def view(dec_id) -> ResponseReturnValue:
     db = get_db()
     row = db.execute("SELECT * FROM decontrol_filing WHERE id = ?", (dec_id,)).fetchone()
     if not row:
