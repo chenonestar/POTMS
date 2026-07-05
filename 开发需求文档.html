@@ -843,9 +843,12 @@
     <div class="card">
         <h3>9.1 安全性</h3>
         <ul class="styled">
-            <li><strong>身份认证</strong>：管理员用户名/密码登录，密码哈希存储（bcrypt）。</li>
-            <li><strong>会话管理</strong>：基于 Session 或 JWT Token，支持登录超时自动退出。</li>
+            <li><strong>身份认证</strong>：管理员用户名/密码登录，密码使用 bcrypt 加盐哈希存储（旧 werkzeug 哈希登录时透明升级）。</li>
+            <li><strong>会话管理</strong>：基于服务端 Session（签名 Cookie），支持登录超时自动退出。</li>
+            <li><strong>CSRF 防护</strong>：所有会改变状态的请求（POST/PUT/PATCH/DELETE）经 CSRF 令牌校验；令牌基于会话随机生成、常量时间比对，前端自动注入各表单。轻量内置实现，不引入额外依赖、不增加打包体积。</li>
+            <li><strong>SQL 注入防护</strong>：一律使用参数化查询；涉及表名的内部工具（如快照读取）采用<strong>表名白名单</strong>校验，杜绝动态标识符注入。</li>
             <li><strong>数据脱敏</strong>：身份证号在前端列表展示时部分掩码（如 <code>330***********1234</code>）。</li>
+            <li><strong>输入校验</strong>：身份证校验位 + 出生日期 + 性别一致性；日期字段拒绝不存在日期；计划出行日期固定格式并校验区间合理性。前后端同口径。</li>
             <li><strong>附件安全</strong>：上传文件限制为 PDF 格式，单文件大小 ≤10MB。</li>
             <li><strong>备份安全</strong>：SQLite 数据库文件定期备份至指定目录。</li>
         </ul>
@@ -989,6 +992,17 @@
             <strong>推荐技术组合：</strong>Python 3.12+ + Flask + SQLite3 + openpyxl + Jinja2 + Bootstrap 5（前端 UI）<br>
             <strong>打包分发：</strong>PyInstaller 生成单文件 .exe，内置 Python 运行时 + SQLite 数据库模板
         </div>
+    </div>
+
+    <div class="card">
+        <h3>9.6 代码质量与可测试性</h3>
+        <ul class="styled">
+            <li><strong>公共校验函数</strong>：必填、日期合法性、身份证一致性等校验逻辑抽取为 <code>check_required</code> / <code>check_dates</code> / <code>check_identity</code> 公共函数，各业务模块统一复用，避免重复实现导致口径不一致。</li>
+            <li><strong>单元测试</strong>：采用 pytest 覆盖关键纯逻辑（身份证/性别/日期/出行区间校验、工作日推算、证件逾期判定、数据库迁移幂等与历史回填）。测试依赖仅置于 <code>requirements-dev.txt</code>，<strong>不参与 exe 打包</strong>，不影响分发体积。</li>
+            <li><strong>类型注解</strong>：分页等公共返回结构使用 TypedDict，路由处理函数标注返回类型，提升 IDE 智能提示与静态检查覆盖。</li>
+            <li><strong>数据迁移</strong>：数据库结构变更通过启动时的幂等迁移自动生效（新增字段、历史数据回填与格式规整），部署升级无需手动改库。</li>
+        </ul>
+        <div class="footnote">📌 上述质量措施均以"不改变既有功能行为、不增加打包体积"为前提，并以自动化测试固化关键业务逻辑。</div>
     </div>
 </section>
 
