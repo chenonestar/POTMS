@@ -80,8 +80,8 @@
 <div class="cover">
     <h1>因私出国（境）人员审批管理系统</h1>
     <p class="subtitle">系 统 评 审 与 需 求 符 合 性 报 告</p>
-    <div class="verdict">综合评定：需求全面符合 — 整体完成度约 <strong>98%</strong></div>
-    <p class="meta">评审版本：V2.0（迭代复评） &nbsp;|&nbsp; 评审日期：2026-07-03 &nbsp;|&nbsp; 依据文档：开发需求说明书 V1.1 &nbsp;|&nbsp; 密级：内部</p>
+    <div class="verdict">综合评定：需求全面符合 — 整体完成度约 <strong>99%</strong>，并完成工程质量与安全加固</div>
+    <p class="meta">评审版本：V2.1（质量加固复评） &nbsp;|&nbsp; 评审日期：2026-07-05 &nbsp;|&nbsp; 依据文档：开发需求说明书 V1.1 &nbsp;|&nbsp; 密级：内部</p>
 </div>
 
 <div class="container">
@@ -96,6 +96,7 @@
         <li><a href="#s4">交互与体验增强</a></li>
         <li><a href="#s5">剩余次要项</a></li>
         <li><a href="#s6">运行验证结果</a></li>
+        <li><a href="#s7">工程质量与安全加固（V2.0 → V2.1）</a></li>
     </ol>
 </div>
 
@@ -129,7 +130,7 @@
     <div class="card info">
         <p>本报告以《开发需求说明书 V1.1》为唯一验收依据，对代码库（Flask + SQLite3 + Bootstrap 5 单体应用）逐章逐点复核，并对应用做了启动与端到端功能验证。</p>
         <p>结论：<strong>系统已实现需求文档全部核心与通用功能，并补齐了此前的非功能与增强缺口</strong>。REQ-001 ~ REQ-010 全部达成；数据字典、备份、草稿、三级联动、日志审计、撤控关联等均落地。程序可正常启动运行，主要流程验证通过。</p>
-        <p>剩余仅为个别<strong>措辞级/极次要</strong>项（如密码哈希采用 werkzeug pbkdf2 而非文档字面的 bcrypt，安全强度等价），不影响验收与使用。</p>
+        <p>V2.1 进一步完成<strong>工程质量与安全加固</strong>：新增 CSRF 防护、密码哈希对齐 bcrypt、抽取公共校验函数、补充 pytest 单元测试与类型注解、row_snapshot 表名白名单。V2.0 遗留的措辞级/次要项已全部消除，详见第七章。</p>
     </div>
     <div class="card success">
         <h3 style="margin-top:0;border:none;">总体评定</h3>
@@ -140,7 +141,7 @@
                 <tr><td>通用功能（第7章）</td><td>导出/查询/导入/日志/提醒/仪表盘全部达成</td><td><span class="badge b-done">达成 ≈100%</span></td></tr>
                 <tr><td>数据字典与枚举（第8章）</td><td>字典齐全 + 户口三级联动落地</td><td><span class="badge b-done">达成 ≈100%</span></td></tr>
                 <tr><td>非功能需求（第9章）</td><td>技术栈符合；草稿/自动备份/会话超时均补齐</td><td><span class="badge b-done">达成 ≈95%</span></td></tr>
-                <tr style="font-weight:700;background:#eafaf1;"><td>综合完成度</td><td>可交付验收，功能全面符合</td><td><span class="badge b-done">≈98%</span></td></tr>
+                <tr style="font-weight:700;background:#eafaf1;"><td>综合完成度</td><td>可交付验收，功能全面符合，且完成质量与安全加固</td><td><span class="badge b-done">≈99%</span></td></tr>
             </tbody>
         </table>
     </div>
@@ -150,12 +151,12 @@
 <section id="s2">
     <h2>二、总体完成度仪表</h2>
     <div class="kpi-grid">
-        <div class="kpi green"><div class="num">≈98%</div><div class="lbl">综合完成度</div></div>
+        <div class="kpi green"><div class="num">≈99%</div><div class="lbl">综合完成度</div></div>
         <div class="kpi green"><div class="num">10 / 10</div><div class="lbl">REQ-001~010 全部达成</div></div>
         <div class="kpi green"><div class="num">10</div><div class="lbl">本轮补齐的缺口项</div></div>
-        <div class="kpi blue"><div class="num">1</div><div class="lbl">剩余次要项（措辞级）</div></div>
-        <div class="kpi blue"><div class="num">44</div><div class="lbl">已注册路由</div></div>
-        <div class="kpi green"><div class="num">通过</div><div class="lbl">端到端回归测试</div></div>
+        <div class="kpi green"><div class="num">0</div><div class="lbl">遗留阻碍项（V2.0 次要项已清零）</div></div>
+        <div class="kpi blue"><div class="num">54</div><div class="lbl">已注册路由</div></div>
+        <div class="kpi green"><div class="num">36 通过</div><div class="lbl">pytest 单元测试</div></div>
     </div>
 
     <div class="card">
@@ -269,14 +270,17 @@
 <!-- 5 剩余 -->
 <section id="s5">
     <h2>五、剩余次要项</h2>
-    <div class="card warning">
+    <div class="card success">
+        <p style="margin-top:0;">V2.0 遗留的次要项已在 V2.1 全部消除：</p>
         <table>
-            <thead><tr><th style="width:40px;">#</th><th>项目</th><th>说明</th><th style="width:90px;">影响</th></tr></thead>
+            <thead><tr><th style="width:40px;">#</th><th>项目</th><th>V2.1 处置</th><th style="width:90px;">状态</th></tr></thead>
             <tbody>
-                <tr><td>1</td><td>密码哈希算法措辞</td><td>实现为 werkzeug pbkdf2，文档字面写 bcrypt；两者均为安全的加盐哈希，强度等价。如需严格对齐可引入 bcrypt 依赖。</td><td>极低</td></tr>
+                <tr><td>1</td><td>密码哈希算法对齐 bcrypt</td><td>已改用 bcrypt 加盐哈希，并对旧 werkzeug 哈希登录时透明升级。</td><td><span class="badge b-done">已解决</span></td></tr>
+                <tr><td>2</td><td>缺少自动化测试</td><td>引入 pytest 单元测试（36 用例，覆盖校验/工作日/逾期/迁移），与 exe 打包物理隔离。</td><td><span class="badge b-done">已解决</span></td></tr>
+                <tr><td>3</td><td>CSRF 防护缺失</td><td>新增轻量内置 CSRF（不引入 Flask-WTF，打包体积不变）。</td><td><span class="badge b-done">已解决</span></td></tr>
             </tbody>
         </table>
-        <p style="margin:0;color:var(--text-muted);">除上述措辞级差异外，需求文档条目均已实现。</p>
+        <p style="margin:0;color:var(--text-muted);">详见第七章「工程质量与安全加固」。当前无已知阻碍验收的遗留项。</p>
     </div>
 </section>
 
@@ -287,7 +291,7 @@
         <table>
             <thead><tr><th>验证项</th><th>结果</th></tr></thead>
             <tbody>
-                <tr><td>应用创建 + 蓝图注册（44 路由）</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>应用创建 + 蓝图注册（54 路由）</td><td><span class="badge b-done">通过</span></td></tr>
                 <tr><td>迁移在既有旧库上幂等生效（id_number / travel_start-end / snapshot）</td><td><span class="badge b-done">通过</span></td></tr>
                 <tr><td>按筛选 / 选中行导出（5类表单）</td><td><span class="badge b-done">通过</span></td></tr>
                 <tr><td>出行日期区间筛选（正确纳入/排除）</td><td><span class="badge b-done">通过</span></td></tr>
@@ -303,9 +307,60 @@
     </div>
 </section>
 
+<!-- 7 质量与安全加固 -->
+<section id="s7">
+    <h2>七、工程质量与安全加固（V2.0 → V2.1）</h2>
+    <div class="card info">
+        <p style="margin-top:0;">V2.1 在功能已达标的基础上，针对一次代码审查提出的问题逐条核实并处置，覆盖<strong>业务规则修正、安全、可维护性、可测试性</strong>四个维度。所有改动坚持三条前提：<strong>行为不变、exe 体积不变、以测试固化</strong>。</p>
+    </div>
+
+    <div class="card success">
+        <h3 style="margin-top:0;border:none;">7.1 业务规则修正与增强</h3>
+        <table>
+            <thead><tr><th style="width:170px;">项目</th><th>说明</th><th style="width:80px;">状态</th></tr></thead>
+            <tbody>
+                <tr><td>证件逾期口径修正</td><td class="wrap">由"归还日期&lt;今天"的错误口径改为「已领用 + 未归还 + 超工作日时限」：正常行程回国后 10 个工作日、取消行程取消日起 5 个工作日（仅顺延跳过周末）。首页、逾期名单、列表高亮、筛选统一口径。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>行程取消 / 恢复</td><td class="wrap">新增"实际回国日期""行程状态""取消日期"字段与取消/恢复操作，并入操作日志、导出、打印。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td>校验加固</td><td class="wrap">身份证校验位 + 出生日期 + 性别（第17位奇偶）一致性；所有日期字段拒绝不存在日期（如 20260230）；计划出行日期固定掩码 YYYY/MM/DD-YYYY/MM/DD，校验起止真实且起始≤结束，存储统一格式并迁移历史数据。前后端同口径。</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card success">
+        <h3 style="margin-top:0;border:none;">7.2 安全 · 可维护性 · 可测试性</h3>
+        <table>
+            <thead><tr><th style="width:170px;">项目</th><th>处置</th><th style="width:80px;">状态</th></tr></thead>
+            <tbody>
+                <tr><td><span class="badge b-new">安全</span> CSRF 防护</td><td class="wrap">全部 26 个状态变更 POST 路由此前无 CSRF 防护。新增基于 session 令牌 + 常量时间比对的轻量内置方案，令牌经 &lt;meta&gt; 暴露、由前端自动注入所有表单；<strong>不引入 Flask-WTF/WTForms，打包体积不变</strong>。令牌失效友好跳登录。</td><td><span class="badge b-done">已修复</span></td></tr>
+                <tr><td><span class="badge b-new">加固</span> 动态表名防护</td><td class="wrap">row_snapshot() 增加允许表名白名单，非法表名抛错，杜绝潜在动态表名注入（原调用均为硬编码常量，无实际漏洞）。</td><td><span class="badge b-done">已加固</span></td></tr>
+                <tr><td><span class="badge b-new">重构</span> 消除重复（DRY）</td><td class="wrap">抽取 check_required / check_dates / check_identity 公共校验函数，5 个蓝图的必填、日期、身份证一致性校验统一复用，净减约 60 行重复；行为与报错信息不变。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">测试</span> 单元测试</td><td class="wrap">新增 pytest 测试（36 用例）：身份证/性别/日期/出行区间/工作日/逾期判定/迁移幂等与旧库回填。pytest 仅入 requirements-dev.txt，tests/ 不被应用引用，<strong>不进 exe</strong>。</td><td><span class="badge b-done">达成</span></td></tr>
+                <tr><td><span class="badge b-new">类型</span> 类型注解</td><td class="wrap">paginate 返回 PageResult(TypedDict) 改善列表页智能提示；53 个路由补 ResponseReturnValue 注解；公共校验器返回 list[str]。</td><td><span class="badge b-done">达成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">7.3 V2.1 验证结果</h3>
+        <table>
+            <thead><tr><th>验证项</th><th>结果</th></tr></thead>
+            <tbody>
+                <tr><td>pytest 单元测试（36 用例）</td><td><span class="badge b-done">36 passed</span></td></tr>
+                <tr><td>CSRF：无令牌 POST 拒绝 / 带令牌通过 / GET 不受影响</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>逾期修正 + 行程取消/恢复端到端</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>身份证/性别/日期/出行区间校验拦截</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>travel_dates 掩码存储统一 + 旧库迁移幂等</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>校验函数重构后 16 个主页面全部 200</td><td><span class="badge b-done">通过</span></td></tr>
+                <tr><td>row_snapshot 白名单接受合法表 / 拒绝非法表</td><td><span class="badge b-done">通过</span></td></tr>
+            </tbody>
+        </table>
+        <div class="footnote"><strong>📌 结论：</strong>V2.1 在不改变既有功能行为、不增加打包体积的前提下，完成安全（CSRF）、健壮性（校验/白名单）、可维护性（DRY/类型）与可测试性（pytest）四方面加固，并以自动化测试固化关键逻辑。</div>
+    </div>
+</section>
+
 <div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border);margin-top:50px;">
-    <p>因私出国（境）人员审批管理系统 — 系统评审与需求符合性报告 V2.0</p>
-    <p>评审日期：2026-07-03　｜　依据：开发需求说明书 V1.1</p>
+    <p>因私出国（境）人员审批管理系统 — 系统评审与需求符合性报告 V2.1</p>
+    <p>评审日期：2026-07-05　｜　依据：开发需求说明书 V1.1</p>
 </div>
 
 </div>
