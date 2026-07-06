@@ -52,7 +52,7 @@
             <tbody>
                 {% for log in items.rows %}
                 <tr>
-                    <td><small>{{ log.created_at }}</small></td>
+                    <td><small>{{ log.created_at | localtime }}</small></td>
                     <td>
                         {% set action_labels = {'create': '新建', 'update': '修改', 'delete': '删除', 'cancel': '取消行程', 'restore': '恢复行程', 'export': '导出', 'import': '导入', 'backup': '备份'} %}
                         <span class="badge bg-{{ 'success' if log.action == 'create' else 'warning' if log.action == 'update' else 'danger' if log.action == 'delete' else 'secondary' if log.action == 'backup' else 'info' }}">{{ action_labels.get(log.action, log.action) }}</span>

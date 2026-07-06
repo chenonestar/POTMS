@@ -1,11 +1,40 @@
 """辅助函数：复姓识别、户口所在地映射、日志记录"""
 import re
 import sqlite3
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, TypedDict
 
 from flask import request
 
+from config import Config
 from database import get_db
+
+
+def to_local_time(value: Any, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """
+    将数据库中存储的 UTC 时间戳转换为本地时间字符串（store UTC / display local）。
+
+    - value 可为 SQLite 的 'YYYY-MM-DD HH:MM:SS'(UTC) 字符串或 datetime；
+    - 本地偏移取 Config.DISPLAY_TZ_OFFSET_HOURS（默认 +8，中国无夏令时）；
+    - 无法解析时原样返回，空值返回空串。
+    """
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        s = str(value).strip().replace("T", " ")
+        # 去掉可能存在的小数秒
+        if "." in s:
+            s = s.split(".", 1)[0]
+        try:
+            dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return str(value)  # 非预期格式，原样返回，避免页面崩溃
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(timezone(timedelta(hours=Config.DISPLAY_TZ_OFFSET_HOURS)))
+    return local.strftime(fmt)
 
 
 class PageResult(TypedDict):
@@ -140,12 +169,15 @@ def get_dict_value(category: str, code: str) -> str:
     return row["value"] if row else code
 
 
-def paginate(query: str, params: tuple, page: int, per_page: int = 20) -> PageResult:
+def paginate(query: str, params: tuple, page: int, per_page: int = None) -> PageResult:
     """
     对查询结果进行分页。
     query 应为不含 LIMIT/OFFSET 的完整 SQL 查询。
+    per_page 缺省取 Config.PAGE_SIZE（业务列表统一每页条数）。
     返回 PageResult: { rows, page, total, pages, has_prev, has_next, per_page }
     """
+    if per_page is None:
+        per_page = Config.PAGE_SIZE
     import math
     # 去掉已有的 LIMIT/OFFSET 以得到纯数据源
     base = re.sub(r'\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?', '', query, flags=re.IGNORECASE)
@@ -195,12 +227,34 @@ def get_submit_units() -> list[dict]:
 
 
 def get_org_flat() -> list[dict]:
-    """获取全部组织节点（含 parent_id），用于单位/部门两级联动。"""
+    """
+    获取全部组织节点，按树的先序（DFS）排列，附带层级信息，用于单位/部门树状级联。
+    每项含：id、name、parent_id、depth（0=单位）、root_id（所属顶级单位 id）、
+    indent（部门/子部门的缩进前缀，用于下拉树状展示）。
+    """
     db = get_db()
     rows = db.execute(
-        "SELECT id, name, parent_id FROM sys_org ORDER BY parent_id, sort_order"
+        "SELECT id, name, parent_id FROM sys_org ORDER BY sort_order, id"
     ).fetchall()
-    return [{"id": r["id"], "name": r["name"], "parent_id": r["parent_id"]} for r in rows]
+    children: dict = {}
+    for r in rows:
+        children.setdefault(r["parent_id"], []).append(r)
+
+    out: list[dict] = []
+
+    def _dfs(parent_id: int, depth: int, root_id: int):
+        for r in children.get(parent_id, []):
+            rid = r["id"]
+            this_root = rid if depth == 0 else root_id
+            out.append({
+                "id": rid, "name": r["name"], "parent_id": r["parent_id"],
+                "depth": depth, "root_id": this_root,
+                "indent": ("　" * (depth - 1) + "└ ") if depth >= 1 else "",
+            })
+            _dfs(rid, depth + 1, this_root)
+
+    _dfs(0, 0, 0)
+    return out
 
 
 def get_org_children(parent_id: int = 0) -> list[dict]:

@@ -38,10 +38,15 @@
             <label class="form-label required">部门</label>
             <select class="form-select" name="department" id="orgDept" required>
                 <option value="">请先选择单位</option>
-                {% for o in org_flat() %}
-                <option value="{{ o.name }}" data-pid="{{ o.parent_id }}" data-oid="{{ o.id }}" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.name }}</option>
+                {% for o in org_flat() if o.depth >= 1 %}
+                <option value="{{ o.name }}" data-root="{{ o.root_id }}" data-oid="{{ o.id }}" data-depth="{{ o.depth }}" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.indent }}{{ o.name }}</option>
+                {% endfor %}
+                {# 无下级部门的单位：回退为可选“单位本身” #}
+                {% for o in org_flat() if o.depth == 0 %}
+                <option value="{{ o.name }}" data-root="{{ o.id }}" data-oid="{{ o.id }}" data-depth="0" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
+            <div class="form-text">按层级缩进展示部门 / 子部门，任意层级均可选。</div>
         </div>
         <div class="col-md-4">
             <label class="form-label required">姓名</label>
@@ -152,34 +157,36 @@
 {% endblock %}
 {% block scripts %}
 <script>
-// 单位→部门级联：单位为顶级组织，部门为其直接下级
+// 单位→部门树状级联：显示该单位下的所有部门/子部门（按层级缩进），任意层级可选
 function updateDept(preserve) {
     var unitSel = document.getElementById('orgUnit');
     var deptSel = document.getElementById('orgDept');
     var keep = preserve ? deptSel.value : '';
     var oid = unitSel.options[unitSel.selectedIndex].getAttribute('data-oid') || '';
-    var opts = deptSel.options, firstChild = -1, selfIdx = -1;
+    var opts = deptSel.options, firstReal = -1, selfIdx = -1, realCount = 0;
     for (var i = 0; i < opts.length; i++) {
         if (!opts[i].value) { continue; }  // 占位项
-        var isChild = ((opts[i].getAttribute('data-pid') || '') === oid);
-        opts[i].style.display = isChild ? '' : 'none';
-        if (isChild && firstChild < 0) firstChild = i;
-        if ((opts[i].getAttribute('data-oid') || '') === oid) selfIdx = i;
+        var belongs = ((opts[i].getAttribute('data-root') || '') === oid);
+        var isSelf = (opts[i].getAttribute('data-depth') === '0');
+        if (belongs && !isSelf) {
+            opts[i].style.display = '';                 // 真实部门/子部门
+            if (firstReal < 0) firstReal = i;
+            realCount++;
+        } else {
+            opts[i].style.display = 'none';
+            if (belongs && isSelf) selfIdx = i;         // 记录“单位本身”回退项
+        }
+    }
+    // 该单位无任何下级部门时，回退为可选“单位本身”
+    if (realCount === 0 && selfIdx >= 0) {
+        opts[selfIdx].style.display = '';
+        firstReal = selfIdx;
     }
     // 保留已保存的部门（编辑态）
     if (keep) deptSel.value = keep;
     var cur = deptSel.selectedIndex;
     var valid = cur > 0 && opts[cur].style.display !== 'none';
-    if (!valid) {
-        if (firstChild >= 0) {
-            deptSel.selectedIndex = firstChild;              // 默认选中第一个下级部门
-        } else if (selfIdx >= 0) {
-            opts[selfIdx].style.display = '';                // 无下级部门时回退为单位本身
-            deptSel.selectedIndex = selfIdx;
-        } else {
-            deptSel.selectedIndex = 0;
-        }
-    }
+    if (!valid) deptSel.selectedIndex = firstReal >= 0 ? firstReal : 0;
 }
 // Init on page load
 document.addEventListener('DOMContentLoaded', function() {
