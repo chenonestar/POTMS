@@ -870,6 +870,7 @@
             <li>SQLite 数据库文件每日自动备份至 <code>backup/</code> 子目录，保留最近 30 天。</li>
             <li>关键操作提供<strong>二次确认</strong>弹窗（如撤控、删除记录）。</li>
             <li>表单页支持<strong>暂存草稿</strong>功能，防止填写中断丢失数据。</li>
+            <li><strong>列表分页一屏可容纳</strong>：业务列表每页 <strong>12 条</strong>（在推荐分辨率 1920×1080 下无需滚动即可看全并操作分页）；操作日志因含多行变更详情，每页 <strong>10 条</strong>。每页条数由 <code>Config.PAGE_SIZE</code> / <code>PAGE_SIZE_LOGS</code> 统一配置。</li>
         </ul>
     </div>
 
@@ -1001,6 +1002,7 @@
             <li><strong>单元测试</strong>：采用 pytest 覆盖关键纯逻辑（身份证/性别/日期/出行区间校验、工作日推算、证件逾期判定、数据库迁移幂等与历史回填）。测试依赖仅置于 <code>requirements-dev.txt</code>，<strong>不参与 exe 打包</strong>，不影响分发体积。</li>
             <li><strong>类型注解</strong>：分页等公共返回结构使用 TypedDict，路由处理函数标注返回类型，提升 IDE 智能提示与静态检查覆盖。</li>
             <li><strong>数据迁移</strong>：数据库结构变更通过启动时的幂等迁移自动生效（新增字段、历史数据回填与格式规整），部署升级无需手动改库。</li>
+            <li><strong>时间统一：存 UTC / 显示转本地（store UTC, display local）</strong>：所有时间戳（操作日志及各表 <code>created_at</code>）在数据库中统一以 UTC 存储；页面展示时经 <code>localtime</code> 过滤器按 <code>Config.DISPLAY_TZ_OFFSET_HOURS</code>（默认 +8，可经环境变量 <code>POTMS_TZ_OFFSET</code> 配置）换算为本地时间，确保日志时间与操作员主机时钟一致。中国大陆无夏令时，采用固定偏移实现，<strong>不依赖系统时区库、不增加打包体积</strong>；如将来上多时区服务器，可整体切换为具名时区（zoneinfo + tzdata）。</li>
         </ul>
         <div class="footnote">📌 上述质量措施均以"不改变既有功能行为、不增加打包体积"为前提，并以自动化测试固化关键业务逻辑。</div>
     </div>
