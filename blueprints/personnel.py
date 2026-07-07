@@ -7,7 +7,7 @@ from flask.typing import ResponseReturnValue
 from auth import login_required
 from database import get_db
 from utils.helpers import (
-    get_dict_options, get_dict_value, log_action, paginate,
+    get_dict_options, get_dict_value, log_action, list_all,
     detect_surname_split, normalize_residence, row_snapshot,
 )
 from utils.validators import (
@@ -87,7 +87,7 @@ def list() -> ResponseReturnValue:
     }
     base += f" ORDER BY {sort_map.get(sort_by, 'pf.created_at DESC')}"
 
-    pg = paginate(base, params, page)
+    pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
     return render_template(
         "personnel/list.html",

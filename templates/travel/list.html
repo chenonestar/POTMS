@@ -49,9 +49,9 @@
     <tr class="{{ 'row-danger' if row.id in overdue_ids }}">
         <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
         <td>{{ row.name }}</td>
-        <td>{{ row.unit[:15] }}{{ '…' if row.unit|length > 15 }}</td>
-        <td>{{ row.position }}</td>
-        <td>{{ row.destination_passport[:15] }}{{ '…' if row.destination_passport|length > 15 }}</td>
+        <td title="{{ row.unit }}">{{ row.unit }}</td>
+        <td title="{{ row.position }}">{{ row.position }}</td>
+        <td title="{{ row.destination_passport }}">{{ row.destination_passport }}</td>
         <td>{{ row.travel_dates }}</td>
         <td>{% if row.trip_status == 'cancelled' %}<span class="badge bg-warning text-dark">取消行程</span>{% else %}<span class="badge bg-light text-secondary">正常</span>{% endif %}</td>
         <td>{{ row.need_new_passport }}</td>

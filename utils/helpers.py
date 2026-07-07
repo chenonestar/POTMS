@@ -199,6 +199,26 @@ def paginate(query: str, params: tuple, page: int, per_page: int = None) -> Page
     }
 
 
+def list_all(query: str, params: tuple) -> PageResult:
+    """
+    返回查询的全部行（不分页），供“纯前端窗口化”分页使用：
+    服务端一次性下发全部（本系统 ≤500 条，无压力），由浏览器按视口高度分页。
+    返回结构与 paginate 兼容（pages=1），使模板与分页宏无需分支处理。
+    """
+    db = get_db()
+    rows = db.execute(query, params).fetchall()
+    total = len(rows)
+    return {
+        "rows": rows,
+        "page": 1,
+        "total": total,
+        "pages": 1,
+        "has_prev": False,
+        "has_next": False,
+        "per_page": total or 1,
+    }
+
+
 def get_org_tree_options() -> list[dict]:
     """获取组织架构树形选项（用于下拉菜单，含缩进前缀）"""
     db = get_db()

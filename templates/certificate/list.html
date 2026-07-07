@@ -47,8 +47,8 @@
     {% set row_warn = (row.id, '普通护照') in expired_set or (row.id, '往来港澳通行证') in expired_set or (row.id, '大陆居民往来台湾通行证') in expired_set %}
     <tr class="{{ 'row-warning' if row_warn }}">
         <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
-        <td>{{ row.unit[:15] }}{{ '…' if row.unit|length > 15 }}</td>
-        <td>{{ row.department[:10] }}{{ '…' if row.department|length > 10 }}</td>
+        <td title="{{ row.unit }}">{{ row.unit }}</td>
+        <td title="{{ row.department }}">{{ row.department }}</td>
         <td>{{ row.name }}</td>
         <td>{{ row.passport_no or '-' }}</td>
         <td class="{{ 'text-danger fw-bold' if (row.id, '普通护照') in expired_set }}">{{ row.passport_expiry or '-' }}</td>

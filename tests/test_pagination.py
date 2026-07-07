@@ -40,24 +40,21 @@ def client(tmp_path, monkeypatch):
     return c
 
 
-def test_page_size_is_12(client):
-    # 第 1 页应恰好 12 行（PAGE_SIZE=12）
+def test_server_returns_all_rows(client):
+    # 纯前端窗口化：服务端一次性下发全部 25 行（分页交给浏览器）
     html = client.get("/personnel/").get_data(as_text=True)
-    assert html.count('class="row-check"') == 12
+    assert html.count('class="row-check"') == 25
 
 
-def test_pagination_page2_does_not_crash(client):
-    # 关键回归：URL 已含 page 时，翻页链接渲染不得 500
+def test_page_param_ignored_gracefully(client):
+    # 分页由前端处理，URL 带 page 不再影响服务端，也不得报错
     r = client.get("/personnel/?page=2")
     assert r.status_code == 200
-    r3 = client.get("/personnel/?page=3")
-    assert r3.status_code == 200
-    # 第 3 页应剩 1 行（25 - 12*2）
-    assert r3.get_data(as_text=True).count('class="row-check"') == 1
+    assert r.get_data(as_text=True).count('class="row-check"') == 25
 
 
-def test_pagination_preserves_filter_args(client):
-    # 带筛选参数翻页不崩，且链接保留筛选串
-    r = client.get("/personnel/?status=active&page=2")
+def test_filter_still_server_side(client):
+    # 筛选仍在服务端：active 状态返回全部匹配行，无 500
+    r = client.get("/personnel/?status=active")
     assert r.status_code == 200
-    assert "status=active" in r.get_data(as_text=True)
+    assert r.get_data(as_text=True).count('class="row-check"') == 25

@@ -9,7 +9,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate, get_dict_options, row_snapshot
+from utils.helpers import log_action, paginate, list_all, get_dict_options, row_snapshot
 from utils.validators import (parse_date_input, validate_date_format,
                               parse_travel_range, validate_travel_range, format_travel_range,
                               is_cert_overdue, cert_overdue_deadline,
@@ -98,7 +98,7 @@ def list() -> ResponseReturnValue:
     where, params = build_filters(request.args)
     base = "SELECT * FROM travel_details WHERE 1=1" + where + " ORDER BY created_at DESC"
 
-    pg = paginate(base, params, page)
+    pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
     # 标记逾期未还（已领用 + 未归还 + 超过工作日时限），并附带应还到期日
     from datetime import datetime
