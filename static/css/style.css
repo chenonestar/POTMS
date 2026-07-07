@@ -341,6 +341,15 @@ main > h4 i {
     border-bottom: 1px solid var(--line-light);
     vertical-align: middle;
     color: var(--ink);
+    /* 单行显示：行高恒定，避免长内容折行导致一屏容纳行数不确定 */
+    white-space: nowrap;
+}
+/* 中间数据列：超长截断为省略号，配合单元格 title 悬停查看全文；
+   首列(勾选框)与末列(操作按钮)不做宽度约束，避免裁掉控件 */
+.table tbody td:not(:first-child):not(:last-child) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
 }
 .table tbody tr:hover {
     background: #f7f4ef;

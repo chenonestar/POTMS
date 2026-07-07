@@ -61,3 +61,19 @@ def test_pagination_preserves_filter_args(client):
     r = client.get("/personnel/?status=active&page=2")
     assert r.status_code == 200
     assert "status=active" in r.get_data(as_text=True)
+
+
+def test_page_size_cookie_honored(client):
+    # 自适应算出的 page_size cookie 应被服务端采用（钳制范围内）
+    client.set_cookie("page_size", "6")
+    r = client.get("/personnel/")
+    assert r.get_data(as_text=True).count('class="row-check"') == 6
+
+
+def test_page_size_cookie_clamped(client):
+    # 过大值被钳到 50（此处 25 条 → 全部 25 行）
+    client.set_cookie("page_size", "999")
+    assert client.get("/personnel/").get_data(as_text=True).count('class="row-check"') == 25
+    # 过小值被钳到 5
+    client.set_cookie("page_size", "1")
+    assert client.get("/personnel/").get_data(as_text=True).count('class="row-check"') == 5

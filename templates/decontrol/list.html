@@ -30,7 +30,7 @@
 </div></div>
 
 <div class="table-card"><div class="table-responsive">
-<table id="mainTable" class="table table-hover mb-0">
+<table id="mainTable" class="table table-hover mb-0" data-per-page="{{ items.per_page }}">
     <thead class="table-light"><tr>
         <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
         <th data-col="姓名">姓名</th><th data-col="身份证号">身份证号</th><th data-col="工作单位">工作单位</th><th data-col="报送单位">报送单位</th><th data-col="报送类别">报送类别</th><th data-col="撤控原因">撤控原因</th><th data-col="撤控日期">撤控日期</th><th>操作</th>
@@ -41,10 +41,10 @@
         <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
         <td>{{ row.surname }}{{ row.given_name }}</td>
         <td><code>{{ row.id_number[:3] }}***********{{ row.id_number[-4:] if row.id_number|length >= 7 }}</code></td>
-        <td>{{ row.work_unit[:20] }}{{ '…' if row.work_unit|length > 20 }}</td>
-        <td>{{ row.submit_unit_name[:15] }}{{ '…' if row.submit_unit_name|length > 15 }}</td>
+        <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
+        <td title="{{ row.submit_unit_name }}">{{ row.submit_unit_name }}</td>
         <td>{{ row.submit_unit_type }}</td>
-        <td>{{ row.reason[:30] }}{{ '…' if row.reason|length > 30 }}</td>
+        <td title="{{ row.reason }}">{{ row.reason }}</td>
         <td><small>{{ row.decontrol_date or (row.created_at | localtime('%Y-%m-%d')) }}</small></td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('export.print_view', print_type='decontrol', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>

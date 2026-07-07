@@ -37,7 +37,7 @@
 {% endif %}
 
 <div class="table-card"><div class="table-responsive">
-<table id="mainTable" class="table table-hover mb-0">
+<table id="mainTable" class="table table-hover mb-0" data-per-page="{{ items.per_page }}">
     <thead class="table-light"><tr>
         <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
         <th data-col="单位">单位</th><th data-col="部门">部门</th><th data-col="姓名">姓名</th><th data-col="普通护照">普通护照</th><th data-col="护照有效期">护照有效期</th><th data-col="港澳通行证">港澳通行证</th><th data-col="港澳通有效期">港澳通有效期</th><th data-col="台湾通行证">台湾通行证</th><th data-col="台湾通有效期">台湾通有效期</th><th>操作</th>

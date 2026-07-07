@@ -177,7 +177,14 @@ def paginate(query: str, params: tuple, page: int, per_page: int = None) -> Page
     返回 PageResult: { rows, page, total, pages, has_prev, has_next, per_page }
     """
     if per_page is None:
+        # 默认取配置值；若浏览器带有自适应算出的 page_size cookie 则优先采用（钳制 5–50）
         per_page = Config.PAGE_SIZE
+        try:
+            cookie = request.cookies.get("page_size")
+            if cookie and cookie.isdigit():
+                per_page = max(5, min(50, int(cookie)))
+        except RuntimeError:
+            pass  # 请求上下文之外（如单测直接调用）忽略
     import math
     # 去掉已有的 LIMIT/OFFSET 以得到纯数据源
     base = re.sub(r'\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?', '', query, flags=re.IGNORECASE)

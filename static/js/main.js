@@ -322,3 +322,35 @@ function initColumnToggle(tableId, menuId, storageKey) {
     });
     apply();
 }
+
+// ============ 列表分页：按视口高度自动计算每页条数（不同屏幕/缩放自适应） ============
+// 原理：视口可用高 ÷ 实测单行高 = 正好铺满一屏的行数；写入 page_size cookie 后由
+// 服务端分页采用。innerHeight 天然包含 DPI 缩放/浏览器工具栏/页面缩放，故一次测量即适配。
+function autoFitPageSize() {
+    var table = document.getElementById('mainTable');
+    if (!table) return;
+    var used = parseInt(table.getAttribute('data-per-page') || '0', 10);
+    if (!used) return;                       // 无分页信息则不处理
+    var tbody = table.tBodies[0];
+    if (!tbody || !tbody.rows.length) return;
+
+    var rowH = tbody.rows[0].getBoundingClientRect().height || 37;
+    var theadH = table.tHead ? table.tHead.getBoundingClientRect().height : 0;
+    var tableTop = table.getBoundingClientRect().top;         // 表格顶端到视口顶
+    var nav = document.querySelector('nav[aria-label="Page navigation"]');
+    var reserve = (nav ? nav.getBoundingClientRect().height : 40) + 48; // 分页条 + 底部留白
+    var avail = window.innerHeight - tableTop - theadH - reserve;
+    var fit = Math.max(5, Math.min(50, Math.floor(avail / rowH)));
+
+    if (fit === used) return;                // 已经正好，无需调整
+    // 每个列表本会话只自动 reload 一次，避免边界抖动导致的反复刷新
+    var key = 'pgfit_done_' + location.pathname;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+
+    document.cookie = 'page_size=' + fit + '; path=/; max-age=31536000; SameSite=Lax';
+    var u = new URL(location.href);
+    u.searchParams.delete('page');           // 回第 1 页，避免落到超出新末页的页码
+    location.replace(u.toString());
+}
+document.addEventListener('DOMContentLoaded', autoFitPageSize);
