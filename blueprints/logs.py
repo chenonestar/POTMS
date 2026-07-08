@@ -90,7 +90,8 @@ def index() -> ResponseReturnValue:
 
     base += " ORDER BY created_at DESC"
 
-    pg = paginate(base, tuple(params), page)
+    from config import Config
+    pg = paginate(base, tuple(params), page, per_page=Config.PAGE_SIZE_LOGS)
 
     # 解析变更快照，附加到每行
     parsed = []

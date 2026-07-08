@@ -322,3 +322,90 @@ function initColumnToggle(tableId, menuId, storageKey) {
     });
     apply();
 }
+
+// ============ 列表分页：纯前端窗口化（服务端全量下发，浏览器按视口分页） ============
+// 服务端一次性返回全部行，前端按“视口可用高 ÷ 单行高”算出每页条数，只显示当前页的行，
+// 自建分页控件；改变窗口大小/缩放时实时重排，无需刷新。
+function clientWindowPaginate() {
+    var table = document.getElementById('mainTable');
+    if (!table || !table.tBodies.length) return;
+    var tbody = table.tBodies[0];
+    var rows = Array.prototype.filter.call(tbody.rows, function (tr) {
+        // 数据行 = 非“暂无记录”空状态行（空状态行用 td[colspan]）；
+        // 兼容有/无勾选框的列表（附件总览等只读列表无 .row-check）
+        return !tr.querySelector('td[colspan]');
+    });
+    if (!rows.length) return;
+
+    // 单行高恒定（tbody td 已 nowrap），初始全部可见时测量一次并缓存
+    var rowH = rows[0].getBoundingClientRect().height || 37;
+    var state = { page: 1, size: 12 };
+
+    var pager = document.createElement('nav');
+    pager.setAttribute('aria-label', 'Page navigation');
+    pager.className = 'mt-3';
+    var host = table.closest('.table-card') || table;
+    host.parentNode.insertBefore(pager, host.nextSibling);
+
+    function computeSize() {
+        var theadH = table.tHead ? table.tHead.getBoundingClientRect().height : 0;
+        var top = table.getBoundingClientRect().top;
+        var reserve = 96;                        // 分页条 + 底部留白
+        var avail = window.innerHeight - top - theadH - reserve;
+        return Math.max(5, Math.min(50, Math.floor(avail / rowH)));
+    }
+    function totalPages() { return Math.max(1, Math.ceil(rows.length / state.size)); }
+
+    function render() {
+        var tp = totalPages();
+        state.page = Math.min(Math.max(1, state.page), tp);
+        var start = (state.page - 1) * state.size, end = start + state.size;
+        rows.forEach(function (tr, i) { tr.style.display = (i >= start && i < end) ? '' : 'none'; });
+        drawPager(tp);
+    }
+
+    function pageItem(label, page, opts) {
+        opts = opts || {};
+        var dis = opts.disabled ? ' disabled' : '', act = opts.active ? ' active' : '';
+        if (opts.disabled || opts.active)
+            return '<li class="page-item' + dis + act + '"><span class="page-link">' + label + '</span></li>';
+        return '<li class="page-item"><a class="page-link" href="#" data-page="' + page + '">' + label + '</a></li>';
+    }
+    function drawPager(tp) {
+        if (tp <= 1) {
+            pager.innerHTML = '<div class="text-center text-muted small">共 ' + rows.length + ' 条记录</div>';
+            return;
+        }
+        var html = '<ul class="pagination justify-content-center mb-1">';
+        html += pageItem('上一页', state.page - 1, { disabled: state.page <= 1 });
+        var s = Math.max(1, state.page - 2), e = Math.min(tp, state.page + 2);
+        if (s > 1) { html += pageItem('1', 1); if (s > 2) html += pageItem('…', 0, { disabled: true }); }
+        for (var p = s; p <= e; p++) html += pageItem(p, p, { active: p === state.page });
+        if (e < tp) { if (e < tp - 1) html += pageItem('…', 0, { disabled: true }); html += pageItem(tp, tp); }
+        html += pageItem('下一页', state.page + 1, { disabled: state.page >= tp });
+        html += '</ul><div class="text-center text-muted small">共 ' + rows.length + ' 条记录，第 ' + state.page + '/' + tp + ' 页</div>';
+        pager.innerHTML = html;
+    }
+
+    pager.addEventListener('click', function (e) {
+        var a = e.target.closest('a[data-page]');
+        if (!a) return;
+        e.preventDefault();
+        state.page = parseInt(a.getAttribute('data-page'), 10) || 1;
+        render();
+        window.scrollTo({ top: 0 });
+    });
+
+    var t;
+    window.addEventListener('resize', function () {
+        clearTimeout(t);
+        t = setTimeout(function () {
+            var ns = computeSize();
+            if (ns !== state.size) { state.size = ns; render(); }
+        }, 150);
+    });
+
+    state.size = computeSize();
+    render();
+}
+document.addEventListener('DOMContentLoaded', clientWindowPaginate);

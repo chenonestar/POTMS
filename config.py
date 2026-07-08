@@ -51,8 +51,13 @@ class Config:
     # 会话
     PERMANENT_SESSION_LIFETIME = 3600  # 1小时超时
 
-    # 分页
-    PAGE_SIZE = 20
+    # 分页（业务列表一屏可容纳的行数；操作日志因含多行变更详情单独取更小值）
+    PAGE_SIZE = 12
+    PAGE_SIZE_LOGS = 10
+
+    # 时间显示：数据库统一存储 UTC，展示时按此偏移换算为本地时间。
+    # 中国大陆固定 UTC+8 且无夏令时；如需其它时区，设环境变量 POTMS_TZ_OFFSET（单位：小时）。
+    DISPLAY_TZ_OFFSET_HOURS = int(os.environ.get("POTMS_TZ_OFFSET", "8"))
 
     # 证照到期预警（天）
     CERT_EXPIRY_WARN_DAYS = 30

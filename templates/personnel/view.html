@@ -15,6 +15,16 @@
             <i class="bi bi-printer"></i> 打印信息表
         </a>
         {% endif %}
+        {% if filing.status == 'active' %}
+        <a href="{{ url_for('personnel.filing_edit', filing_id=filing.id) }}" class="btn btn-warning btn-sm">
+            <i class="bi bi-pencil"></i> 编辑备案表
+        </a>
+        {% endif %}
+        {% if info %}
+        <a href="{{ url_for('personnel.info_edit', info_id=info.id) }}" class="btn btn-warning btn-sm">
+            <i class="bi bi-pencil-square"></i> 编辑信息表
+        </a>
+        {% endif %}
     </div>
 </div>
 
@@ -22,8 +32,8 @@
 <div class="alert alert-info d-flex align-items-center">
     <i class="bi bi-arrow-repeat me-2"></i>
     <div>
-        {% if predecessor %}本记录为<strong>撤控后重报</strong>，原备案记录：<a href="{{ url_for('personnel.view', filing_id=predecessor.id) }}">{{ predecessor.surname }}{{ predecessor.given_name }} #{{ predecessor.id }}</a>（{{ predecessor.created_at[:10] }}）。{% endif %}
-        {% if successor %}本记录已被<strong>重报替代</strong>，新备案记录：<a href="{{ url_for('personnel.view', filing_id=successor.id) }}">{{ successor.surname }}{{ successor.given_name }} #{{ successor.id }}</a>（{{ successor.created_at[:10] }}）。{% endif %}
+        {% if predecessor %}本记录为<strong>撤控后重报</strong>，原备案记录：<a href="{{ url_for('personnel.view', filing_id=predecessor.id) }}">{{ predecessor.surname }}{{ predecessor.given_name }} #{{ predecessor.id }}</a>（{{ predecessor.created_at | localtime('%Y-%m-%d') }}）。{% endif %}
+        {% if successor %}本记录已被<strong>重报替代</strong>，新备案记录：<a href="{{ url_for('personnel.view', filing_id=successor.id) }}">{{ successor.surname }}{{ successor.given_name }} #{{ successor.id }}</a>（{{ successor.created_at | localtime('%Y-%m-%d') }}）。{% endif %}
     </div>
 </div>
 {% endif %}
@@ -52,7 +62,7 @@
             <div class="col-md-4"><label class="text-muted">备注</label><p>{{ filing.remarks or '-' }}</p></div>
         </div>
         <div class="row mt-2">
-            <div class="col-md-12"><label class="text-muted">操作人 / 时间</label><p>{{ filing.operator }} / {{ filing.created_at }}</p></div>
+            <div class="col-md-12"><label class="text-muted">操作人 / 时间</label><p>{{ filing.operator }} / {{ filing.created_at | localtime }}</p></div>
         </div>
     </div>
 </div>

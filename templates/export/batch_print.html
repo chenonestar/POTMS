@@ -95,8 +95,8 @@
     <tr>
         <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.gender }}</td>
         <td>{{ r.birth_date }}</td><td>{{ r.id_number or '' }}</td><td>{{ r.work_start_date or '' }}</td>
-        <td>{{ r.education or '' }}</td><td>{{ r.degree or '' }}</td><td>{{ r.title or '' }}</td>
-        <td>{{ r.rank }}</td><td>{{ r.political_status }}</td><td>{{ r.party_join_date or '' }}</td><td>{{ r.position }}</td>
+        <td>{{ dict_value('education', r.education) if r.education else '' }}</td><td>{{ dict_value('degree', r.degree) if r.degree else '' }}</td><td>{{ dict_value('title', r.title) if r.title else '' }}</td>
+        <td>{{ dict_value('rank', r.rank) if r.rank else '' }}</td><td>{{ r.political_status }}</td><td>{{ r.party_join_date or '' }}</td><td>{{ r.position }}</td>
     </tr>
     {% endfor %}
     </tbody>

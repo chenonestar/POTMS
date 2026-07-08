@@ -38,8 +38,8 @@
     <tr><td class="label">姓名</td><td>{{ row.name }}</td><td class="label">性别</td><td>{{ row.gender }}</td></tr>
     <tr><td class="label">身份证号</td><td>{{ row.id_number or '' }}</td><td class="label">参加工作日期</td><td>{{ row.work_start_date or '' }}</td></tr>
     <tr><td class="label">出生日期</td><td colspan="3">{{ row.birth_date }}</td></tr>
-    <tr><td class="label">学历</td><td>{{ row.education or '' }}</td><td class="label">学位</td><td>{{ row.degree or '' }}</td></tr>
-    <tr><td class="label">职称</td><td>{{ row.title or '' }}</td><td class="label">职级</td><td>{{ row.rank }}</td></tr>
+    <tr><td class="label">学历</td><td>{{ dict_value('education', row.education) if row.education else '' }}</td><td class="label">学位</td><td>{{ dict_value('degree', row.degree) if row.degree else '' }}</td></tr>
+    <tr><td class="label">职称</td><td>{{ dict_value('title', row.title) if row.title else '' }}</td><td class="label">职级</td><td>{{ dict_value('rank', row.rank) if row.rank else '' }}</td></tr>
     <tr><td class="label">政治面貌</td><td>{{ row.political_status }}</td><td class="label">入党日期</td><td>{{ row.party_join_date or '' }}</td></tr>
     <tr><td class="label">职务（岗位名称）</td><td colspan="3">{{ row.position }}</td></tr>
 </table>

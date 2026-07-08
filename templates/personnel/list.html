@@ -56,15 +56,18 @@
         <td>{{ row.surname }}{{ row.given_name }}</td>
         <td>{{ row.gender }}</td><td>{{ row.birth_date }}</td>
         <td><code>{{ row.id_number[:3] }}***********{{ row.id_number[-4:] if row.id_number|length >= 7 }}</code></td>
-        <td>{{ row.work_unit[:20] }}{{ '…' if row.work_unit|length > 20 }}</td>
-        <td>{{ row.position_or_title }}</td>
+        <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
+        <td title="{{ row.position_or_title }}">{{ row.position_or_title }}</td>
         <td><span class="{{ 'tag-new' if row.tag == '新增' else 'tag-update' }}">{{ row.tag }}</span></td>
         <td><span class="{{ 'status-active' if row.status == 'active' else 'status-decontrolled' }}">{{ '有效' if row.status == 'active' else '已撤控' }}</span></td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('personnel.view', filing_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
             <a href="{{ url_for('export.print_view', print_type='filing', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+            {% if row.info_id %}
+            <a href="{{ url_for('personnel.info_edit', info_id=row.info_id) }}" class="btn btn-outline-warning" title="编辑信息表"><i class="bi bi-pencil-square"></i></a>
+            {% endif %}
             {% if row.status == 'active' %}
-            <a href="{{ url_for('personnel.filing_edit', filing_id=row.id) }}" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+            <a href="{{ url_for('personnel.filing_edit', filing_id=row.id) }}" class="btn btn-outline-warning" title="编辑备案表"><i class="bi bi-pencil"></i></a>
             <a href="{{ url_for('decontrol.new', filing_id=row.id) }}" class="btn btn-outline-secondary" title="撤控"><i class="bi bi-arrow-repeat"></i></a>
             <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('personnel.delete', filing_id=row.id) }}" data-message="确定要删除 {{ row.surname }}{{ row.given_name }} 的备案记录吗？"><i class="bi bi-trash"></i></button>
             {% endif %}
