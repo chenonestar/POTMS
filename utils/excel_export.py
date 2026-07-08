@@ -104,6 +104,16 @@ def export_personnel_info(operator: str, where_sql: str = "", params: tuple = ()
         sql = "SELECT * FROM personnel_info WHERE 1=1 " + where_sql + " ORDER BY created_at DESC"
     rows = db.execute(sql, params).fetchall()
 
+    # 学历/学位/职称/职级为字典编码，导出时映射为显示值（编码 → 中文）
+    from utils.helpers import get_dict_options
+    dict_maps = {
+        cat: {o["code"]: o["value"] for o in get_dict_options(cat)}
+        for cat in ("education", "degree", "title", "rank")
+    }
+
+    def _dv(cat, code):
+        return dict_maps[cat].get(code, code) if code else ""
+
     wb = Workbook()
     ws = wb.active
     ws.title = "备案人员信息登记表"
@@ -113,8 +123,9 @@ def export_personnel_info(operator: str, where_sql: str = "", params: tuple = ()
         values = [
             row["unit"], row["department"], row["name"], row["gender"],
             row["birth_date"], row["id_number"] or "", row["work_start_date"] or "",
-            row["education"] or "", row["degree"] or "", row["title"] or "",
-            row["rank"], row["political_status"], row["party_join_date"] or "",
+            _dv("education", row["education"]), _dv("degree", row["degree"]),
+            _dv("title", row["title"]), _dv("rank", row["rank"]),
+            row["political_status"], row["party_join_date"] or "",
             row["position"],
         ]
         for col, val in enumerate(values, 1):

@@ -41,11 +41,11 @@
         <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
         <td>{{ row.surname }}{{ row.given_name }}</td>
         <td><code>{{ row.id_number[:3] }}***********{{ row.id_number[-4:] if row.id_number|length >= 7 }}</code></td>
-        <td>{{ row.work_unit[:20] }}{{ '…' if row.work_unit|length > 20 }}</td>
-        <td>{{ row.submit_unit_name[:15] }}{{ '…' if row.submit_unit_name|length > 15 }}</td>
+        <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
+        <td title="{{ row.submit_unit_name }}">{{ row.submit_unit_name }}</td>
         <td>{{ row.submit_unit_type }}</td>
-        <td>{{ row.reason[:30] }}{{ '…' if row.reason|length > 30 }}</td>
-        <td><small>{{ row.decontrol_date or row.created_at[:10] }}</small></td>
+        <td title="{{ row.reason }}">{{ row.reason }}</td>
+        <td><small>{{ row.decontrol_date or (row.created_at | localtime('%Y-%m-%d')) }}</small></td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('export.print_view', print_type='decontrol', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
             <a href="{{ url_for('decontrol.view', dec_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>

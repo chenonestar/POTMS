@@ -8,7 +8,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, paginate, normalize_residence, get_dict_options, row_snapshot
+from utils.helpers import log_action, list_all, normalize_residence, get_dict_options, row_snapshot
 from utils.validators import parse_date_input, check_required, check_dates, check_identity
 
 decontrol_bp = Blueprint("decontrol", __name__)
@@ -43,7 +43,7 @@ def list() -> ResponseReturnValue:
     where, params = build_filters(request.args)
     base = "SELECT * FROM decontrol_filing WHERE 1=1" + where + " ORDER BY created_at DESC"
 
-    pg = paginate(base, params, page)
+    pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
     return render_template(
         "decontrol/list.html",
         items=pg,

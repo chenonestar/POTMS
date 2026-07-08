@@ -81,6 +81,10 @@ def create_app() -> Flask:
     from database import close_db
     app.teardown_appcontext(close_db)
 
+    # Jinja2 过滤器：UTC → 本地时间显示（store UTC / display local）
+    from utils.helpers import to_local_time
+    app.jinja_env.filters["localtime"] = to_local_time
+
     # Jinja2 模板全局函数（数据字典查询）
     from utils.helpers import get_dict_options, get_dict_value, get_org_tree_options, get_org_children, get_org_flat, get_personnel_options, get_submit_units
 
