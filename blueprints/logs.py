@@ -107,6 +107,7 @@ def index() -> ResponseReturnValue:
         {"code": "delete", "value": "删除"},
         {"code": "cancel", "value": "取消行程"},
         {"code": "restore", "value": "恢复行程"},
+        {"code": "lock", "value": "登录锁定"},
         {"code": "export", "value": "导出"},
         {"code": "import", "value": "导入"},
         {"code": "backup", "value": "备份"},

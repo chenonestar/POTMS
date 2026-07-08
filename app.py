@@ -77,6 +77,18 @@ def create_app() -> Flask:
     from utils.csrf import init_csrf
     init_csrf(app)
 
+    # 中文错误页：404 / 500（500 同时记录异常堆栈到应用日志）
+    from flask import render_template
+
+    @app.errorhandler(404)
+    def _not_found(err):
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def _server_error(err):
+        app.logger.exception("Internal Server Error: %s", err)
+        return render_template("errors/500.html"), 500
+
     # 数据库连接关闭
     from database import close_db
     app.teardown_appcontext(close_db)

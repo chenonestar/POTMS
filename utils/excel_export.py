@@ -62,6 +62,25 @@ def _auto_width(ws, col_count: int, max_width: int = 40, min_row: int = 2):
         ws.column_dimensions[get_column_letter(col)].width = min(max_len + 4, max_width)
 
 
+_EXPORT_RETENTION_DAYS = 7
+
+
+def _prune_old_exports() -> None:
+    """清理超过保留期的历史导出文件（导出目录只增不减会长期累积，且含敏感数据）。"""
+    if not os.path.isdir(Config.EXPORT_FOLDER):
+        return
+    cutoff = datetime.now().timestamp() - _EXPORT_RETENTION_DAYS * 86400
+    for name in os.listdir(Config.EXPORT_FOLDER):
+        if not name.lower().endswith(".xlsx"):
+            continue
+        path = os.path.join(Config.EXPORT_FOLDER, name)
+        try:
+            if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass  # 单个文件清理失败不影响导出
+
+
 def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
     """保存到文件，返回路径"""
     # 添加填表说明 Sheet
@@ -74,6 +93,7 @@ def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
     filename = f"{prefix}_{ts}_{operator}.xlsx"
     filepath = os.path.join(Config.EXPORT_FOLDER, filename)
     os.makedirs(Config.EXPORT_FOLDER, exist_ok=True)
+    _prune_old_exports()
     ws.parent.save(filepath)
     return filepath, filename
 
