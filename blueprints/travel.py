@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 import uuid
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory, session
@@ -72,7 +73,6 @@ def build_filters(args, ids=None):
 
 def _overdue_ids() -> set:
     """全量计算「证件逾期未还」记录的 id 集合（已领用 + 未归还 + 超工作日时限）。"""
-    from datetime import datetime
     today = datetime.now().strftime("%Y%m%d")
     db = get_db()
     rows = db.execute(
@@ -87,7 +87,6 @@ def _overdue_ids() -> set:
 @travel_bp.route("/travel/")
 @login_required
 def list() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     category_filter = request.args.get("category", "").strip()
     need_passport_filter = request.args.get("need_new_passport", "").strip()
@@ -101,7 +100,6 @@ def list() -> ResponseReturnValue:
     pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
     # 标记逾期未还（已领用 + 未归还 + 超过工作日时限），并附带应还到期日
-    from datetime import datetime
     today = datetime.now().strftime("%Y%m%d")
     overdue_ids = set()
     deadlines = {}
@@ -136,7 +134,6 @@ _REQUIRED_B = ["个人申请报告", "审批表", "同意申办函"]
 @travel_bp.route("/travel/attachments")
 @login_required
 def attachments() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     type_filter = request.args.get("file_type", "").strip()
     date_from = request.args.get("date_from", "").strip()
@@ -381,7 +378,6 @@ def cancel(travel_id) -> ResponseReturnValue:
 
     cancel_date = parse_date_input(request.form.get("cancel_date", ""))
     if not cancel_date:
-        from datetime import datetime
         cancel_date = datetime.now().strftime("%Y%m%d")
     ok, msg = validate_date_format(cancel_date)
     if not ok:

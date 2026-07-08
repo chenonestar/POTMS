@@ -341,3 +341,43 @@ def export_decontrol(operator: str, where_sql: str = "", params: tuple = ()) -> 
         "2. 户口所在地填至区级，省份不加'省'字。",
         "3. 报送单位类别：党政机关,金融系统,教科文卫系统,国有大中型企业单位,其他单位。",
     ])
+
+
+# =========================================================================
+# 6. 操作日志年度归档
+# =========================================================================
+HEADERS_LOGS = ["时间（本地）", "操作人", "动作", "对象类型", "对象ID", "详情", "IP", "变更快照(JSON)"]
+
+
+def export_logs(operator: str, year: str) -> tuple:
+    """按年份归档导出操作日志（时间按本地时区换算与过滤）。"""
+    from utils.helpers import to_local_time
+    db = get_db()
+    tz = f"+{Config.DISPLAY_TZ_OFFSET_HOURS} hours"
+    rows = db.execute(
+        "SELECT * FROM operation_logs "
+        "WHERE strftime('%Y', datetime(created_at, ?)) = ? ORDER BY created_at",
+        (tz, year),
+    ).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{year}年操作日志"
+    _style_header(ws, f"操作日志归档（{year} 年）", HEADERS_LOGS)
+
+    for i, row in enumerate(rows, 3):
+        values = [
+            to_local_time(row["created_at"]), row["operator"], row["action"],
+            row["target_type"], row["target_id"], row["detail"] or "",
+            row["ip_address"] or "",
+            (row["snapshot"] or "") if "snapshot" in row.keys() else "",
+        ]
+        for col, val in enumerate(values, 1):
+            ws.cell(row=i, column=col, value=val)
+
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_LOGS))
+    _auto_width(ws, len(HEADERS_LOGS))
+    return _save_and_return(ws, f"操作日志归档_{year}年", operator, [
+        "1. 时间已按系统配置时区换算为本地时间。",
+        "2. 本文件为审计归档副本；数据库中的日志不可删除，仍完整保留。",
+    ])

@@ -1,13 +1,44 @@
 """操作日志查看蓝图"""
 import json
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from flask.typing import ResponseReturnValue
 
 from auth import login_required
-from utils.helpers import paginate
+from config import Config
+from database import get_db
+from utils.helpers import paginate, log_action
 
 logs_bp = Blueprint("logs", __name__)
+
+
+def _log_years() -> list:
+    """日志中出现过的年份（按本地时区换算），倒序。"""
+    tz = f"+{Config.DISPLAY_TZ_OFFSET_HOURS} hours"
+    rows = get_db().execute(
+        "SELECT DISTINCT strftime('%Y', datetime(created_at, ?)) AS y "
+        "FROM operation_logs WHERE created_at IS NOT NULL ORDER BY y DESC", (tz,)
+    ).fetchall()
+    return [r["y"] for r in rows if r["y"]]
+
+
+@logs_bp.route("/logs/export")
+@login_required
+def export() -> ResponseReturnValue:
+    """按年份归档导出操作日志（审计副本，库内日志仍完整保留）。"""
+    year = request.args.get("year", "").strip()
+    if not (year.isdigit() and len(year) == 4):
+        flash("请选择要归档导出的年份。", "warning")
+        return redirect(url_for("logs.index"))
+    try:
+        from flask import session
+        from utils.excel_export import export_logs
+        filepath, filename = export_logs(session.get("username", "admin"), year)
+        log_action("export", "operation_logs", detail=f"归档导出 {year} 年操作日志：{filename}")
+        return send_file(filepath, as_attachment=True, download_name=filename)
+    except Exception as e:
+        flash(f"日志归档导出失败: {e}", "danger")
+        return redirect(url_for("logs.index"))
 
 # 字段名 → 中文标签（用于变更快照展示）
 FIELD_LABELS = {
@@ -90,7 +121,6 @@ def index() -> ResponseReturnValue:
 
     base += " ORDER BY created_at DESC"
 
-    from config import Config
     pg = paginate(base, tuple(params), page, per_page=Config.PAGE_SIZE_LOGS)
 
     # 解析变更快照，附加到每行
@@ -133,4 +163,5 @@ def index() -> ResponseReturnValue:
         date_to=date_to,
         action_types=action_types,
         target_types=target_types,
+        log_years=_log_years(),
     )

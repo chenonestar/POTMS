@@ -16,6 +16,7 @@ def app_client(tmp_path, monkeypatch):
     up = tmp_path / "up"
     up.mkdir()
     monkeypatch.setattr(Config, "UPLOAD_FOLDER", str(up))
+    monkeypatch.setattr(Config, "EXPORT_FOLDER", str(tmp_path / "exp"))
     import database
     database.init_db()
     database.run_migrations()
@@ -136,3 +137,48 @@ def test_404_chinese_page(app_client):
     r = app_client.get("/no-such-page-xyz")
     assert r.status_code == 404
     assert "页面不存在" in r.get_data(as_text=True)
+
+
+# ------------------------- P3: 配置 / 备份标记 / 日志归档 / 全局搜索 -------------------------
+def test_session_cookie_flags():
+    assert Config.SESSION_COOKIE_HTTPONLY is True
+    assert Config.SESSION_COOKIE_SAMESITE == "Lax"
+
+
+def test_backup_daily_marker(tmp_path, monkeypatch):
+    monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "d.db"))
+    monkeypatch.setattr(Config, "BACKUP_FOLDER", str(tmp_path / "bk"))
+    (tmp_path / "d.db").write_bytes(b"x")
+    import utils.backup as bk
+    bk._checked_date = None
+    r1 = bk.run_daily_backup()
+    assert r1["created"] is True
+    assert bk._checked_date == r1["date"]          # 当日标记已置
+    r2 = bk.run_daily_backup()                     # 同日第二次：直接跳过
+    assert r2["created"] is False and r2["path"] is None
+    r3 = bk.run_daily_backup(force=True)           # force 不受标记影响
+    assert r3["created"] is True
+
+
+def test_logs_export_by_year(logged_in):
+    c = logged_in
+    # 上面 fixture 的登录/建档已产生日志；取当前本地年份导出
+    from datetime import datetime
+    year = datetime.now().strftime("%Y")
+    r = c.get(f"/logs/export?year={year}")
+    assert r.status_code == 200
+    assert r.data[:2] == b"PK"                     # xlsx 是 zip 容器
+    # 无效年份回列表页
+    assert c.get("/logs/export?year=abc").status_code == 302
+
+
+def test_global_search(logged_in):
+    c = logged_in
+    r = c.get("/search?q=张三")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200
+    assert "人员备案" in html and "张三" in html
+    # 空关键词提示页
+    assert "一次搜遍" in c.get("/search").get_data(as_text=True)
+    # 无结果
+    assert "未找到" in c.get("/search?q=不存在的名字XYZ").get_data(as_text=True)

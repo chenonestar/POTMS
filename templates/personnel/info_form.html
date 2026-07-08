@@ -20,6 +20,7 @@
 </div>
 {% endif %}
 
+{% set all_orgs = org_flat() %}{# 缓存一次查询，下方三处循环复用 #}
 <form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_info"{% endif %}>
 <div class="form-section">
     <h5>基本信息</h5>
@@ -28,7 +29,7 @@
             <label class="form-label required">单位</label>
             <select class="form-select" name="unit" id="orgUnit" required onchange="updateDept()">
                 <option value="">请选择单位</option>
-                {% for o in org_flat() if o.parent_id == 0 %}
+                {% for o in all_orgs if o.parent_id == 0 %}
                 <option value="{{ o.name }}" data-oid="{{ o.id }}" {{ 'selected' if data.get('unit') == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
@@ -38,11 +39,11 @@
             <label class="form-label required">部门</label>
             <select class="form-select" name="department" id="orgDept" required>
                 <option value="">请先选择单位</option>
-                {% for o in org_flat() if o.depth >= 1 %}
+                {% for o in all_orgs if o.depth >= 1 %}
                 <option value="{{ o.name }}" data-root="{{ o.root_id }}" data-oid="{{ o.id }}" data-depth="{{ o.depth }}" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.indent }}{{ o.name }}</option>
                 {% endfor %}
                 {# 无下级部门的单位：回退为可选“单位本身” #}
-                {% for o in org_flat() if o.depth == 0 %}
+                {% for o in all_orgs if o.depth == 0 %}
                 <option value="{{ o.name }}" data-root="{{ o.id }}" data-oid="{{ o.id }}" data-depth="0" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>

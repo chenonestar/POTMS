@@ -59,6 +59,7 @@ def create_app() -> Flask:
     from blueprints.organization import org_bp
     from blueprints.dict_admin import dict_bp
     from blueprints.submit_unit import submit_unit_bp
+    from blueprints.search import search_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -72,6 +73,7 @@ def create_app() -> Flask:
     app.register_blueprint(org_bp)
     app.register_blueprint(dict_bp)
     app.register_blueprint(submit_unit_bp)
+    app.register_blueprint(search_bp)
 
     # CSRF 防护（轻量内置，覆盖所有状态变更请求）
     from utils.csrf import init_csrf

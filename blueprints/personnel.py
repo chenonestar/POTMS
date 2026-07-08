@@ -58,7 +58,6 @@ def build_filters(args, ids=None):
 @personnel_bp.route("/personnel/")
 @login_required
 def list() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     status_filter = request.args.get("status", "").strip()
     political_filter = request.args.get("political_status", "").strip()
