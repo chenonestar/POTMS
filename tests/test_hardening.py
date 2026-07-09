@@ -182,3 +182,29 @@ def test_global_search(logged_in):
     assert "一次搜遍" in c.get("/search").get_data(as_text=True)
     # 无结果
     assert "未找到" in c.get("/search?q=不存在的名字XYZ").get_data(as_text=True)
+
+
+# ------------------------- 导入模板去除“操作人”列 + 自动写入 -------------------------
+def test_import_template_no_operator_column(app_client):
+    from app import create_app  # 确保应用上下文可用
+    import utils.excel_import as ei
+    from openpyxl import load_workbook
+    buf = ei.generate_import_template()
+    hdr = [c.value for c in load_workbook(buf).active[1]]
+    assert "操作人" not in hdr
+    assert len(hdr) == 20 and hdr[-1] == "备注"
+
+
+def test_import_operator_from_session(app_client):
+    import utils.excel_import as ei
+    from openpyxl import load_workbook
+    from app import create_app
+    buf = io.BytesIO()
+    load_workbook(ei.generate_import_template()).save(buf)  # 含自带示例行
+    buf.seek(0)
+    with create_app().app_context():                        # 解析需应用上下文（get_db）
+        res = ei.parse_import_file(buf, operator="wangwu")
+    assert res["success"] == 1
+    row = sqlite3.connect(Config.DATABASE).execute(
+        "SELECT operator FROM personnel_filing").fetchone()
+    assert row[0] == "wangwu"      # 操作人来自会话，而非表格
