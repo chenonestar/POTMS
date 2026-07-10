@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }} — 打印</title>
+<style>
+  @page { size: A4; margin: 1.5cm; }
+  body { font-family: "SimSun", "Microsoft YaHei", serif; font-size: 12pt; color: #000; }
+  h3 { text-align: center; margin-bottom: 6px; font-size: 15pt; }
+  h4 { margin: 18px 0 6px; font-size: 13pt; border-bottom: 1px solid #999; padding-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border: 1px solid #000; padding: 5px 8px; text-align: left; font-size: 10.5pt; }
+  th { background: #eee; font-weight: bold; }
+  .label { font-weight: bold; width: 18%; background: #f5f5f5; }
+  .section-title { background: #ddd; font-weight: bold; text-align: center; font-size: 11pt; }
+  .meta { text-align: right; margin-top: 20px; font-size: 10pt; color: #666; }
+  .sig-block { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; }
+  .sig-item { flex: 1; display: flex; align-items: flex-end; font-size: 10.5pt; }
+  .sig-label { white-space: nowrap; }
+  .sig-line { flex: 1; border-bottom: 1px solid #000; height: 24px; margin-left: 4px; }
+  @media print {
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="no-print" style="margin-bottom:12px;">
+  <button onclick="window.print()" style="padding:7px 18px;font-size:14px;cursor:pointer;">打印 / 导出 PDF</button>
+  <button onclick="window.close()" style="padding:7px 18px;font-size:14px;cursor:pointer;margin-left:8px;">关闭</button>
+</div>
+
+<h3>{{ title }}</h3>
+
+<!-- ==================== MODE: info ==================== -->
+{% if mode == 'info' %}
+<table>
+    <tr><td class="label">单位</td><td>{{ row.unit }}</td><td class="label">部门</td><td>{{ row.department }}</td></tr>
+    <tr><td class="label">姓名</td><td>{{ row.name }}</td><td class="label">性别</td><td>{{ row.gender }}</td></tr>
+    <tr><td class="label">身份证号</td><td>{{ row.id_number or '' }}</td><td class="label">参加工作日期</td><td>{{ row.work_start_date or '' }}</td></tr>
+    <tr><td class="label">出生日期</td><td colspan="3">{{ row.birth_date }}</td></tr>
+    <tr><td class="label">学历</td><td>{{ dict_value('education', row.education) if row.education else '' }}</td><td class="label">学位</td><td>{{ dict_value('degree', row.degree) if row.degree else '' }}</td></tr>
+    <tr><td class="label">职称</td><td>{{ dict_value('title', row.title) if row.title else '' }}</td><td class="label">职级</td><td>{{ dict_value('rank', row.rank) if row.rank else '' }}</td></tr>
+    <tr><td class="label">政治面貌</td><td>{{ row.political_status }}</td><td class="label">入党日期</td><td>{{ row.party_join_date or '' }}</td></tr>
+    <tr><td class="label">职务（岗位名称）</td><td colspan="3">{{ row.position }}</td></tr>
+</table>
+
+<!-- ==================== MODE: filing ==================== -->
+{% elif mode == 'filing' %}
+<table>
+    <tr><td class="label">中文姓</td><td>{{ row.surname }}</td><td class="label">中文名</td><td>{{ row.given_name }}</td></tr>
+    <tr><td class="label">性别</td><td>{{ row.gender }}</td><td class="label">出生日期</td><td>{{ row.birth_date }}</td></tr>
+    <tr><td class="label">身份证号</td><td colspan="3">{{ row.id_number }}</td></tr>
+    <tr><td class="label">户口所在地</td><td colspan="3">{{ row.residence }}</td></tr>
+    <tr><td class="label">政治面貌</td><td>{{ row.political_status }}</td><td class="label">工作单位</td><td>{{ row.work_unit }}</td></tr>
+    <tr><td class="label">职务（级）或职称</td><td>{{ row.position_or_title }}</td><td class="label">人事主管单位</td><td>{{ row.supervisor_unit }}</td></tr>
+    <tr><td class="label">标记</td><td>{{ row.tag }}</td><td class="label">已告知本人</td><td>{{ row.informed }}</td></tr>
+    <tr><td class="label">备注</td><td colspan="3">{{ row.remarks or '' }}</td></tr>
+</table>
+{% if info %}
+<h4>关联：备案人员信息登记表</h4>
+<table>
+    <tr><td class="label">单位</td><td>{{ info.unit }}</td><td class="label">部门</td><td>{{ info.department }}</td></tr>
+    <tr><td class="label">姓名</td><td>{{ info.name }}</td><td class="label">性别</td><td>{{ info.gender }}</td></tr>
+    <tr><td class="label">出生日期</td><td>{{ info.birth_date }}</td><td class="label">参加工作日期</td><td>{{ info.work_start_date or '' }}</td></tr>
+    <tr><td class="label">学历</td><td>{{ info.education or '' }}</td><td class="label">学位</td><td>{{ info.degree or '' }}</td></tr>
+    <tr><td class="label">职称</td><td>{{ info.title or '' }}</td><td class="label">职级</td><td>{{ info.rank }}</td></tr>
+    <tr><td class="label">政治面貌</td><td>{{ info.political_status }}</td><td class="label">入党日期</td><td>{{ info.party_join_date or '' }}</td></tr>
+    <tr><td class="label">职务（岗位名称）</td><td colspan="3">{{ info.position }}</td></tr>
+</table>
+{% endif %}
+
+<!-- ==================== MODE: certificate ==================== -->
+{% elif mode == 'certificate' %}
+<table>
+    <tr><td class="label">单位</td><td colspan="3">{{ row.unit }}</td></tr>
+    <tr><td class="label">部门</td><td colspan="3">{{ row.department }}</td></tr>
+    <tr><td class="label">姓名</td><td colspan="3">{{ row.name }}</td></tr>
+    <tr><td class="section-title" colspan="4">普通护照</td></tr>
+    <tr><td class="label">证件号</td><td>{{ row.passport_no or '—' }}</td><td class="label">有效日期</td><td>{{ row.passport_expiry or '—' }}</td></tr>
+    <tr><td class="label">上交日期</td><td colspan="3">{{ row.passport_submit_date or '—' }}</td></tr>
+    <tr><td class="section-title" colspan="4">往来港澳通行证</td></tr>
+    <tr><td class="label">证件号</td><td>{{ row.hm_pass_no or '—' }}</td><td class="label">有效日期</td><td>{{ row.hm_pass_expiry or '—' }}</td></tr>
+    <tr><td class="label">上交日期</td><td colspan="3">{{ row.hm_pass_submit_date or '—' }}</td></tr>
+    <tr><td class="section-title" colspan="4">大陆居民往来台湾通行证</td></tr>
+    <tr><td class="label">证件号</td><td>{{ row.tw_pass_no or '—' }}</td><td class="label">有效日期</td><td>{{ row.tw_pass_expiry or '—' }}</td></tr>
+    <tr><td class="label">上交日期</td><td colspan="3">{{ row.tw_pass_submit_date or '—' }}</td></tr>
+</table>
+
+<!-- ==================== MODE: travel ==================== -->
+{% elif mode == 'travel' %}
+<table>
+    <tr><td class="label">单位</td><td>{{ row.unit }}</td><td class="label">部门</td><td>{{ row.department }}</td></tr>
+    <tr><td class="label">姓名</td><td>{{ row.name }}</td><td class="label">职务</td><td>{{ row.position }}</td></tr>
+    <tr><td class="label">职称</td><td>{{ row.title or '' }}</td><td class="label">身份证号</td><td>{{ row.id_number }}</td></tr>
+    <tr><td class="label">地点、证照</td><td colspan="3">{{ row.destination_passport }}</td></tr>
+    <tr><td class="label">类别</td><td>{{ row.category }}</td><td class="label">计划出行日期</td><td>{{ row.travel_dates }}</td></tr>
+    <tr><td class="label">批准日期</td><td>{{ row.approval_date or '' }}</td><td class="label">是否做证</td><td>{{ row.need_new_passport }}</td></tr>
+    <tr><td class="label">证件号码</td><td>{{ row.passport_no or '' }}</td><td class="label">证件领用日期</td><td>{{ row.passport_collect_date or '' }}</td></tr>
+    <tr><td class="label">实际回国日期</td><td>{{ row.actual_return_date or '' }}</td><td class="label">证件归还日期</td><td>{{ row.passport_return_date or '' }}</td></tr>
+    <tr><td class="label">行程状态</td><td>{{ '取消行程' if row.trip_status == 'cancelled' else '正常' }}</td><td class="label">取消日期</td><td>{{ row.cancel_date or '' }}</td></tr>
+</table>
+
+<!-- ==================== MODE: decontrol ==================== -->
+{% elif mode == 'decontrol' %}
+<table>
+    <tr><td class="label">中文姓</td><td>{{ row.surname }}</td><td class="label">中文名</td><td>{{ row.given_name }}</td></tr>
+    <tr><td class="label">性别</td><td>{{ row.gender }}</td><td class="label">出生日期</td><td>{{ row.birth_date }}</td></tr>
+    <tr><td class="label">身份证号</td><td colspan="3">{{ row.id_number }}</td></tr>
+    <tr><td class="label">户口所在地</td><td colspan="3">{{ row.residence }}</td></tr>
+    <tr><td class="label">政治面貌</td><td>{{ row.political_status }}</td><td class="label">工作单位</td><td>{{ row.work_unit }}</td></tr>
+    <tr><td class="label">人事主管单位</td><td colspan="3">{{ row.supervisor_unit }}</td></tr>
+    <tr><td class="label">报送单位名称</td><td colspan="3">{{ row.submit_unit_name }}</td></tr>
+    <tr><td class="label">报送单位类别</td><td>{{ row.submit_unit_type }}</td><td class="label">报送单位联系人</td><td>{{ row.submit_contact }}</td></tr>
+    <tr><td class="label">联系电话</td><td>{{ row.submit_phone }}</td><td class="label">入库批号</td><td>{{ row.batch_no }}</td></tr>
+    <tr><td class="label">撤控日期</td><td>{{ row.decontrol_date or '' }}</td><td class="label">证件移交日期</td><td>{{ row.cert_handover_date or '' }}</td></tr>
+    <tr><td class="label">撤控原因</td><td colspan="3">{{ row.reason }}</td></tr>
+</table>
+{% endif %}
+
+<!-- 签章栏：标签在前、下划线在后、三者均匀分布，为签字留足空间 -->
+<div class="sig-block">
+    <div class="sig-item"><span class="sig-label">填表人：</span><span class="sig-line"></span></div>
+    <div class="sig-item"><span class="sig-label">审核人：</span><span class="sig-line"></span></div>
+    <div class="sig-item"><span class="sig-label">批准人：</span><span class="sig-line"></span></div>
+</div>
+
+<p class="meta">打印日期：<span id="printDate"></span>　｜　操作人：{{ session.username }}</p>
+
+<script>
+document.getElementById('printDate').textContent = new Date().toISOString().slice(0,10);
+</script>
+</body>
+</html>

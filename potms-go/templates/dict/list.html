@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}数据字典{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-card-list"></i> 数据字典维护</h4>
+
+<div class="alert alert-info d-flex align-items-center py-2">
+    <i class="bi bi-info-circle me-2"></i>
+    <div class="small">
+        维护各表单下拉选项。<strong>编码</strong>为稳定标识（建议用数字/字母，创建后不建议更改）；<strong>显示值</strong>为界面展示文字；<strong>排序</strong>越小越靠前。
+        已被业务记录引用的字典项<strong>不可删除</strong>——如需停用，可保留或修改显示值。
+    </div>
+</div>
+
+<div class="row g-3">
+{% for g in groups %}
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>{{ g.label }}</strong>
+                <span class="badge bg-secondary">{{ g.rows | length }} 项</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead><tr><th style="width:90px">编码</th><th>显示值</th><th style="width:64px">排序</th><th style="width:96px" class="text-end">操作</th></tr></thead>
+                    <tbody>
+                    {% for it in g.rows %}
+                        <tr>
+                            <td><code>{{ it.code }}</code></td>
+                            <td>{{ it.value }}</td>
+                            <td>{{ it.sort_order }}</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-warning" onclick="editDict({{ it.id }}, this)" data-value="{{ it.value }}" data-sort="{{ it.sort_order }}" title="编辑"><i class="bi bi-pencil"></i></button>
+                                <form method="POST" action="{{ url_for('dict_admin.delete', dict_id=it.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ it.value }}」吗？');">
+                                    <button class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">暂无字典项</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer">
+                <form method="POST" action="{{ url_for('dict_admin.add') }}" class="row g-1 align-items-center">
+                    <input type="hidden" name="category" value="{{ g.key }}">
+                    <div class="col-3"><input class="form-control form-control-sm" name="code" placeholder="编码" required></div>
+                    <div class="col-4"><input class="form-control form-control-sm" name="value" placeholder="显示值" required></div>
+                    <div class="col-2"><input class="form-control form-control-sm" name="sort_order" placeholder="排序" value="0"></div>
+                    <div class="col-3"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i> 添加</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<!-- 编辑模态框 -->
+<div class="modal fade" id="editDictModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="editDictForm">
+                <div class="modal-header"><h5 class="modal-title">编辑字典项</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label class="form-label">显示值</label>
+                    <input type="text" class="form-control" name="value" id="editDictValue" required>
+                    <label class="form-label mt-2">排序</label>
+                    <input type="text" class="form-control" name="sort_order" id="editDictSort" value="0">
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function editDict(id, btn) {
+    document.getElementById('editDictValue').value = btn.getAttribute('data-value');
+    document.getElementById('editDictSort').value = btn.getAttribute('data-sort');
+    document.getElementById('editDictForm').action = '/dict/' + id + '/edit';
+    new bootstrap.Modal(document.getElementById('editDictModal')).show();
+}
+</script>
+{% endblock %}

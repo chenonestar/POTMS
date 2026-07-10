@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}操作日志{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-journal-text"></i> 操作日志</h4>
+    {% if log_years %}
+    <form method="GET" action="{{ url_for('logs.export') }}" class="d-flex align-items-center gap-1">
+        <select class="form-select form-select-sm" name="year" style="width:110px;">
+            {% for y in log_years %}<option value="{{ y }}">{{ y }} 年</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-success text-nowrap"><i class="bi bi-file-earmark-zip"></i> 归档导出</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-1">
+                <select class="form-select form-select-sm" name="action">
+                    <option value="">全部操作</option>
+                    {% for a in action_types %}
+                    <option value="{{ a.code }}" {{ 'selected' if action_filter == a.code }}>{{ a.value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="target_type">
+                    <option value="">全部对象</option>
+                    {% for t in target_types %}
+                    <option value="{{ t.code }}" {{ 'selected' if target_filter == t.code }}>{{ t.value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}" title="起始日期">
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}" title="结束日期">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">筛选</button>
+                <a href="{{ url_for('logs.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th style="width:140px">时间</th>
+                    <th style="width:60px">操作</th>
+                    <th style="width:100px">对象类型</th>
+                    <th>详情</th>
+                    <th style="width:80px">操作人</th>
+                    <th style="width:120px">IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in items.rows %}
+                <tr>
+                    <td><small>{{ log.created_at | localtime }}</small></td>
+                    <td>
+                        <span class="badge bg-{{ action_badges[log.action] | default('info') }}">{{ action_labels[log.action] | default(log.action) }}</span>
+                    </td>
+                    <td>
+                        <small>{{ target_labels[log.target_type] | default(log.target_type) }}</small>
+                    </td>
+                    <td>
+                        <small class="text-muted">{{ log.detail or '—' }}</small>
+                        {% if log.target_id %}<small class="text-muted"> (ID: {{ log.target_id }})</small>{% endif %}
+                        {% if log.changes %}
+                        <a class="small ms-1" data-bs-toggle="collapse" href="#snap{{ log.id }}" role="button">变更详情 ▾</a>
+                        <div class="collapse mt-1" id="snap{{ log.id }}">
+                            {% if log.changes.type == 'update' %}
+                            <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                                <thead><tr><th>字段</th><th>变更前</th><th>变更后</th></tr></thead>
+                                <tbody>
+                                {% for d in log.changes.diffs %}
+                                <tr><td>{{ d.field }}</td><td class="text-muted">{{ d.before if d.before not in (None, '') else '—' }}</td><td class="text-success">{{ d.after if d.after not in (None, '') else '—' }}</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                                <thead><tr><th colspan="2">{{ '新建内容' if log.changes.type == 'create' else '删除前内容' }}</th></tr></thead>
+                                <tbody>
+                                {% for d in log.changes.data %}
+                                <tr><td style="width:35%">{{ d.field }}</td><td>{{ d.value }}</td></tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ log.operator }}</td>
+                    <td><small class="text-muted">{{ log.ip_address or '—' }}</small></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">暂无操作日志</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% from "components/pagination.html" import render_pagination %}
+{{ render_pagination(items, 'logs.index') }}
+{% endblock %}

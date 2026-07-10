@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}登记备案表{% endblock %}
+{% block content %}
+<h4 class="mb-3">
+    <i class="bi bi-file-earmark-text"></i>
+    {{ '编辑' if editing else '新增' }}因私事出国（境）人员登记备案表
+</h4>
+
+{% if not editing %}
+<div class="d-flex align-items-center mb-4" style="max-width:520px;">
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-success" style="width:26px;height:26px;line-height:18px;"><i class="bi bi-check"></i></span>
+        <div class="small mt-1 text-success">信息登记表</div>
+    </div>
+    <div class="flex-fill border-top border-2 border-success mx-2" style="margin-top:-14px;"></div>
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-primary" style="width:26px;height:26px;line-height:18px;">2</span>
+        <div class="small mt-1 fw-bold text-primary">登记备案表</div>
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_filing"{% endif %}>
+<div class="form-section">
+    <h5>身份信息</h5>
+    <div class="row g-3">
+        <div class="col-md-2">
+            <label class="form-label required">中文姓</label>
+            <input type="text" class="form-control" name="surname" value="{{ data.surname or '' }}"
+                   placeholder="复姓如欧阳" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">中文名</label>
+            <input type="text" class="form-control" name="given_name" value="{{ data.given_name or '' }}" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">性别</label>
+            <select class="form-select" name="gender" required>
+                <option value="">请选择</option>
+                <option value="男" {{ 'selected' if data.gender == '男' }}>男</option>
+                <option value="女" {{ 'selected' if data.gender == '女' }}>女</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">出生日期</label>
+            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date or '' }}"
+                   placeholder="YYYYMMDD" maxlength="8" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">身份证号</label>
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+                   placeholder="18位" maxlength="18" required {{ 'readonly' if info_id and data.id_number }}>
+            {% if info_id and data.id_number %}<div class="form-text">取自信息登记表，不可修改。</div>{% endif %}
+        </div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-8">
+            <label class="form-label required">户口所在地</label>
+            <div class="row g-1 mb-1">
+                <div class="col-4"><select class="form-select form-select-sm" id="resProv"><option value="">省/直辖市</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resCity"><option value="">市</option></select></div>
+                <div class="col-4"><select class="form-select form-select-sm" id="resDist"><option value="">区/县</option></select></div>
+            </div>
+            <input type="text" class="form-control" name="residence" id="resInput" value="{{ data.residence or '' }}"
+                   placeholder="三级联动选择或手动输入，如：浙江宁波市江北区" required>
+            <div class="form-text">可用上方下拉三级联动，也可手动修正；省份不加"省"字，江东区/鄞县自动归为"鄞州区"。</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">政治面貌</label>
+            <select class="form-select" name="political_status" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('political_status') %}
+                <option value="{{ o.value }}" {{ 'selected' if data.political_status == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>单位信息</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label required">工作单位</label>
+            <select class="form-select" name="work_unit" required>
+                <option value="">请选择单位</option>
+                {% for o in org_tree_opts() %}
+                {% set clean_name = o.name | replace('　', '') | replace('└ ', '') %}
+                <option value="{{ clean_name }}" {{ 'selected' if data.work_unit == clean_name }}>{{ o.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">职务（级）或职称</label>
+            <input type="text" class="form-control" name="position_or_title"
+                   value="{{ data.position_or_title or '' }}"
+                   placeholder="处级/副处级/正科 或 副高/正高" required>
+            <div class="form-text">处级领导填"处级"或"副处级"；副处级单位班子成员填"正科"；其他填"副高"或"正高"。</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">人事主管单位</label>
+            {% set sup_opts = dict_opts('supervisor_unit') %}
+            <select class="form-select" name="supervisor_unit" required>
+                <option value="">请选择</option>
+                {% for o in sup_opts %}
+                <option value="{{ o.value }}" {{ 'selected' if data.supervisor_unit == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+                {% if data.supervisor_unit and data.supervisor_unit not in (sup_opts | map(attribute='value') | list) %}
+                <option value="{{ data.supervisor_unit }}" selected>{{ data.supervisor_unit }}（历史值）</option>
+                {% endif %}
+            </select>
+            <div class="form-text">在「系统设置 → 数据字典 → 人事主管单位」中维护选项。</div>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>备案信息</h5>
+    <div class="row g-3">
+        <div class="col-md-2">
+            <label class="form-label required">标记</label>
+            <select class="form-select" name="tag" required>
+                <option value="新增" {{ 'selected' if data.tag == '新增' }}>新增</option>
+                <option value="更新" {{ 'selected' if data.tag == '更新' }}>更新</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">已告知本人</label>
+            <select class="form-select" name="informed" required>
+                <option value="是" {{ 'selected' if data.informed == '是' }}>是</option>
+                <option value="否" {{ 'selected' if data.informed == '否' }}>否</option>
+            </select>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label">备注</label>
+            <input type="text" class="form-control" name="remarks" value="{{ data.remarks or '' }}">
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/regions.js') }}"></script>
+<script>document.addEventListener('DOMContentLoaded', function () { initRegionCascade('resProv', 'resCity', 'resDist', 'resInput'); });</script>
+{% endblock %}

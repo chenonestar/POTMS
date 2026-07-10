@@ -1,0 +1,8 @@
+potms-go
+potms-go.exe
+POTMS.exe
+data.db*
+.secret_key
+uploads/
+exports/
+backup/

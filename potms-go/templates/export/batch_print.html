@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>批量打印 — {{ title }}</title>
+<style>
+  @page { size: A4 landscape; margin: 1.2cm; }
+  body { font-family: "SimSun", "Microsoft YaHei", serif; font-size: 9pt; color: #000; }
+  h3 { text-align: center; margin-bottom: 8px; font-size: 13pt; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; page-break-inside: avoid; }
+  th, td { border: 1px solid #000; padding: 4px 5px; text-align: left; font-size: 8pt; }
+  th { background: #eee; font-weight: bold; white-space: nowrap; }
+  .page-break { page-break-before: always; }
+  .meta { text-align: right; margin-top: 12px; font-size: 8pt; color: #666; }
+  @media print {
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="no-print" style="margin-bottom:10px;">
+  <button onclick="window.print()" style="padding:6px 16px;font-size:14px;cursor:pointer;">打印全部（{{ total }} 条）</button>
+  <button onclick="window.close()" style="padding:6px 16px;font-size:14px;cursor:pointer;margin-left:6px;">关闭</button>
+</div>
+
+<h3>{{ title }}（共 {{ total }} 条）</h3>
+
+{% if mode == 'filing' %}
+<table>
+    <thead><tr><th>中文姓</th><th>中文名</th><th>性别</th><th>出生日期</th><th>身份证号</th><th>户口所在地</th><th>政治面貌</th><th>工作单位</th><th>职务（级）或职称</th><th>人事主管单位</th><th>标记</th><th>已告知本人</th><th>状态</th><th>备注</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.surname }}</td><td>{{ r.given_name }}</td><td>{{ r.gender }}</td><td>{{ r.birth_date }}</td>
+        <td>{{ r.id_number }}</td><td>{{ r.residence }}</td><td>{{ r.political_status }}</td>
+        <td>{{ r.work_unit }}</td><td>{{ r.position_or_title }}</td><td>{{ r.supervisor_unit }}</td>
+        <td>{{ r.tag }}</td><td>{{ r.informed }}</td><td>{{ '有效' if r.status == 'active' else '已撤控' }}</td><td>{{ r.remarks or '' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% elif mode == 'certificate' %}
+<table>
+    <thead><tr><th>单位</th><th>部门</th><th>姓名</th><th>护照证件号</th><th>护照有效日期</th><th>护照上交日期</th><th>港澳通行证号</th><th>港澳有效日期</th><th>港澳上交日期</th><th>台湾通行证号</th><th>台湾有效日期</th><th>台湾上交日期</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td>
+        <td>{{ r.passport_no or '' }}</td><td>{{ r.passport_expiry or '' }}</td><td>{{ r.passport_submit_date or '' }}</td>
+        <td>{{ r.hm_pass_no or '' }}</td><td>{{ r.hm_pass_expiry or '' }}</td><td>{{ r.hm_pass_submit_date or '' }}</td>
+        <td>{{ r.tw_pass_no or '' }}</td><td>{{ r.tw_pass_expiry or '' }}</td><td>{{ r.tw_pass_submit_date or '' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% elif mode == 'travel' %}
+<table>
+    <thead><tr><th>单位</th><th>部门</th><th>姓名</th><th>职务</th><th>职称</th><th>身份证号</th><th>地点、证照</th><th>类别</th><th>计划出行日期</th><th>批准日期</th><th>是否做证</th><th>证件号码</th><th>领用日期</th><th>实际回国日期</th><th>归还日期</th><th>行程状态</th><th>取消日期</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.position }}</td><td>{{ r.title or '' }}</td>
+        <td>{{ r.id_number }}</td><td>{{ r.destination_passport }}</td><td>{{ r.category }}</td>
+        <td>{{ r.travel_dates }}</td><td>{{ r.approval_date or '' }}</td><td>{{ r.need_new_passport }}</td>
+        <td>{{ r.passport_no or '' }}</td><td>{{ r.passport_collect_date or '' }}</td><td>{{ r.actual_return_date or '' }}</td><td>{{ r.passport_return_date or '' }}</td>
+        <td>{{ '取消行程' if r.trip_status == 'cancelled' else '正常' }}</td><td>{{ r.cancel_date or '' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% elif mode == 'decontrol' %}
+<table>
+    <thead><tr><th>中文姓</th><th>中文名</th><th>性别</th><th>出生日期</th><th>身份证号</th><th>户口所在地</th><th>政治面貌</th><th>工作单位</th><th>人事主管单位</th><th>报送单位名称</th><th>报送类别</th><th>联系人</th><th>联系电话</th><th>入库批号</th><th>撤控日期</th><th>证件移交日期</th><th>撤控原因</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.surname }}</td><td>{{ r.given_name }}</td><td>{{ r.gender }}</td><td>{{ r.birth_date }}</td>
+        <td>{{ r.id_number }}</td><td>{{ r.residence }}</td><td>{{ r.political_status }}</td><td>{{ r.work_unit }}</td>
+        <td>{{ r.supervisor_unit }}</td><td>{{ r.submit_unit_name }}</td><td>{{ r.submit_unit_type }}</td>
+        <td>{{ r.submit_contact }}</td><td>{{ r.submit_phone }}</td><td>{{ r.batch_no }}</td>
+        <td>{{ r.decontrol_date or '' }}</td><td>{{ r.cert_handover_date or '' }}</td><td>{{ r.reason }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% elif mode == 'info' %}
+<table>
+    <thead><tr><th>单位</th><th>部门</th><th>姓名</th><th>性别</th><th>出生日期</th><th>身份证号</th><th>参加工作日期</th><th>学历</th><th>学位</th><th>职称</th><th>职级</th><th>政治面貌</th><th>入党日期</th><th>职务（岗位名称）</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.gender }}</td>
+        <td>{{ r.birth_date }}</td><td>{{ r.id_number or '' }}</td><td>{{ r.work_start_date or '' }}</td>
+        <td>{{ dict_value('education', r.education) if r.education else '' }}</td><td>{{ dict_value('degree', r.degree) if r.degree else '' }}</td><td>{{ dict_value('title', r.title) if r.title else '' }}</td>
+        <td>{{ dict_value('rank', r.rank) if r.rank else '' }}</td><td>{{ r.political_status }}</td><td>{{ r.party_join_date or '' }}</td><td>{{ r.position }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<p class="meta">打印日期：<span id="pd"></span>　｜　共 {{ total }} 条记录</p>
+<script>document.getElementById('pd').textContent = new Date().toISOString().slice(0,10);</script>
+</body>
+</html>
