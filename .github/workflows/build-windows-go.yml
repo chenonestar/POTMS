@@ -1,0 +1,61 @@
+name: Build Windows EXE (Go)
+
+on:
+  push:
+    branches: [claude/go-version]
+    paths:
+      - 'potms-go/**'
+      - '.github/workflows/build-windows-go.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试（Linux）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: potms-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: potms-go/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -v ./...
+
+  build-windows:
+    name: 构建 Windows EXE
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: potms-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: potms-go/go.sum
+      - name: Windows 原生测试（验证纯 Go 依赖在 Windows 正常）
+        run: go test ./...
+      - name: 构建 exe
+        run: go build -trimpath -ldflags="-s -w" -o POTMS.exe .
+      - name: 组装发布目录（exe + templates + static + 说明）
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/POTMS-go | Out-Null
+          Copy-Item POTMS.exe dist/POTMS-go/
+          Copy-Item -Recurse templates dist/POTMS-go/templates
+          Copy-Item -Recurse static dist/POTMS-go/static
+          Copy-Item README.md dist/POTMS-go/
+          Get-ChildItem dist/POTMS-go
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: POTMS-go-windows-x64
+          path: potms-go/dist/POTMS-go
+          if-no-files-found: error
+          retention-days: 30
