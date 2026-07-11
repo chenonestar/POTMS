@@ -51,7 +51,7 @@
         </div>
         <div class="col-md-4">
             <label class="form-label required">姓名</label>
-            <input type="text" class="form-control" name="name" value="{{ data.name or '' }}"
+            <input type="text" class="form-control" name="name" value="{{ data.name | default('', true) }}"
                    placeholder="与身份证一致" required>
         </div>
         <div class="col-md-2">
@@ -64,19 +64,19 @@
         </div>
         <div class="col-md-3">
             <label class="form-label required">出生日期</label>
-            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date or '' }}"
+            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date | default('', true) }}"
                    placeholder="YYYYMMDD 如19800103" maxlength="8" required>
         </div>
         <div class="col-md-3">
             <label class="form-label required">参加工作日期</label>
-            <input type="text" class="form-control" name="work_start_date" value="{{ data.work_start_date or '' }}"
+            <input type="text" class="form-control" name="work_start_date" value="{{ data.work_start_date | default('', true) }}"
                    placeholder="YYYYMMDD" maxlength="8" required>
         </div>
     </div>
     <div class="row g-3 mt-1">
         <div class="col-md-6">
             <label class="form-label required">身份证号</label>
-            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number | default('', true) }}"
                    placeholder="18位，需与出生日期一致" maxlength="18" required>
             <div class="form-text">系统校验校验位并核对出生日期；登记备案表、明细表将自动带入此身份证。</div>
         </div>
@@ -140,11 +140,11 @@
         <div class="col-md-3">
             <label class="form-label" id="partyDateLabel">入党日期</label>
             <input type="text" class="form-control" name="party_join_date" id="partyJoinDate"
-                   value="{{ data.party_join_date or '' }}" placeholder="中共党员时必填" maxlength="8">
+                   value="{{ data.party_join_date | default('', true) }}" placeholder="中共党员时必填" maxlength="8">
         </div>
         <div class="col-md-6">
             <label class="form-label required">职务（岗位名称）</label>
-            <input type="text" class="form-control" name="position" value="{{ data.position or '' }}" required>
+            <input type="text" class="form-control" name="position" value="{{ data.position | default('', true) }}" required>
         </div>
     </div>
 </div>

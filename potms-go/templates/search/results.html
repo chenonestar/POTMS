@@ -48,7 +48,7 @@
         <tr>
             <td>{{ r.name }}</td>
             <td title="{{ r.unit }}">{{ r.unit }}</td>
-            <td>{{ r.passport_no or '-' }}</td><td>{{ r.hm_pass_no or '-' }}</td><td>{{ r.tw_pass_no or '-' }}</td>
+            <td>{{ r.passport_no | default('-', true) }}</td><td>{{ r.hm_pass_no | default('-', true) }}</td><td>{{ r.tw_pass_no | default('-', true) }}</td>
             <td><a href="{{ url_for('certificate.edit', cert_id=r.id) }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil"></i> 打开</a></td>
         </tr>
         {% endfor %}
@@ -88,7 +88,7 @@
             <td>{{ r.surname }}{{ r.given_name }}</td>
             <td title="{{ r.work_unit }}">{{ r.work_unit }}</td>
             <td title="{{ r.reason }}">{{ r.reason }}</td>
-            <td>{{ r.decontrol_date or '-' }}</td>
+            <td>{{ r.decontrol_date | default('-', true) }}</td>
             <td><a href="{{ url_for('decontrol.view', dec_id=r.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 查看</a></td>
         </tr>
         {% endfor %}

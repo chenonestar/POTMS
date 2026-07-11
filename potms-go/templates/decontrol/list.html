@@ -45,7 +45,7 @@
         <td title="{{ row.submit_unit_name }}">{{ row.submit_unit_name }}</td>
         <td>{{ row.submit_unit_type }}</td>
         <td title="{{ row.reason }}">{{ row.reason }}</td>
-        <td><small>{{ row.decontrol_date or (row.created_at | localtime('%Y-%m-%d')) }}</small></td>
+        <td><small>{{ row.decontrol_date | default(row.created_at | localtime('%Y-%m-%d'), true) }}</small></td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('export.print_view', print_type='decontrol', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
             <a href="{{ url_for('decontrol.view', dec_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
@@ -75,7 +75,7 @@
                 <input type="text" class="form-control" id="decPersonSearch" placeholder="搜索 姓名 / 身份证号 / 单位" oninput="filterPersons('decPersonSearch','decPersonSelect')" autocomplete="off">
                 <select class="form-select mt-2" id="decPersonSelect" size="8" ondblclick="gotoDecontrol()">
                     {% for p in dec_people %}
-                    <option value="{{ p.id }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}">{{ p.full_name }}</option>
+                    <option value="{{ p.id }}" data-search="{{ (p.name ~ (p.id_number | default('', true)) ~ p.unit) | lower }}">{{ p.full_name }}</option>
                     {% endfor %}
                 </select>
                 <div class="form-text">仅列出"有效"备案人员；选中后前往撤控表单（双击可直接进入）。</div>

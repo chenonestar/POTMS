@@ -59,7 +59,7 @@
             <div class="col-md-4"><label class="text-muted">人事主管单位</label><p>{{ filing.supervisor_unit }}</p></div>
             <div class="col-md-2"><label class="text-muted">标记</label><p><span class="badge {{ 'bg-primary' if filing.tag == '新增' else 'bg-warning' }}">{{ filing.tag }}</span></p></div>
             <div class="col-md-2"><label class="text-muted">已告知本人</label><p>{{ filing.informed }}</p></div>
-            <div class="col-md-4"><label class="text-muted">备注</label><p>{{ filing.remarks or '-' }}</p></div>
+            <div class="col-md-4"><label class="text-muted">备注</label><p>{{ filing.remarks | default('-', true) }}</p></div>
         </div>
         <div class="row mt-2">
             <div class="col-md-12"><label class="text-muted">录入时间</label><p>{{ filing.created_at | localtime }}</p></div>
@@ -80,15 +80,15 @@
         <div class="row mt-2">
             <div class="col-md-2"><label class="text-muted">性别</label><p>{{ info.gender }}</p></div>
             <div class="col-md-2"><label class="text-muted">出生日期</label><p>{{ info.birth_date }}</p></div>
-            <div class="col-md-3"><label class="text-muted">身份证号</label><p><code>{{ info.id_number or '-' }}</code></p></div>
-            <div class="col-md-2"><label class="text-muted">参加工作日期</label><p>{{ info.work_start_date or '-' }}</p></div>
+            <div class="col-md-3"><label class="text-muted">身份证号</label><p><code>{{ info.id_number | default('-', true) }}</code></p></div>
+            <div class="col-md-2"><label class="text-muted">参加工作日期</label><p>{{ info.work_start_date | default('-', true) }}</p></div>
             <div class="col-md-3"><label class="text-muted">学历 / 学位</label><p>{{ dict_value('education', info.education) if info.education else '-' }} / {{ dict_value('degree', info.degree) if info.degree else '-' }}</p></div>
         </div>
         <div class="row mt-2">
             <div class="col-md-2"><label class="text-muted">职称</label><p>{{ dict_value('title', info.title) if info.title else '-' }}</p></div>
             <div class="col-md-2"><label class="text-muted">职级</label><p>{{ dict_value('rank', info.rank) if info.rank else '-' }}</p></div>
             <div class="col-md-2"><label class="text-muted">政治面貌</label><p>{{ info.political_status }}</p></div>
-            <div class="col-md-2"><label class="text-muted">入党日期</label><p>{{ info.party_join_date or '-' }}</p></div>
+            <div class="col-md-2"><label class="text-muted">入党日期</label><p>{{ info.party_join_date | default('-', true) }}</p></div>
             <div class="col-md-4"><label class="text-muted">职务（岗位名称）</label><p>{{ info.position }}</p></div>
         </div>
     </div>

@@ -49,12 +49,12 @@
         <td title="{{ row.unit }}">{{ row.unit }}</td>
         <td title="{{ row.department }}">{{ row.department }}</td>
         <td>{{ row.name }}</td>
-        <td>{{ row.passport_no or '-' }}</td>
-        <td class="{{ 'text-danger fw-bold' if cert_warn(row.id, '普通护照') }}">{{ row.passport_expiry or '-' }}</td>
-        <td>{{ row.hm_pass_no or '-' }}</td>
-        <td class="{{ 'text-danger fw-bold' if cert_warn(row.id, '往来港澳通行证') }}">{{ row.hm_pass_expiry or '-' }}</td>
-        <td>{{ row.tw_pass_no or '-' }}</td>
-        <td class="{{ 'text-danger fw-bold' if cert_warn(row.id, '大陆居民往来台湾通行证') }}">{{ row.tw_pass_expiry or '-' }}</td>
+        <td>{{ row.passport_no | default('-', true) }}</td>
+        <td class="{{ 'text-danger fw-bold' if cert_warn(row.id, '普通护照') }}">{{ row.passport_expiry | default('-', true) }}</td>
+        <td>{{ row.hm_pass_no | default('-', true) }}</td>
+        <td class="{{ 'text-danger fw-bold' if cert_warn(row.id, '往来港澳通行证') }}">{{ row.hm_pass_expiry | default('-', true) }}</td>
+        <td>{{ row.tw_pass_no | default('-', true) }}</td>
+        <td class="{{ 'text-danger fw-bold' if cert_warn(row.id, '大陆居民往来台湾通行证') }}">{{ row.tw_pass_expiry | default('-', true) }}</td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('export.print_view', print_type='certificate', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
             <a href="{{ url_for('certificate.edit', cert_id=row.id) }}" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>

@@ -55,8 +55,8 @@
         <td>{{ row.travel_dates }}</td>
         <td>{% if row.trip_status == 'cancelled' %}<span class="badge bg-warning text-dark">取消行程</span>{% else %}<span class="badge bg-light text-secondary">正常</span>{% endif %}</td>
         <td>{{ row.need_new_passport }}</td>
-        <td>{{ row.passport_collect_date or '-' }}</td>
-        <td class="{{ 'text-danger fw-bold' if row.id in overdue_ids }}">{% if row.id in overdue_ids %}逾期⚠（应还 {{ deadlines[row.id] }}）{% else %}{{ row.passport_return_date or '-' }}{% endif %}</td>
+        <td>{{ row.passport_collect_date | default('-', true) }}</td>
+        <td class="{{ 'text-danger fw-bold' if row.id in overdue_ids }}">{% if row.id in overdue_ids %}逾期⚠（应还 {{ deadlines[row.id] }}）{% else %}{{ row.passport_return_date | default('-', true) }}{% endif %}</td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('travel.view', travel_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
             <a href="{{ url_for('export.print_view', print_type='travel', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>

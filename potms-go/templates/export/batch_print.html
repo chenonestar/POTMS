@@ -34,7 +34,7 @@
         <td>{{ r.surname }}</td><td>{{ r.given_name }}</td><td>{{ r.gender }}</td><td>{{ r.birth_date }}</td>
         <td>{{ r.id_number }}</td><td>{{ r.residence }}</td><td>{{ r.political_status }}</td>
         <td>{{ r.work_unit }}</td><td>{{ r.position_or_title }}</td><td>{{ r.supervisor_unit }}</td>
-        <td>{{ r.tag }}</td><td>{{ r.informed }}</td><td>{{ '有效' if r.status == 'active' else '已撤控' }}</td><td>{{ r.remarks or '' }}</td>
+        <td>{{ r.tag }}</td><td>{{ r.informed }}</td><td>{{ '有效' if r.status == 'active' else '已撤控' }}</td><td>{{ r.remarks | default('', true) }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -47,9 +47,9 @@
     {% for r in rows %}
     <tr>
         <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td>
-        <td>{{ r.passport_no or '' }}</td><td>{{ r.passport_expiry or '' }}</td><td>{{ r.passport_submit_date or '' }}</td>
-        <td>{{ r.hm_pass_no or '' }}</td><td>{{ r.hm_pass_expiry or '' }}</td><td>{{ r.hm_pass_submit_date or '' }}</td>
-        <td>{{ r.tw_pass_no or '' }}</td><td>{{ r.tw_pass_expiry or '' }}</td><td>{{ r.tw_pass_submit_date or '' }}</td>
+        <td>{{ r.passport_no | default('', true) }}</td><td>{{ r.passport_expiry | default('', true) }}</td><td>{{ r.passport_submit_date | default('', true) }}</td>
+        <td>{{ r.hm_pass_no | default('', true) }}</td><td>{{ r.hm_pass_expiry | default('', true) }}</td><td>{{ r.hm_pass_submit_date | default('', true) }}</td>
+        <td>{{ r.tw_pass_no | default('', true) }}</td><td>{{ r.tw_pass_expiry | default('', true) }}</td><td>{{ r.tw_pass_submit_date | default('', true) }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -61,11 +61,11 @@
     <tbody>
     {% for r in rows %}
     <tr>
-        <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.position }}</td><td>{{ r.title or '' }}</td>
+        <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.position }}</td><td>{{ r.title | default('', true) }}</td>
         <td>{{ r.id_number }}</td><td>{{ r.destination_passport }}</td><td>{{ r.category }}</td>
-        <td>{{ r.travel_dates }}</td><td>{{ r.approval_date or '' }}</td><td>{{ r.need_new_passport }}</td>
-        <td>{{ r.passport_no or '' }}</td><td>{{ r.passport_collect_date or '' }}</td><td>{{ r.actual_return_date or '' }}</td><td>{{ r.passport_return_date or '' }}</td>
-        <td>{{ '取消行程' if r.trip_status == 'cancelled' else '正常' }}</td><td>{{ r.cancel_date or '' }}</td>
+        <td>{{ r.travel_dates }}</td><td>{{ r.approval_date | default('', true) }}</td><td>{{ r.need_new_passport }}</td>
+        <td>{{ r.passport_no | default('', true) }}</td><td>{{ r.passport_collect_date | default('', true) }}</td><td>{{ r.actual_return_date | default('', true) }}</td><td>{{ r.passport_return_date | default('', true) }}</td>
+        <td>{{ '取消行程' if r.trip_status == 'cancelled' else '正常' }}</td><td>{{ r.cancel_date | default('', true) }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -81,7 +81,7 @@
         <td>{{ r.id_number }}</td><td>{{ r.residence }}</td><td>{{ r.political_status }}</td><td>{{ r.work_unit }}</td>
         <td>{{ r.supervisor_unit }}</td><td>{{ r.submit_unit_name }}</td><td>{{ r.submit_unit_type }}</td>
         <td>{{ r.submit_contact }}</td><td>{{ r.submit_phone }}</td><td>{{ r.batch_no }}</td>
-        <td>{{ r.decontrol_date or '' }}</td><td>{{ r.cert_handover_date or '' }}</td><td>{{ r.reason }}</td>
+        <td>{{ r.decontrol_date | default('', true) }}</td><td>{{ r.cert_handover_date | default('', true) }}</td><td>{{ r.reason }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -94,9 +94,9 @@
     {% for r in rows %}
     <tr>
         <td>{{ r.unit }}</td><td>{{ r.department }}</td><td>{{ r.name }}</td><td>{{ r.gender }}</td>
-        <td>{{ r.birth_date }}</td><td>{{ r.id_number or '' }}</td><td>{{ r.work_start_date or '' }}</td>
+        <td>{{ r.birth_date }}</td><td>{{ r.id_number | default('', true) }}</td><td>{{ r.work_start_date | default('', true) }}</td>
         <td>{{ dict_value('education', r.education) if r.education else '' }}</td><td>{{ dict_value('degree', r.degree) if r.degree else '' }}</td><td>{{ dict_value('title', r.title) if r.title else '' }}</td>
-        <td>{{ dict_value('rank', r.rank) if r.rank else '' }}</td><td>{{ r.political_status }}</td><td>{{ r.party_join_date or '' }}</td><td>{{ r.position }}</td>
+        <td>{{ dict_value('rank', r.rank) if r.rank else '' }}</td><td>{{ r.political_status }}</td><td>{{ r.party_join_date | default('', true) }}</td><td>{{ r.position }}</td>
     </tr>
     {% endfor %}
     </tbody>

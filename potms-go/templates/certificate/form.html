@@ -16,7 +16,7 @@
             <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillCert()" size="6">
                 <option value="">请选择备案人员</option>
                 {% for p in personnel_opts() %}
-                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-search="{{ (p.name ~ (p.id_number | default('', true)) ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -24,35 +24,35 @@
     <div class="row g-3 mt-2">
         <div class="col-md-3">
             <label class="form-label">单位 <span class="text-muted">(自动带入)</span></label>
-            <input type="text" class="form-control" name="unit" id="certUnit" value="{{ data.unit or '' }}" readonly>
+            <input type="text" class="form-control" name="unit" id="certUnit" value="{{ data.unit | default('', true) }}" readonly>
         </div>
         <div class="col-md-3">
             <label class="form-label">部门 <span class="text-muted">(自动带入)</span></label>
-            <input type="text" class="form-control" name="department" id="certDept" value="{{ data.department or '' }}" readonly>
+            <input type="text" class="form-control" name="department" id="certDept" value="{{ data.department | default('', true) }}" readonly>
         </div>
         <div class="col-md-3">
             <label class="form-label">姓名 <span class="text-muted">(自动带入)</span></label>
-            <input type="text" class="form-control" name="name" id="certName" value="{{ data.name or '' }}" readonly>
+            <input type="text" class="form-control" name="name" id="certName" value="{{ data.name | default('', true) }}" readonly>
         </div>
     </div>
 </div>
 
 <div class="form-section"><h5>普通护照</h5><div class="row g-3">
-    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="passport_no" value="{{ data.passport_no or '' }}"></div>
-    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="passport_expiry" value="{{ data.passport_expiry or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
-    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="passport_submit_date" value="{{ data.passport_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="passport_no" value="{{ data.passport_no | default('', true) }}"></div>
+    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="passport_expiry" value="{{ data.passport_expiry | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="passport_submit_date" value="{{ data.passport_submit_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
 </div></div>
 
 <div class="form-section"><h5>往来港澳通行证</h5><div class="row g-3">
-    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="hm_pass_no" value="{{ data.hm_pass_no or '' }}"></div>
-    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="hm_pass_expiry" value="{{ data.hm_pass_expiry or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
-    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="hm_pass_submit_date" value="{{ data.hm_pass_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="hm_pass_no" value="{{ data.hm_pass_no | default('', true) }}"></div>
+    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="hm_pass_expiry" value="{{ data.hm_pass_expiry | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="hm_pass_submit_date" value="{{ data.hm_pass_submit_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
 </div></div>
 
 <div class="form-section"><h5>大陆居民往来台湾通行证</h5><div class="row g-3">
-    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="tw_pass_no" value="{{ data.tw_pass_no or '' }}"></div>
-    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="tw_pass_expiry" value="{{ data.tw_pass_expiry or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
-    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="tw_pass_submit_date" value="{{ data.tw_pass_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">证件号</label><input type="text" class="form-control" name="tw_pass_no" value="{{ data.tw_pass_no | default('', true) }}"></div>
+    <div class="col-md-4"><label class="form-label">有效日期</label><input type="text" class="form-control" name="tw_pass_expiry" value="{{ data.tw_pass_expiry | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="tw_pass_submit_date" value="{{ data.tw_pass_submit_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
 </div></div>
 
 <div class="mt-3">

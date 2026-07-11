@@ -17,7 +17,7 @@
             <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillTravel()" size="6">
                 <option value="">请选择备案人员</option>
                 {% for p in personnel_opts() %}
-                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-position="{{ p.position }}" data-idno="{{ p.id_number }}" data-title="{{ p.title }}" data-certs="{{ p.cert_nos | join(',') }}" data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                <option value="{{ p.id }}" data-unit="{{ p.unit }}" data-dept="{{ p.department }}" data-name="{{ p.name }}" data-position="{{ p.position }}" data-idno="{{ p.id_number }}" data-title="{{ p.title }}" data-certs="{{ p.cert_nos | join(',') }}" data-search="{{ (p.name ~ (p.id_number | default('', true)) ~ p.unit) | lower }}" {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -27,15 +27,15 @@
 <div class="form-section">
     <h5>基本信息 <small class="text-muted">(自动带入)</small></h5>
     <div class="row g-3">
-        <div class="col-md-3"><label class="form-label">单位</label><input type="text" class="form-control" name="unit" id="tUnit" value="{{ data.unit or '' }}" readonly></div>
-        <div class="col-md-3"><label class="form-label">部门</label><input type="text" class="form-control" name="department" id="tDept" value="{{ data.department or '' }}" readonly></div>
-        <div class="col-md-2"><label class="form-label">姓名</label><input type="text" class="form-control" name="name" id="tName" value="{{ data.name or '' }}" readonly></div>
-        <div class="col-md-2"><label class="form-label">职务</label><input type="text" class="form-control" name="position" id="tPos" value="{{ data.position or '' }}" readonly></div>
-        <div class="col-md-2"><label class="form-label">职称</label><input type="text" class="form-control" name="title" id="tTitle" value="{{ data.title or '' }}" readonly placeholder="自动带入"></div>
+        <div class="col-md-3"><label class="form-label">单位</label><input type="text" class="form-control" name="unit" id="tUnit" value="{{ data.unit | default('', true) }}" readonly></div>
+        <div class="col-md-3"><label class="form-label">部门</label><input type="text" class="form-control" name="department" id="tDept" value="{{ data.department | default('', true) }}" readonly></div>
+        <div class="col-md-2"><label class="form-label">姓名</label><input type="text" class="form-control" name="name" id="tName" value="{{ data.name | default('', true) }}" readonly></div>
+        <div class="col-md-2"><label class="form-label">职务</label><input type="text" class="form-control" name="position" id="tPos" value="{{ data.position | default('', true) }}" readonly></div>
+        <div class="col-md-2"><label class="form-label">职称</label><input type="text" class="form-control" name="title" id="tTitle" value="{{ data.title | default('', true) }}" readonly placeholder="自动带入"></div>
     </div>
     <div class="row g-3 mt-1">
-        <div class="col-md-3"><label class="form-label">身份证号</label><input type="text" class="form-control" name="id_number" id="tIdno" value="{{ data.id_number or '' }}" readonly></div>
-        <div class="col-md-9"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport or '' }}" placeholder="目的地国家/地区及使用的证照类型" required></div>
+        <div class="col-md-3"><label class="form-label">身份证号</label><input type="text" class="form-control" name="id_number" id="tIdno" value="{{ data.id_number | default('', true) }}" readonly></div>
+        <div class="col-md-9"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport | default('', true) }}" placeholder="目的地国家/地区及使用的证照类型" required></div>
     </div>
 </div>
 
@@ -43,8 +43,8 @@
     <h5>出行信息</h5>
     <div class="row g-3">
         <div class="col-md-3"><label class="form-label required">类别</label><select class="form-select" name="category" required><option value="">请选择</option>{% for o in dict_opts('travel_category') %}<option value="{{ o.value }}" {{ 'selected' if data.category == o.value }}>{{ o.value }}</option>{% endfor %}</select></div>
-        <div class="col-md-4"><label class="form-label required">计划出行日期</label><input type="text" class="form-control" name="travel_dates" value="{{ data.travel_dates or '' }}" placeholder="YYYY/MM/DD-YYYY/MM/DD" inputmode="numeric" required><div class="form-text">直接输入数字，分隔符自动补全，如 2026/08/01-2026/08/11</div></div>
-        <div class="col-md-2"><label class="form-label">批准日期</label><input type="text" class="form-control" name="approval_date" value="{{ data.approval_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
+        <div class="col-md-4"><label class="form-label required">计划出行日期</label><input type="text" class="form-control" name="travel_dates" value="{{ data.travel_dates | default('', true) }}" placeholder="YYYY/MM/DD-YYYY/MM/DD" inputmode="numeric" required><div class="form-text">直接输入数字，分隔符自动补全，如 2026/08/01-2026/08/11</div></div>
+        <div class="col-md-2"><label class="form-label">批准日期</label><input type="text" class="form-control" name="approval_date" value="{{ data.approval_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"></div>
         <div class="col-md-3"><label class="form-label required">是否做证</label><select class="form-select" name="need_new_passport" required><option value="否" {{ 'selected' if data.need_new_passport == '否' }}>否 — 已有证件</option><option value="是" {{ 'selected' if data.need_new_passport == '是' }}>是 — 需新办证件</option></select></div>
     </div>
 </div>
@@ -52,13 +52,13 @@
 <div class="form-section">
     <h5>证件流转</h5>
     <div class="row g-3">
-        <div class="col-md-3"><label class="form-label">证件号码</label><input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="{{ data.passport_no or '' }}" placeholder="选已登记证件或手输新证件号" autocomplete="off"><datalist id="certNoList"></datalist><div class="form-text">已有证件可下拉选，做证新号手输。</div></div>
-        <div class="col-md-3"><label class="form-label">证件领用日期</label><input type="text" class="form-control" name="passport_collect_date" value="{{ data.passport_collect_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">路径A（已有证件）时必填</div></div>
-        <div class="col-md-3"><label class="form-label">实际回国日期</label><input type="text" class="form-control" name="actual_return_date" value="{{ data.actual_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">回国后须于 10 个工作日内交回证件；留空则以计划结束日计。</div></div>
-        <div class="col-md-3"><label class="form-label">证件归还日期</label><input type="text" class="form-control" name="passport_return_date" value="{{ data.passport_return_date or '' }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">已交回证件填写此日期；空表示尚未归还。</div></div>
+        <div class="col-md-3"><label class="form-label">证件号码</label><input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="{{ data.passport_no | default('', true) }}" placeholder="选已登记证件或手输新证件号" autocomplete="off"><datalist id="certNoList"></datalist><div class="form-text">已有证件可下拉选，做证新号手输。</div></div>
+        <div class="col-md-3"><label class="form-label">证件领用日期</label><input type="text" class="form-control" name="passport_collect_date" value="{{ data.passport_collect_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">路径A（已有证件）时必填</div></div>
+        <div class="col-md-3"><label class="form-label">实际回国日期</label><input type="text" class="form-control" name="actual_return_date" value="{{ data.actual_return_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">回国后须于 10 个工作日内交回证件；留空则以计划结束日计。</div></div>
+        <div class="col-md-3"><label class="form-label">证件归还日期</label><input type="text" class="form-control" name="passport_return_date" value="{{ data.passport_return_date | default('', true) }}" placeholder="YYYYMMDD" maxlength="8"><div class="form-text">已交回证件填写此日期；空表示尚未归还。</div></div>
     </div>
     {% if editing and data.trip_status == 'cancelled' %}
-    <div class="alert alert-warning mt-2 mb-0 py-2"><i class="bi bi-exclamation-triangle"></i> 本行程已取消（取消日期：{{ data.cancel_date or '-' }}）。已申领证件须于取消日起 <strong>5 个工作日</strong> 内送回保管。</div>
+    <div class="alert alert-warning mt-2 mb-0 py-2"><i class="bi bi-exclamation-triangle"></i> 本行程已取消（取消日期：{{ data.cancel_date | default('-', true) }}）。已申领证件须于取消日起 <strong>5 个工作日</strong> 内送回保管。</div>
     {% endif %}
 </div>
 

@@ -201,6 +201,16 @@ func TestFullSystem(t *testing.T) {
 		if strings.Contains(body, "Unable to") || strings.Contains(body, "unable to execute") {
 			t.Errorf("%s 模板渲染错误: %s", p, snippet(body))
 		}
+		// gonja 的 or/and 是纯布尔运算（不同于 Jinja2 返回操作数），
+		// 模板须用 default(x, true) 兜底，页面不得出现布尔值泄漏
+		if strings.Contains(body, ">True<") || strings.Contains(body, ">False<") {
+			t.Errorf("%s 页面出现 True/False 布尔泄漏，应使用 default 过滤器", p)
+		}
+	}
+
+	// 有值字段显示实际内容而非 True
+	if _, body := c.get("/certificate/"); !strings.Contains(body, "E12345678") {
+		t.Error("证照列表应显示护照号 E12345678")
 	}
 
 	// 校验拦截：假 PDF

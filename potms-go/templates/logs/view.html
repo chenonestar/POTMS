@@ -70,7 +70,7 @@
                         <small>{{ target_labels[log.target_type] | default(log.target_type) }}</small>
                     </td>
                     <td>
-                        <small class="text-muted">{{ log.detail or '—' }}</small>
+                        <small class="text-muted">{{ log.detail | default('—', true) }}</small>
                         {% if log.target_id %}<small class="text-muted"> (ID: {{ log.target_id }})</small>{% endif %}
                         {% if log.changes %}
                         <a class="small ms-1" data-bs-toggle="collapse" href="#snap{{ log.id }}" role="button">变更详情 ▾</a>
@@ -98,7 +98,7 @@
                         {% endif %}
                     </td>
                     <td>{{ log.operator }}</td>
-                    <td><small class="text-muted">{{ log.ip_address or '—' }}</small></td>
+                    <td><small class="text-muted">{{ log.ip_address | default('—', true) }}</small></td>
                 </tr>
                 {% else %}
                 <tr><td colspan="6" class="text-center text-muted py-4">暂无操作日志</td></tr>

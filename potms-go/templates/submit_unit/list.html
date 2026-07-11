@@ -15,11 +15,11 @@
     {% for r in rows %}
     <tr>
         <td>{{ r.name }}</td>
-        <td>{{ r.contact or '-' }}</td>
-        <td>{{ r.phone or '-' }}</td>
+        <td>{{ r.contact | default('-', true) }}</td>
+        <td>{{ r.phone | default('-', true) }}</td>
         <td>{{ r.sort_order }}</td>
         <td class="text-end">
-            <button class="btn btn-sm btn-outline-warning" onclick="editSU(this)" data-id="{{ r.id }}" data-name="{{ r.name }}" data-contact="{{ r.contact or '' }}" data-phone="{{ r.phone or '' }}" data-sort="{{ r.sort_order }}" title="编辑"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-warning" onclick="editSU(this)" data-id="{{ r.id }}" data-name="{{ r.name }}" data-contact="{{ r.contact | default('', true) }}" data-phone="{{ r.phone | default('', true) }}" data-sort="{{ r.sort_order }}" title="编辑"><i class="bi bi-pencil"></i></button>
             <form method="POST" action="{{ url_for('submit_unit.delete', uid=r.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ r.name }}」吗？');">
                 <button class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
             </form>

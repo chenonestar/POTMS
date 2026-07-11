@@ -28,8 +28,8 @@
             <div class="col-md-4"><label class="text-muted">入库批号</label><p>{{ dec.batch_no }}</p></div>
         </div>
         <div class="row mt-2">
-            <div class="col-md-4"><label class="text-muted">撤控日期</label><p>{{ dec.decontrol_date or '-' }}</p></div>
-            <div class="col-md-4"><label class="text-muted">证件移交日期</label><p>{{ dec.cert_handover_date or '-' }}</p></div>
+            <div class="col-md-4"><label class="text-muted">撤控日期</label><p>{{ dec.decontrol_date | default('-', true) }}</p></div>
+            <div class="col-md-4"><label class="text-muted">证件移交日期</label><p>{{ dec.cert_handover_date | default('-', true) }}</p></div>
         </div>
         <div class="row mt-2">
             <div class="col-md-12"><label class="text-muted">撤控原因</label><p class="text-danger">{{ dec.reason }}</p></div>
