@@ -459,6 +459,16 @@ func TestDeleteGuardsAndOrphan(t *testing.T) {
 	if !strings.Contains(body, `id="confirmForm"`) {
 		t.Error("#2 信息表管理页缺少确认弹窗，删除按钮将无法工作")
 	}
+	// 搜索/筛选：按姓名搜到、无关键字搜为空、ref=linked 含有引用记录
+	if _, b := c.get("/personnel/info/?search=张三"); !strings.Contains(b, "张三") {
+		t.Error("#2 按姓名搜索应命中张三")
+	}
+	if _, b := c.get("/personnel/info/?search=不存在zzz"); !strings.Contains(b, "暂无信息登记表") {
+		t.Error("#2 无匹配时应显示暂无记录")
+	}
+	if _, b := c.get("/personnel/info/?ref=orphan"); strings.Contains(b, "张三") {
+		t.Error("#2 仅孤儿筛选不应含有引用的张三")
+	}
 	c.post("/personnel/info/1/delete", url.Values{"csrf_token": {c.csrf("/")}})
 	if countQuery("SELECT COUNT(*) FROM personnel_info WHERE id=1") != 1 {
 		t.Error("#2 有备案引用的信息表不应被删除")

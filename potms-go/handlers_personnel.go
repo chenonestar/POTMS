@@ -401,13 +401,28 @@ func handlePersonnelDelete(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, "personnel.list", nil)
 }
 
-// handleInfoList 信息登记表一览（含关联备案数），供清理无备案引用的孤儿记录（#2）
+// handleInfoList 信息登记表一览（含关联备案数、搜索/筛选/分页），供清理孤儿记录（#2）
 func handleInfoList(w http.ResponseWriter, r *http.Request) {
-	rows, _ := queryMaps(
-		"SELECT pi.*, " +
-			"(SELECT COUNT(*) FROM personnel_filing pf WHERE pf.personnel_info_id = pi.id) AS filing_count " +
-			"FROM personnel_info pi ORDER BY pi.id")
-	render(w, r, "personnel/info_list.html", Row{"rows": rowsIface(rows)})
+	q := queryArgs(r)
+	where := ""
+	var params []interface{}
+	if s := strings.TrimSpace(q["search"]); s != "" {
+		where += " AND (pi.name LIKE ? OR pi.id_number LIKE ? OR pi.unit LIKE ? OR pi.department LIKE ?)"
+		like := "%" + s + "%"
+		params = append(params, like, like, like, like)
+	}
+	refCount := "(SELECT COUNT(*) FROM personnel_filing pf WHERE pf.personnel_info_id = pi.id)"
+	switch strings.TrimSpace(q["ref"]) {
+	case "orphan":
+		where += " AND " + refCount + " = 0"
+	case "linked":
+		where += " AND " + refCount + " > 0"
+	}
+	pg := listAll("SELECT pi.*, "+refCount+" AS filing_count "+
+		"FROM personnel_info pi WHERE 1=1"+where+" ORDER BY pi.id", params...)
+	render(w, r, "personnel/info_list.html", Row{
+		"items": pg.pageMap(), "search": q["search"], "ref": q["ref"],
+	})
 }
 
 // handleInfoDelete 物理删除信息登记表：仅当无任何备案引用时才允许，防止悬空外键（#2）

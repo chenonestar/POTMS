@@ -78,6 +78,10 @@ def test_info_delete_guard_and_orphan(c):
     page = c.get("/personnel/info/").get_data(as_text=True)
     assert "信息登记表管理" in page
     assert 'id="confirmForm"' in page
+    # 搜索/筛选
+    assert "张三" in c.get("/personnel/info/?search=张三").get_data(as_text=True)
+    assert "暂无信息登记表" in c.get("/personnel/info/?search=不存在zzz").get_data(as_text=True)
+    assert "张三" not in c.get("/personnel/info/?ref=orphan").get_data(as_text=True)
     # 有引用 → 拒删
     c.post("/personnel/info/1/delete", data={"csrf_token": _tok(c)})
     assert db.execute("SELECT COUNT(*) FROM personnel_info WHERE id=1").fetchone()[0] == 1

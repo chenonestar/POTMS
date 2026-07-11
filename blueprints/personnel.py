@@ -422,14 +422,25 @@ def delete(filing_id) -> ResponseReturnValue:
 @personnel_bp.route("/personnel/info/")
 @login_required
 def info_list() -> ResponseReturnValue:
-    """列出全部信息登记表，含关联备案数，供清理无备案引用的孤儿记录。"""
-    db = get_db()
-    rows = db.execute(
-        "SELECT pi.*, "
-        "(SELECT COUNT(*) FROM personnel_filing pf WHERE pf.personnel_info_id = pi.id) AS filing_count "
-        "FROM personnel_info pi ORDER BY pi.id"
-    ).fetchall()
-    return render_template("personnel/info_list.html", rows=rows)
+    """列出信息登记表（含关联备案数、搜索/筛选/分页），供清理孤儿记录。"""
+    args = request.args
+    where = ""
+    params: list = []
+    search = args.get("search", "").strip()
+    if search:
+        where += " AND (pi.name LIKE ? OR pi.id_number LIKE ? OR pi.unit LIKE ? OR pi.department LIKE ?)"
+        like = f"%{search}%"
+        params += [like, like, like, like]
+    ref_count = "(SELECT COUNT(*) FROM personnel_filing pf WHERE pf.personnel_info_id = pi.id)"
+    ref = args.get("ref", "").strip()
+    if ref == "orphan":
+        where += f" AND {ref_count} = 0"
+    elif ref == "linked":
+        where += f" AND {ref_count} > 0"
+    sql = (f"SELECT pi.*, {ref_count} AS filing_count "
+           f"FROM personnel_info pi WHERE 1=1{where} ORDER BY pi.id")
+    items = list_all(sql, params)  # 全量下发，前端按视口窗口化分页
+    return render_template("personnel/info_list.html", items=items, search=search, ref=ref)
 
 
 @personnel_bp.route("/personnel/info/<int:info_id>/delete", methods=["POST"])
