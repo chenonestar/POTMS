@@ -96,12 +96,12 @@ NOTES_INFO = [
 
 def export_personnel_info(operator: str, where_sql: str = "", params: tuple = (), joined: bool = False) -> str:
     db = get_db()
-    if joined:
-        sql = ("SELECT pi.* FROM personnel_info pi "
-               "JOIN personnel_filing pf ON pf.personnel_info_id = pi.id "
-               "WHERE 1=1 " + where_sql + " ORDER BY pi.created_at DESC")
-    else:
-        sql = "SELECT * FROM personnel_info WHERE 1=1 " + where_sql + " ORDER BY created_at DESC"
+    # #4 一律经 personnel_filing 关联导出：只导出有备案引用的信息登记表，
+    # 无引用的孤儿行永不外泄（GROUP BY 去重，避免一人多条备案时重复）。
+    # joined 参数保留以兼容旧调用，实际行为恒为关联导出。
+    sql = ("SELECT pi.* FROM personnel_info pi "
+           "JOIN personnel_filing pf ON pf.personnel_info_id = pi.id "
+           "WHERE 1=1 " + where_sql + " GROUP BY pi.id ORDER BY pi.created_at DESC")
     rows = db.execute(sql, params).fetchall()
 
     # 学历/学位/职称/职级为字典编码，导出时映射为显示值（编码 → 中文）

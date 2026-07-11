@@ -5,6 +5,7 @@
     <h4><i class="bi bi-people"></i> 人员备案列表</h4>
     <div>
         <a href="{{ url_for('personnel.info_new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增</a>
+        <a href="{{ url_for('personnel.info_list') }}" class="btn btn-outline-secondary ms-1" title="管理信息登记表、清理无备案引用的孤儿记录"><i class="bi bi-card-list"></i> 信息表管理</a>
         <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('filing')"><i class="bi bi-printer"></i> 批量打印</button>
         <div class="dropdown d-inline-block ms-1">
             <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
