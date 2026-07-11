@@ -74,8 +74,10 @@ def test_info_delete_guard_and_orphan(c):
     """#2 有备案引用的信息表不能删；孤儿信息表可删。"""
     db = sqlite3.connect(Config.DATABASE)
     _seed_info_filing_cert(db)
-    # 管理页可访问
-    assert "信息登记表管理" in c.get("/personnel/info/").get_data(as_text=True)
+    # 管理页可访问，且含确认弹窗（删除按钮依赖它，否则点击无反应）
+    page = c.get("/personnel/info/").get_data(as_text=True)
+    assert "信息登记表管理" in page
+    assert 'id="confirmForm"' in page
     # 有引用 → 拒删
     c.post("/personnel/info/1/delete", data={"csrf_token": _tok(c)})
     assert db.execute("SELECT COUNT(*) FROM personnel_info WHERE id=1").fetchone()[0] == 1

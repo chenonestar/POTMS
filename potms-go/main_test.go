@@ -455,6 +455,10 @@ func TestDeleteGuardsAndOrphan(t *testing.T) {
 	if !strings.Contains(body, "信息登记表管理") {
 		t.Error("#2 信息表管理页应可访问")
 	}
+	// 删除按钮依赖确认弹窗，页面必须 include confirm_modal，否则点击无反应
+	if !strings.Contains(body, `id="confirmForm"`) {
+		t.Error("#2 信息表管理页缺少确认弹窗，删除按钮将无法工作")
+	}
 	c.post("/personnel/info/1/delete", url.Values{"csrf_token": {c.csrf("/")}})
 	if countQuery("SELECT COUNT(*) FROM personnel_info WHERE id=1") != 1 {
 		t.Error("#2 有备案引用的信息表不应被删除")
