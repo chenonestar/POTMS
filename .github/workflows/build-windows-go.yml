@@ -2,7 +2,7 @@ name: Build Windows EXE (Go)
 
 on:
   push:
-    branches: [claude/go-version]
+    branches: [main, claude/go-version]
     paths:
       - 'potms-go/**'
       - '.github/workflows/build-windows-go.yml'
