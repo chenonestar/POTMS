@@ -213,6 +213,18 @@ func TestFullSystem(t *testing.T) {
 		t.Error("证照列表应显示护照号 E12345678")
 	}
 
+	// 打印页字典字段须转中文（含 filing 打印底部的关联信息登记表段）
+	db.Exec("UPDATE personnel_info SET education='03', degree='03', title='02', rank='03' WHERE id=1")
+	for _, p := range []string{"/print/info/1", "/print/filing/1"} {
+		_, body := c.get(p)
+		if strings.Contains(body, ">02<") || strings.Contains(body, ">03<") {
+			t.Errorf("%s 泄漏字典编码，学历/学位/职称/职级应转中文", p)
+		}
+		if !strings.Contains(body, "副高") || !strings.Contains(body, "正科") {
+			t.Errorf("%s 应显示职称/职级中文值", p)
+		}
+	}
+
 	// 校验拦截：假 PDF
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
