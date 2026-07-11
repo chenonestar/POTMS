@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>因私出国（境）人员审批管理系统 — 系统优化审定报告 V1.0</title>
+<style>
+    :root{
+        --primary:#1a5276; --primary-light:#2980b9; --bg:#f8f9fa; --card-bg:#fff;
+        --border:#dee2e6; --text:#2c3e50; --text-muted:#6c757d; --accent:#e67e22;
+        --success:#27ae60; --warning:#f39c12; --danger:#c0392b; --info:#2980b9;
+        --shadow:0 2px 8px rgba(0,0,0,.08); --radius:8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:"Microsoft YaHei","PingFang SC","Helvetica Neue",Arial,sans-serif;
+        background:var(--bg);color:var(--text);line-height:1.8;}
+    .cover{background:linear-gradient(135deg,#0d2b45 0%,#1a5276 40%,#1a6e5c 100%);
+        color:#fff;padding:80px 60px 64px;text-align:center;position:relative;overflow:hidden;}
+    .cover h1{font-size:36px;font-weight:700;letter-spacing:1px;margin-bottom:14px;}
+    .cover .subtitle{font-size:17px;opacity:.85;font-weight:300;letter-spacing:3px;}
+    .cover .meta{margin-top:40px;font-size:14px;opacity:.7;}
+    .cover .verdict{margin-top:28px;display:inline-block;background:rgba(255,255,255,.14);
+        border:1px solid rgba(255,255,255,.3);border-radius:40px;padding:10px 30px;font-size:16px;font-weight:600;}
+    .container{max-width:1120px;margin:0 auto;padding:40px 30px 80px;}
+    .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0 40px;}
+    .kpi{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:22px;text-align:center;box-shadow:var(--shadow);}
+    .kpi .num{font-size:34px;font-weight:800;line-height:1.1;}
+    .kpi .lbl{font-size:13px;color:var(--text-muted);margin-top:6px;}
+    .kpi.green .num{color:var(--success);} .kpi.blue .num{color:var(--primary-light);}
+    .kpi.amber .num{color:var(--warning);} .kpi.red .num{color:var(--danger);}
+    section{margin-bottom:44px;}
+    section h2{font-size:24px;color:var(--primary);border-left:5px solid var(--accent);
+        padding-left:16px;margin-bottom:20px;}
+    section h3{font-size:18px;color:var(--primary-light);margin:26px 0 12px;
+        padding-bottom:6px;border-bottom:1px dashed var(--border);}
+    .card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:22px 26px;margin-bottom:20px;box-shadow:var(--shadow);}
+    .card.info{border-left:4px solid var(--primary-light);}
+    .card.warning{border-left:4px solid var(--accent);}
+    .card.success{border-left:4px solid var(--success);}
+    p{margin-bottom:10px;}
+    table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:14px;}
+    thead th{background:var(--primary);color:#fff;padding:10px 12px;text-align:left;
+        font-weight:600;white-space:nowrap;}
+    tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+    tbody tr:nth-child(even){background:#f5f7fa;}
+    tbody tr:hover{background:#eaf2f8;}
+    .wrap{white-space:normal;}
+    .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;
+        font-weight:700;color:#fff;white-space:nowrap;}
+    .b-done{background:var(--success);} .b-p1{background:var(--danger);}
+    .b-p2{background:var(--warning);} .b-p3{background:var(--text-muted);} .b-new{background:var(--primary-light);}
+    ul.styled,ol.styled{padding-left:22px;margin:8px 0 14px;}
+    ul.styled li,ol.styled li{margin-bottom:7px;}
+    ul.styled li::marker{color:var(--primary-light);}
+    code{background:#e8e8e8;padding:1px 6px;border-radius:3px;font-size:13px;}
+    .footnote{background:#fff9e6;border:1px solid #f0d060;border-radius:6px;
+        padding:14px 20px;margin:18px 0;font-size:14px;}
+    .footnote strong{color:var(--accent);}
+    .toc{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:24px 32px;margin-bottom:40px;box-shadow:var(--shadow);}
+    .toc h2{font-size:20px;color:var(--primary);border-bottom:2px solid var(--primary-light);
+        padding-bottom:10px;margin-bottom:14px;}
+    .toc ol{padding-left:22px;} .toc li{padding:4px 0;}
+    .toc a{color:var(--text);text-decoration:none;} .toc a:hover{color:var(--primary-light);}
+    @media print{body{background:#fff;}.card{box-shadow:none;break-inside:avoid;}.cover{padding:40px 30px;}}
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <h1>因私出国（境）人员审批管理系统</h1>
+    <p class="subtitle">系 统 优 化 审 定 报 告</p>
+    <div class="verdict">审定结论：系统无阻断性缺陷，识别出 <strong>16</strong> 项可优化点（P1×1 / P2×6 / P3×9）</div>
+    <p class="meta">报告版本：V1.0 &nbsp;|&nbsp; 审定日期：2026-07-08 &nbsp;|&nbsp; 审定基线：main 分支（PR #1 / PR #2 合并后） &nbsp;|&nbsp; 密级：内部</p>
+</div>
+
+<div class="container">
+
+<div class="toc">
+    <h2>目 录</h2>
+    <ol>
+        <li><a href="#s1">审定范围与结论</a></li>
+        <li><a href="#s2">已达良好水准的方面（无需再动）</a></li>
+        <li><a href="#s3">安全类优化项</a></li>
+        <li><a href="#s4">性能类优化项</a></li>
+        <li><a href="#s5">健壮性与运维类优化项</a></li>
+        <li><a href="#s6">代码整洁类优化项</a></li>
+        <li><a href="#s7">体验与功能增强类</a></li>
+        <li><a href="#s8">优先级汇总与实施建议</a></li>
+    </ol>
+</div>
+
+<!-- 1 -->
+<section id="s1">
+    <h2>一、审定范围与结论</h2>
+    <div class="card info">
+        <p>本次审定基于 <code>main</code> 分支最新代码（含 PR #1「系统评审整改 + 质量与安全加固」与 PR #2「运行反馈整改 + 视口自适应分页」全部内容），逐文件核查了数据库层、蓝图路由、模板、前端脚本、配置与测试，<strong>每一条发现均经代码实证，非推测</strong>。</p>
+        <p><strong>结论：系统当前无阻断性缺陷、无已知功能性 bug</strong>，pytest 44 用例全绿。本报告聚焦"还能更好"的部分：识别出 16 项可优化点，其中仅 1 项建议优先处理（登录防爆破），其余为中低优先级的加固、加分项。全部优化均可在<strong>不引入新依赖、不增加 exe 打包体积</strong>的前提下完成。</p>
+    </div>
+    <div class="kpi-grid">
+        <div class="kpi green"><div class="num">0</div><div class="lbl">阻断性缺陷</div></div>
+        <div class="kpi green"><div class="num">44</div><div class="lbl">pytest 用例全绿</div></div>
+        <div class="kpi red"><div class="num">1</div><div class="lbl">P1 建议优先</div></div>
+        <div class="kpi amber"><div class="num">6</div><div class="lbl">P2 建议近期</div></div>
+        <div class="kpi blue"><div class="num">9</div><div class="lbl">P3 酌情/择机</div></div>
+    </div>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+    <h2>二、已达良好水准的方面（无需再动）</h2>
+    <div class="card success">
+        <p>以下方面经核查已是良好实践，本轮<strong>无发现、无需改动</strong>，列出以明确审定覆盖面：</p>
+        <ul class="styled">
+            <li><strong>安全基线</strong>：CSRF 全覆盖（常量时间比对）、bcrypt 密码哈希（旧哈希透明升级）、SQL 全参数化 + 表名白名单、上传文件 UUID 重命名、<code>send_from_directory</code> 防路径穿越、身份证列表脱敏。</li>
+            <li><strong>数据层</strong>：WAL 日志模式、外键约束开启、幂等迁移（升级免手动改库）、每日自动备份保留 30 天。</li>
+            <li><strong>时间处理</strong>：统一存 UTC / 显示转本地（可配置偏移），符合教科书标准。</li>
+            <li><strong>查询效率</strong>：核查 <code>get_personnel_options</code> 等热点函数，无 N+1 查询（人员+证件两条查询建映射，写法正确）。</li>
+            <li><strong>工程化</strong>：pytest 44 用例（校验/工作日/逾期/迁移/分页/时区）、公共校验函数（DRY）、TypedDict 与路由返回注解、测试与 exe 打包物理隔离。</li>
+            <li><strong>体验</strong>：视口自适应分页（跨屏幕/缩放）、树状部门选择、草稿暂存、列显示自定义、附件预览、悬停查看全文。</li>
+        </ul>
+    </div>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+    <h2>三、安全类优化项</h2>
+    <div class="card">
+        <table>
+            <thead><tr><th style="width:56px;">编号</th><th style="width:190px;">问题</th><th>实证与建议</th><th style="width:64px;">优先级</th><th style="width:80px;">工作量</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>S1</td><td>登录无防爆破机制</td>
+                    <td class="wrap"><strong>实证</strong>：<code>auth.py</code> 的 login 路由对失败尝试无任何计数、锁定或延时，可无限次试错口令。内网单机风险虽低，但这是当前<strong>最大的安全敞口</strong>（尤其若管理员未改默认口令）。<br><strong>建议</strong>：内存级失败计数——同一来源连续失败 5 次锁定 10 分钟（或按失败次数递增延时 1s/2s/4s…），并写入操作日志。纯标准库实现。</td>
+                    <td><span class="badge b-p1">P1</span></td><td>约半天</td>
+                </tr>
+                <tr>
+                    <td>S2</td><td>附件上传仅校验扩展名</td>
+                    <td class="wrap"><strong>实证</strong>：<code>travel.py</code> 上传仅比对 <code>ALLOWED_EXTENSIONS={"pdf"}</code>，改名的任意文件可入库（预览时按 application/pdf 输出，实际危害有限，属纵深防御缺口）。<br><strong>建议</strong>：保存前读文件头校验 <code>%PDF-</code> 魔数，不符即拒绝。约 5 行代码。</td>
+                    <td><span class="badge b-p2">P2</span></td><td>约 1 小时</td>
+                </tr>
+                <tr>
+                    <td>S3</td><td>Session Cookie 安全标志未显式声明</td>
+                    <td class="wrap"><strong>实证</strong>：<code>config.py</code> 未设置 <code>SESSION_COOKIE_HTTPONLY / SAMESITE</code>（Flask 默认 HttpOnly=True，SameSite 依赖浏览器默认）。<br><strong>建议</strong>：显式加 <code>SESSION_COOKIE_SAMESITE="Lax"</code>、<code>SESSION_COOKIE_HTTPONLY=True</code>，不依赖默认行为。两行配置。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>10 分钟</td>
+                </tr>
+                <tr>
+                    <td>S4</td><td>备份/导出文件明文含敏感数据</td>
+                    <td class="wrap"><strong>实证</strong>：<code>backup/</code> 与 <code>exports/</code> 下的 db/xlsx 含全量身份证号，同机任何账户可读。属部署环境管理问题而非代码缺陷。<br><strong>建议</strong>：在 README 部署章节增加提示——运行目录设 NTFS 权限/启用 BitLocker，导出文件用毕删除。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>文档</td>
+                </tr>
+                <tr>
+                    <td>S5</td><td>草稿 localStorage 含敏感字段</td>
+                    <td class="wrap"><strong>实证</strong>：表单草稿（含身份证号）存浏览器 localStorage，登出后仍保留；共用电脑场景有暴露面。<br><strong>建议</strong>：退出登录时清空 <code>draft_*</code> 键。几行 JS。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约 1 小时</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+    <h2>四、性能类优化项</h2>
+    <div class="card">
+        <table>
+            <thead><tr><th style="width:56px;">编号</th><th style="width:190px;">问题</th><th>实证与建议</th><th style="width:64px;">优先级</th><th style="width:80px;">工作量</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>F1</td><td>数据库零索引</td>
+                    <td class="wrap"><strong>实证</strong>：<code>database.py</code> 无任何 <code>CREATE INDEX</code>。身份证查重、<code>status='active'</code> 过滤、<code>attachments.travel_id</code> 关联、日志按时间筛选均为全表扫描。<br><strong>影响评估</strong>：500 人规模下毫秒级，<strong>当前无感</strong>；属"面向未来"的加固。<br><strong>建议</strong>：迁移中一次性补 5~6 个索引（personnel_filing.id_number/status、attachments.travel_id、operation_logs.created_at、travel_details.personnel_filing_id 等），幂等 <code>CREATE INDEX IF NOT EXISTS</code>。</td>
+                    <td><span class="badge b-p2">P2</span></td><td>约 2 小时</td>
+                </tr>
+                <tr>
+                    <td>F2</td><td>表单模板重复调用查询型全局函数</td>
+                    <td class="wrap"><strong>实证</strong>：<code>info_form.html</code> 中 <code>org_flat()</code> 被调用 3 次、<code>dict_opts()</code> 多次，每次一条 SQL，单次渲染约 10 条小查询。本地 SQLite 开销极小。<br><strong>建议</strong>：模板顶部 <code>{% set orgs = org_flat() %}</code> 缓存为一次调用。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约 1 小时</td>
+                </tr>
+                <tr>
+                    <td>F3</td><td>首页每次访问都执行备份检查</td>
+                    <td class="wrap"><strong>实证</strong>：<code>dashboard.index</code> 每次请求调用 <code>run_daily_backup()</code>（幂等跳过，但每次做文件存在检查与目录扫描）。<br><strong>建议</strong>：进程内记录"今日已检查"标记，当天第二次起直接跳过。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约 30 分钟</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+    <h2>五、健壮性与运维类优化项</h2>
+    <div class="card">
+        <table>
+            <thead><tr><th style="width:56px;">编号</th><th style="width:190px;">问题</th><th>实证与建议</th><th style="width:64px;">优先级</th><th style="width:80px;">工作量</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>R1</td><td>无自定义 404 / 500 错误页</td>
+                    <td class="wrap"><strong>实证</strong>：仅注册了 CSRF 的 400 处理器；404/500 走 Flask 默认英文页面，与系统风格不符，出错时对操作员不友好。<br><strong>建议</strong>：增加中文 404/500 模板（含"返回首页"），500 页同时写入日志。</td>
+                    <td><span class="badge b-p2">P2</span></td><td>约半天</td>
+                </tr>
+                <tr>
+                    <td>R2</td><td>exports/ 导出文件只增不删</td>
+                    <td class="wrap"><strong>实证</strong>：每次导出在 <code>exports/</code> 落一个 xlsx，无任何清理机制，长期运行持续累积（也放大 S4 的敏感数据暴露面）。<br><strong>建议</strong>：下载响应完成后即删临时文件，或沿用备份的做法保留 7 天自动清理。</td>
+                    <td><span class="badge b-p2">P2</span></td><td>约 2 小时</td>
+                </tr>
+                <tr>
+                    <td>R3</td><td>备份"只备不复"——缺恢复指引</td>
+                    <td class="wrap"><strong>实证</strong>：README 无任何恢复（restore）说明，系统内也无恢复入口。真出事时操作员不知如何用备份还原。<br><strong>建议</strong>：至少在 README 写明恢复三步（停服 → 用 <code>backup/</code> 中的文件替换 <code>data.db</code> → 重启）；进一步可在系统内做"从备份恢复"页（含二次确认）。</td>
+                    <td><span class="badge b-p2">P2</span></td><td>文档 30 分钟 / 功能约 1 天</td>
+                </tr>
+                <tr>
+                    <td>R4</td><td>操作日志无限增长、无归档手段</td>
+                    <td class="wrap"><strong>实证</strong>：<code>operation_logs</code> 只增不删（审计要求不可删，设计正确），但无导出归档功能，数年后表持续膨胀。<br><strong>建议</strong>：提供"按年份导出日志归档（xlsx/csv）"功能即可，<strong>不建议</strong>自动删除。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约半天</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+    <h2>六、代码整洁类优化项</h2>
+    <div class="card">
+        <table>
+            <thead><tr><th style="width:56px;">编号</th><th style="width:190px;">问题</th><th>实证与建议</th><th style="width:64px;">优先级</th><th style="width:80px;">工作量</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>C1</td><td>6 处路由残留无用的 page 变量</td>
+                    <td class="wrap"><strong>实证</strong>：切换前端窗口化分页后，certificate/decontrol/personnel/travel(×2)/logs 的列表路由仍保留 <code>page = request.args.get("page", …)</code>，其中业务列表 5 处已完全无用（logs 仍在用）。属死代码，误导后来维护者。<br><strong>建议</strong>：删除无用 5 处。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约 20 分钟</td>
+                </tr>
+                <tr>
+                    <td>C2</td><td>函数体内 import</td>
+                    <td class="wrap"><strong>实证</strong>：<code>logs.py</code> 路由内 <code>from config import Config</code>、多处路由内 <code>from datetime import datetime</code>，可上移至模块顶部统一。<br><strong>建议</strong>：顺手清理，无行为影响。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约 20 分钟</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+    <h2>七、体验与功能增强类（可选加分项）</h2>
+    <div class="card">
+        <table>
+            <thead><tr><th style="width:56px;">编号</th><th style="width:190px;">增强点</th><th>说明</th><th style="width:64px;">优先级</th><th style="width:80px;">工作量</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>U1</td><td>列表点击表头排序</td>
+                    <td class="wrap"><strong>实证</strong>：目前仅人员列表有排序下拉，出国/证照/撤控列表无排序。前端窗口化分页后数据已全量在浏览器中，<strong>点击表头纯前端排序零后端改动</strong>，顺势可得。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约半天</td>
+                </tr>
+                <tr>
+                    <td>U2</td><td>全局统一搜索</td>
+                    <td class="wrap">目前查一个人要分别进人员/证照/出国/撤控四个列表搜。可在顶栏加统一搜索框，按姓名/身份证一次搜遍四模块并分组展示。属新功能，视使用频率决定。</td>
+                    <td><span class="badge b-p3">P3</span></td><td>约 1 天</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+    <h2>八、优先级汇总与实施建议</h2>
+    <div class="card warning">
+        <h3 style="margin-top:0;border:none;">分批实施建议</h3>
+        <table>
+            <thead><tr><th style="width:110px;">批次</th><th>包含项</th><th style="width:130px;">合计工作量</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge b-p1">第一批 P1</span></td>
+                    <td class="wrap">S1 登录防爆破</td>
+                    <td>约半天</td>
+                    <td class="wrap">唯一建议尽快处理的安全项；纯标准库实现，不影响打包体积。</td>
+                </tr>
+                <tr>
+                    <td><span class="badge b-p2">第二批 P2</span></td>
+                    <td class="wrap">S2 PDF 魔数校验 ｜ F1 数据库索引 ｜ R1 中文错误页 ｜ R2 导出文件清理 ｜ R3 备份恢复指引（文档）</td>
+                    <td>约 2 天</td>
+                    <td class="wrap">一轮做完即可，均为独立小改动，互不依赖；建议连同回归测试一起提交。</td>
+                </tr>
+                <tr>
+                    <td><span class="badge b-p3">第三批 P3</span></td>
+                    <td class="wrap">S3 Cookie 标志 ｜ S4 部署文档提示 ｜ S5 登出清草稿 ｜ F2 模板查询缓存 ｜ F3 备份检查标记 ｜ R4 日志年度归档 ｜ C1/C2 死代码清理 ｜ U1 表头排序 ｜ U2 全局搜索</td>
+                    <td>按需</td>
+                    <td class="wrap">锦上添花，可在日常维护中顺手完成，或按实际使用反馈挑选。</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="footnote"><strong>📌 总体判断：</strong>系统已具备良好的安全与工程基线，本轮无任何"必须立即修复"的缺陷。若只做一件事，做 <strong>S1 登录防爆破</strong>；若做一轮，完成 <strong>P1 + P2 共 6 项（约 2.5 天）</strong>后，系统在安全、健壮性、可运维性上将再上一个台阶。所有建议均不引入新依赖、不增加 exe 体积。</div>
+    </div>
+</section>
+
+<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border);margin-top:50px;">
+    <p>因私出国（境）人员审批管理系统 — 系统优化审定报告 V1.0</p>
+    <p>审定日期：2026-07-08　｜　审定基线：main（a3bd5e3）　｜　实证方式：逐文件代码核查 + pytest 44 用例回归</p>
+</div>
+
+</div>
+</body>
+</html>
