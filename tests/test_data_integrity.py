@@ -19,7 +19,8 @@ def c(tmp_path, monkeypatch):
     import database
     database.init_db(); database.run_migrations(); database.seed_data()
     import auth
-    auth._login_fails.clear()
+    if hasattr(auth, "_login_fails"):  # 登录锁定为可选特性，主分支可能未启用
+        auth._login_fails.clear()
     from app import create_app
     client = create_app().test_client()
     tok = CSRF.search(client.get("/login").get_data(as_text=True)).group(1)
