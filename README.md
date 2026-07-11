@@ -217,6 +217,33 @@ xcopy /E /I /Y D:\POTMS\uploads %BACKUP_DIR%\uploads_%DATE%
 
 在 Windows 任务计划程序中创建每日定时任务执行该脚本。
 
+### 从备份恢复（重要）
+
+当 `data.db` 损坏或误操作需要回退时，按以下三步恢复：
+
+1. **停止应用**：关闭 POTMS.exe（或 `nssm stop POTMS`）。必须先停服，否则数据库文件被占用且 WAL 日志未合并。
+2. **替换数据库**：从 `backup/` 中选择要恢复到的日期，复制覆盖 `data.db`：
+
+   ```bat
+   copy /Y backup\data_20260701.db data.db
+   del data.db-wal data.db-shm 2>nul   REM 删除旧的 WAL/SHM 残留（若存在）
+   ```
+
+3. **重启应用**：重新运行 POTMS.exe，登录核对数据。
+
+> ⚠️ 注意：
+> - 恢复会丢失"备份时间点之后"的全部录入，操作前请确认；
+> - 附件文件在 `uploads/`，数据库恢复不影响附件；若附件也需回退，用冷备的 `uploads_YYYYMMDD` 目录一并替换；
+> - 建议恢复前先把当前的 `data.db` 另存一份（如 `data_broken_日期.db`），以备回查。
+
+### 敏感数据保护提示
+
+`data.db`、`backup/`、`exports/` 中包含人员身份证号等敏感信息，请：
+
+- 将运行目录置于受控账户下（NTFS 权限仅限使用人员），有条件时启用 BitLocker 磁盘加密；
+- 导出的 Excel 文件用毕及时删除（系统已自动清理 7 天前的导出文件）；
+- 拷贝给外部的备份介质须加密存放。
+
 ---
 
 ## 配置说明

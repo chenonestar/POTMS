@@ -62,6 +62,25 @@ def _auto_width(ws, col_count: int, max_width: int = 40, min_row: int = 2):
         ws.column_dimensions[get_column_letter(col)].width = min(max_len + 4, max_width)
 
 
+_EXPORT_RETENTION_DAYS = 7
+
+
+def _prune_old_exports() -> None:
+    """清理超过保留期的历史导出文件（导出目录只增不减会长期累积，且含敏感数据）。"""
+    if not os.path.isdir(Config.EXPORT_FOLDER):
+        return
+    cutoff = datetime.now().timestamp() - _EXPORT_RETENTION_DAYS * 86400
+    for name in os.listdir(Config.EXPORT_FOLDER):
+        if not name.lower().endswith(".xlsx"):
+            continue
+        path = os.path.join(Config.EXPORT_FOLDER, name)
+        try:
+            if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass  # 单个文件清理失败不影响导出
+
+
 def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
     """保存到文件，返回路径"""
     # 添加填表说明 Sheet
@@ -74,6 +93,7 @@ def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
     filename = f"{prefix}_{ts}_{operator}.xlsx"
     filepath = os.path.join(Config.EXPORT_FOLDER, filename)
     os.makedirs(Config.EXPORT_FOLDER, exist_ok=True)
+    _prune_old_exports()
     ws.parent.save(filepath)
     return filepath, filename
 
@@ -96,12 +116,12 @@ NOTES_INFO = [
 
 def export_personnel_info(operator: str, where_sql: str = "", params: tuple = (), joined: bool = False) -> str:
     db = get_db()
-    if joined:
-        sql = ("SELECT pi.* FROM personnel_info pi "
-               "JOIN personnel_filing pf ON pf.personnel_info_id = pi.id "
-               "WHERE 1=1 " + where_sql + " ORDER BY pi.created_at DESC")
-    else:
-        sql = "SELECT * FROM personnel_info WHERE 1=1 " + where_sql + " ORDER BY created_at DESC"
+    # #4 一律经 personnel_filing 关联导出：只导出有备案引用的信息登记表，
+    # 无引用的孤儿行永不外泄（GROUP BY 去重，避免一人多条备案时重复）。
+    # joined 参数保留以兼容旧调用，实际行为恒为关联导出。
+    sql = ("SELECT pi.* FROM personnel_info pi "
+           "JOIN personnel_filing pf ON pf.personnel_info_id = pi.id "
+           "WHERE 1=1 " + where_sql + " GROUP BY pi.id ORDER BY pi.created_at DESC")
     rows = db.execute(sql, params).fetchall()
 
     # 学历/学位/职称/职级为字典编码，导出时映射为显示值（编码 → 中文）
@@ -320,4 +340,44 @@ def export_decontrol(operator: str, where_sql: str = "", params: tuple = ()) -> 
         "1. 出生日期格式为YYYYMMDD，生日需与身份证号对应。",
         "2. 户口所在地填至区级，省份不加'省'字。",
         "3. 报送单位类别：党政机关,金融系统,教科文卫系统,国有大中型企业单位,其他单位。",
+    ])
+
+
+# =========================================================================
+# 6. 操作日志年度归档
+# =========================================================================
+HEADERS_LOGS = ["时间（本地）", "操作人", "动作", "对象类型", "对象ID", "详情", "IP", "变更快照(JSON)"]
+
+
+def export_logs(operator: str, year: str) -> tuple:
+    """按年份归档导出操作日志（时间按本地时区换算与过滤）。"""
+    from utils.helpers import to_local_time
+    db = get_db()
+    tz = f"+{Config.DISPLAY_TZ_OFFSET_HOURS} hours"
+    rows = db.execute(
+        "SELECT * FROM operation_logs "
+        "WHERE strftime('%Y', datetime(created_at, ?)) = ? ORDER BY created_at",
+        (tz, year),
+    ).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{year}年操作日志"
+    _style_header(ws, f"操作日志归档（{year} 年）", HEADERS_LOGS)
+
+    for i, row in enumerate(rows, 3):
+        values = [
+            to_local_time(row["created_at"]), row["operator"], row["action"],
+            row["target_type"], row["target_id"], row["detail"] or "",
+            row["ip_address"] or "",
+            (row["snapshot"] or "") if "snapshot" in row.keys() else "",
+        ]
+        for col, val in enumerate(values, 1):
+            ws.cell(row=i, column=col, value=val)
+
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_LOGS))
+    _auto_width(ws, len(HEADERS_LOGS))
+    return _save_and_return(ws, f"操作日志归档_{year}年", operator, [
+        "1. 时间已按系统配置时区换算为本地时间。",
+        "2. 本文件为审计归档副本；数据库中的日志不可删除，仍完整保留。",
     ])

@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}操作日志{% endblock %}
 {% block content %}
-<h4 class="mb-3"><i class="bi bi-journal-text"></i> 操作日志</h4>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-journal-text"></i> 操作日志</h4>
+    {% if log_years %}
+    <form method="GET" action="{{ url_for('logs.export') }}" class="d-flex align-items-center gap-1">
+        <select class="form-select form-select-sm" name="year" style="width:110px;">
+            {% for y in log_years %}<option value="{{ y }}">{{ y }} 年</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-success text-nowrap"><i class="bi bi-file-earmark-zip"></i> 归档导出</button>
+    </form>
+    {% endif %}
+</div>
 
 <div class="card mb-3">
     <div class="card-body py-2">
@@ -54,7 +64,7 @@
                 <tr>
                     <td><small>{{ log.created_at | localtime }}</small></td>
                     <td>
-                        {% set action_labels = {'create': '新建', 'update': '修改', 'delete': '删除', 'cancel': '取消行程', 'restore': '恢复行程', 'export': '导出', 'import': '导入', 'backup': '备份'} %}
+                        {% set action_labels = {'create': '新建', 'update': '修改', 'delete': '删除', 'cancel': '取消行程', 'restore': '恢复行程', 'lock': '登录锁定', 'export': '导出', 'import': '导入', 'backup': '备份'} %}
                         <span class="badge bg-{{ 'success' if log.action == 'create' else 'warning' if log.action == 'update' else 'danger' if log.action == 'delete' else 'secondary' if log.action == 'backup' else 'info' }}">{{ action_labels.get(log.action, log.action) }}</span>
                     </td>
                     <td>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统内部错误 - 因私出国（境）人员审批管理系统</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="d-flex align-items-center justify-content-center vh-100">
+        <div class="text-center" style="max-width:520px;">
+            <i class="bi bi-exclamation-octagon text-danger" style="font-size:64px;"></i>
+            <h1 class="mt-3" style="font-size:64px;font-weight:800;color:#c0392b;">500</h1>
+            <p class="text-muted fs-5">系统内部发生错误，本次操作未完成。</p>
+            <p class="text-muted small">已有数据不受影响。请返回重试；若反复出现，请联系系统维护人员并说明操作步骤。</p>
+            <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary mt-2"><i class="bi bi-house"></i> 返回首页</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -65,6 +65,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // --- 退出登录时清空本地草稿（草稿含身份证等敏感字段，防共用电脑残留）---
+    document.querySelectorAll('a[href$="/logout"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+            try {
+                Object.keys(localStorage)
+                    .filter(function (k) { return k.indexOf('draft_') === 0; })
+                    .forEach(function (k) { localStorage.removeItem(k); });
+            } catch (e) {}
+        });
+    });
+
     // --- 可访问性：图标按钮 title → aria-label ---
     document.querySelectorAll('[title]:not([aria-label])').forEach(function (el) {
         el.setAttribute('aria-label', el.getAttribute('title'));
@@ -355,6 +366,40 @@ function clientWindowPaginate() {
         return Math.max(5, Math.min(50, Math.floor(avail / rowH)));
     }
     function totalPages() { return Math.max(1, Math.ceil(rows.length / state.size)); }
+
+    // ---- 表头点击排序（纯前端；数据已全量在浏览器中，零后端开销）----
+    var ths = table.tHead ? table.tHead.rows[0].cells : [];
+    var sortState = { idx: -1, dir: 1 };
+    function initSorting() {
+        Array.prototype.forEach.call(ths, function (th, idx) {
+            if (th.querySelector('input')) return;          // 全选勾选框列
+            if (idx === ths.length - 1) return;             // 操作列
+            th.style.cursor = 'pointer';
+            th.title = '点击排序';
+            var ind = document.createElement('span');
+            ind.className = 'sort-ind';
+            ind.style.marginLeft = '3px';
+            th.appendChild(ind);
+            th.addEventListener('click', function () {
+                sortState.dir = (sortState.idx === idx) ? -sortState.dir : 1;
+                sortState.idx = idx;
+                rows.sort(function (a, b) {
+                    var x = (a.cells[idx] ? a.cells[idx].textContent : '').trim();
+                    var y = (b.cells[idx] ? b.cells[idx].textContent : '').trim();
+                    var nx = parseFloat(x.replace(/[,\s]/g, '')), ny = parseFloat(y.replace(/[,\s]/g, ''));
+                    var cmp = (!isNaN(nx) && !isNaN(ny) && /^[\d.,\/\-\s]+$/.test(x) && /^[\d.,\/\-\s]+$/.test(y))
+                        ? nx - ny : x.localeCompare(y, 'zh-Hans-CN');
+                    return cmp * sortState.dir;
+                });
+                rows.forEach(function (tr) { tbody.appendChild(tr); });  // 按新顺序重排 DOM
+                Array.prototype.forEach.call(table.querySelectorAll('.sort-ind'), function (s) { s.textContent = ''; });
+                ind.textContent = sortState.dir === 1 ? '▲' : '▼';
+                state.page = 1;
+                render();
+            });
+        });
+    }
+    initSorting();
 
     function render() {
         var tp = totalPages();

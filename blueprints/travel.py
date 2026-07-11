@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 import uuid
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory, session
@@ -72,7 +73,6 @@ def build_filters(args, ids=None):
 
 def _overdue_ids() -> set:
     """全量计算「证件逾期未还」记录的 id 集合（已领用 + 未归还 + 超工作日时限）。"""
-    from datetime import datetime
     today = datetime.now().strftime("%Y%m%d")
     db = get_db()
     rows = db.execute(
@@ -87,7 +87,6 @@ def _overdue_ids() -> set:
 @travel_bp.route("/travel/")
 @login_required
 def list() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     category_filter = request.args.get("category", "").strip()
     need_passport_filter = request.args.get("need_new_passport", "").strip()
@@ -101,7 +100,6 @@ def list() -> ResponseReturnValue:
     pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
     # 标记逾期未还（已领用 + 未归还 + 超过工作日时限），并附带应还到期日
-    from datetime import datetime
     today = datetime.now().strftime("%Y%m%d")
     overdue_ids = set()
     deadlines = {}
@@ -136,7 +134,6 @@ _REQUIRED_B = ["个人申请报告", "审批表", "同意申办函"]
 @travel_bp.route("/travel/attachments")
 @login_required
 def attachments() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     type_filter = request.args.get("file_type", "").strip()
     date_from = request.args.get("date_from", "").strip()
@@ -381,7 +378,6 @@ def cancel(travel_id) -> ResponseReturnValue:
 
     cancel_date = parse_date_input(request.form.get("cancel_date", ""))
     if not cancel_date:
-        from datetime import datetime
         cancel_date = datetime.now().strftime("%Y%m%d")
     ok, msg = validate_date_format(cancel_date)
     if not ok:
@@ -524,8 +520,16 @@ def _validate_form(data: dict) -> list[str]:
     return errors
 
 
+def _is_pdf(f) -> bool:
+    """魔数校验：真实 PDF 以 %PDF- 开头（读取后回退流位置，不影响后续保存）。"""
+    head = f.stream.read(5)
+    f.stream.seek(0)
+    return head == b"%PDF-"
+
+
 def _missing_attachment_errors(files, need_new_passport: str) -> list:
-    """附件必填校验：路径A须含《个人申请报告》《审批表》；路径B（需做证）另须《同意申办函》。"""
+    """附件必填校验：路径A须含《个人申请报告》《审批表》；路径B（需做证）另须《同意申办函》。
+    同时做 PDF 魔数预检，伪造扩展名的文件在入库前即被拦截。"""
     errors = []
 
     def _has(field):
@@ -540,6 +544,12 @@ def _missing_attachment_errors(files, need_new_passport: str) -> list:
         errors.append("附件《审批表》为必传项（PDF）。")
     if need_new_passport == "是" and not _has("att_consent"):
         errors.append("需新办证件（路径B）时，《同意申办函》为必传项（PDF）。")
+
+    # 魔数预检：提交阶段即拒绝非 PDF 内容，避免"记录已存、必传附件被拒"的不一致
+    for field in ("att_application", "att_approval", "att_consent"):
+        for f in files.getlist(field):
+            if f and f.filename and not _is_pdf(f):
+                errors.append(f"文件 {f.filename} 内容不是有效的 PDF，请上传真实的 PDF 扫描件。")
     return errors
 
 
@@ -560,6 +570,12 @@ def _save_attachments(travel_id: int, files):
             ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
             if ext not in Config.ALLOWED_EXTENSIONS:
                 flash(f"文件 {f.filename} 格式不支持（仅允许 PDF）。", "warning")
+                continue
+            # 魔数校验：真实 PDF 以 %PDF- 开头，防止改扩展名的任意文件入库
+            head = f.stream.read(5)
+            f.stream.seek(0)
+            if head != b"%PDF-":
+                flash(f"文件 {f.filename} 内容不是有效的 PDF（已拒绝）。", "warning")
                 continue
             saved_name = f"{uuid.uuid4().hex}.{ext}"
             save_path = os.path.join(Config.UPLOAD_FOLDER, saved_name)

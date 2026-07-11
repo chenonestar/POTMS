@@ -46,7 +46,6 @@ def build_filters(args, ids=None):
 @certificate_bp.route("/certificate/")
 @login_required
 def list() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     has_passport = request.args.get("has_passport", "").strip()
     has_hm = request.args.get("has_hm", "").strip()

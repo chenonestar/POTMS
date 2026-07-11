@@ -36,7 +36,6 @@ def build_filters(args, ids=None):
 @decontrol_bp.route("/decontrol/")
 @login_required
 def list() -> ResponseReturnValue:
-    page = request.args.get("page", 1, type=int)
     search = request.args.get("search", "").strip()
     unit_type_filter = request.args.get("submit_unit_type", "").strip()
 

@@ -9,9 +9,10 @@ from utils.validators import validate_id_number, validate_birth_date_match, vali
 from utils.helpers import normalize_residence, detect_surname_split
 
 
-def parse_import_file(file_stream) -> dict:
+def parse_import_file(file_stream, operator: str = "admin") -> dict:
     """
     解析上传的 Excel 文件，逐行校验，返回导入结果。
+    operator 由当前登录会话自动传入（与其它录入入口一致，不需在表格中填写）。
     返回: { total, success, errors: [{row, field, message}], imported_ids: [...] }
     """
     wb = load_workbook(file_stream, read_only=True, data_only=True)
@@ -51,7 +52,7 @@ def parse_import_file(file_stream) -> dict:
                     data["birth_date"], data["id_number"], data["work_start_date"], data["education_code"],
                     data["degree_code"], data["title_code"], data["rank_code"],
                     data["political_status"], data["party_join_date"],
-                    data["position"], data["operator"],
+                    data["position"], operator,
                 ),
             )
             info_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -68,7 +69,7 @@ def parse_import_file(file_stream) -> dict:
                     data["birth_date"], data["id_number"], normalize_residence(data.get("residence", "")),
                     data["political_status"], data["unit"], data.get("position_or_title", ""),
                     data.get("supervisor_unit", "人事处"), "新增", data.get("informed", "是"),
-                    data.get("remarks", ""), data["operator"],
+                    data.get("remarks", ""), operator,
                 ),
             )
 
@@ -94,7 +95,7 @@ def generate_import_template() -> io.BytesIO:
         "单位", "部门", "姓名", "性别", "出生日期", "参加工作日期",
         "身份证号", "户口所在地", "政治面貌", "职务（级）或职称",
         "人事主管单位", "学历", "学位", "职称", "职级",
-        "入党日期", "职务（岗位名称）", "标记", "已告知本人", "备注", "操作人",
+        "入党日期", "职务（岗位名称）", "标记", "已告知本人", "备注",
     ]
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="3A5A7C", end_color="3A5A7C", fill_type="solid")
@@ -109,13 +110,13 @@ def generate_import_template() -> io.BytesIO:
         "XX单位", "XX部门", "张三", "男", "19800103", "20000701",
         "330102198001031230", "浙江杭州市西湖区", "中共党员", "处级",
         "人事处", "大学本科", "学士", "副高", "处级",
-        "20050701", "处长", "新增", "是", "", "admin",
+        "20050701", "处长", "新增", "是", "",
     ]
     for col, val in enumerate(example, 1):
         ws.cell(row=2, column=col, value=val)
 
     # 列宽
-    col_widths = [18, 14, 10, 6, 12, 12, 20, 22, 14, 18, 14, 12, 10, 10, 10, 12, 18, 8, 12, 20, 10]
+    col_widths = [18, 14, 10, 6, 12, 12, 20, 22, 14, 18, 14, 12, 10, 10, 10, 12, 18, 8, 12, 20]
     for i, w in enumerate(col_widths, 1):
         from openpyxl.utils import get_column_letter
         ws.column_dimensions[get_column_letter(i)].width = w
@@ -133,7 +134,7 @@ def _parse_row(row) -> dict:
         "unit", "department", "name", "gender", "birth_date", "work_start_date",
         "id_number", "residence", "political_status", "position_or_title",
         "supervisor_unit", "education_code", "degree_code", "title_code", "rank_code",
-        "party_join_date", "position", "tag", "informed", "remarks", "operator",
+        "party_join_date", "position", "tag", "informed", "remarks",
     ]
     data = {}
     for i, field in enumerate(fields):
@@ -153,7 +154,6 @@ def _validate_import_row(data: dict, db) -> list[tuple[str, str]]:
         ("unit", "单位"), ("department", "部门"), ("name", "姓名"),
         ("gender", "性别"), ("birth_date", "出生日期"), ("id_number", "身份证号"),
         ("political_status", "政治面貌"), ("position", "职务（岗位名称）"),
-        ("operator", "操作人"),
     ]
     for field, label in required:
         if not data.get(field):

@@ -1,5 +1,5 @@
 """批量导入蓝图"""
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, session
 from flask.typing import ResponseReturnValue
 
 from auth import login_required
@@ -29,7 +29,7 @@ def index() -> ResponseReturnValue:
             return render_template("import/form.html", result=None)
 
         try:
-            result = parse_import_file(f.stream)
+            result = parse_import_file(f.stream, operator=session.get("username", "admin"))
             log_action("import", "batch", detail=f"total={result['total']}, success={result['success']}, errors={len(result['errors'])}")
             if result["success"] > 0:
                 flash(f"成功导入 {result['success']} 条记录（共 {result['total']} 条）。", "success")

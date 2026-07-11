@@ -46,7 +46,7 @@
             <div class="col-md-2"><label class="text-muted">证件号码</label><p>{{ travel.passport_no or '-' }}</p></div>
             <div class="col-md-2"><label class="text-muted">证件领用</label><p>{{ travel.passport_collect_date or '-' }}</p></div>
             <div class="col-md-2"><label class="text-muted">证件归还</label><p>{{ travel.passport_return_date or '-' }}</p></div>
-            <div class="col-md-2"><label class="text-muted">操作人</label><p>{{ travel.operator }}</p></div>
+            <div class="col-md-2"><label class="text-muted">录入时间</label><p>{{ travel.created_at | localtime('%Y-%m-%d') }}</p></div>
         </div>
         <div class="row mt-2">
             <div class="col-md-2"><label class="text-muted">实际回国日期</label><p>{{ travel.actual_return_date or '-' }}</p></div>
