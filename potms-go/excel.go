@@ -142,11 +142,11 @@ func s(r Row, k string) string { return rowStr(r, k) }
 // 1. 备案人员信息登记表（学历/学位/职称/职级 编码 → 中文）
 // ---------------------------------------------------------------------------
 func exportPersonnelInfo(operator, whereSQL string, params []interface{}, joined bool) (string, string, error) {
-	sqlq := "SELECT * FROM personnel_info WHERE 1=1 " + whereSQL + " ORDER BY created_at DESC"
-	if joined {
-		sqlq = "SELECT pi.* FROM personnel_info pi JOIN personnel_filing pf ON pf.personnel_info_id = pi.id " +
-			"WHERE 1=1 " + whereSQL + " ORDER BY pi.created_at DESC"
-	}
+	// #4 一律经 personnel_filing 关联导出：只导出有备案引用的信息登记表，
+	// 无引用的孤儿行永不外泄（GROUP BY 去重，避免一人多条备案时重复）。
+	// joined 参数保留以兼容调用，实际行为恒为关联导出。
+	sqlq := "SELECT pi.* FROM personnel_info pi JOIN personnel_filing pf ON pf.personnel_info_id = pi.id " +
+		"WHERE 1=1 " + whereSQL + " GROUP BY pi.id ORDER BY pi.created_at DESC"
 	rows, err := queryMaps(sqlq, params...)
 	if err != nil {
 		return "", "", err

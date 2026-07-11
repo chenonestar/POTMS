@@ -122,6 +122,18 @@ def info_new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_info_form(request.form)
         errors = _validate_info_form(data)
+        # #5 防重复：同一身份证号已存在信息登记表则拦截（避免产生同号孤儿行；
+        # 如需修改请直接编辑原记录）
+        if not errors and data["id_number"]:
+            dup = get_db().execute(
+                "SELECT id FROM personnel_info WHERE id_number = ? LIMIT 1",
+                (data["id_number"],),
+            ).fetchone()
+            if dup:
+                errors.append(
+                    f"该身份证号已存在信息登记表（编号 {dup['id']}），"
+                    "如需修改请直接编辑该记录，请勿重复录入。"
+                )
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -375,12 +387,71 @@ def view(filing_id) -> ResponseReturnValue:
 @login_required
 def delete(filing_id) -> ResponseReturnValue:
     db = get_db()
+    if not db.execute("SELECT id FROM personnel_filing WHERE id = ?", (filing_id,)).fetchone():
+        flash("记录不存在。", "danger")
+        return redirect(url_for("personnel.list"))
+    # #3 删除前拦截：名下若有证照/出国明细/撤控记录（均 NOT NULL 外键引用本表），
+    # 直接 DELETE 会因外键约束静默失败，故先检查并给出明确提示。
+    cert_cnt = db.execute(
+        "SELECT COUNT(*) FROM certificates WHERE personnel_filing_id = ?", (filing_id,)
+    ).fetchone()[0]
+    travel_cnt = db.execute(
+        "SELECT COUNT(*) FROM travel_details WHERE personnel_filing_id = ?", (filing_id,)
+    ).fetchone()[0]
+    dec_cnt = db.execute(
+        "SELECT COUNT(*) FROM decontrol_filing WHERE personnel_filing_id = ?", (filing_id,)
+    ).fetchone()[0]
+    if cert_cnt or travel_cnt or dec_cnt:
+        flash(
+            f"该人员名下尚有证照 {cert_cnt} 条、出国明细 {travel_cnt} 条、撤控记录 {dec_cnt} 条，"
+            "请先删除或处理这些关联记录后再删除备案。",
+            "danger",
+        )
+        return redirect(url_for("personnel.list"))
     before = row_snapshot("personnel_filing", filing_id)
     db.execute("DELETE FROM personnel_filing WHERE id = ?", (filing_id,))
     db.commit()
     log_action("delete", "personnel_filing", filing_id, before=before)
     flash("备案记录已删除。", "info")
     return redirect(url_for("personnel.list"))
+
+
+# =========================================================================
+# 信息登记表 — 管理（一览 / 删除孤儿）
+# =========================================================================
+@personnel_bp.route("/personnel/info/")
+@login_required
+def info_list() -> ResponseReturnValue:
+    """列出全部信息登记表，含关联备案数，供清理无备案引用的孤儿记录。"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT pi.*, "
+        "(SELECT COUNT(*) FROM personnel_filing pf WHERE pf.personnel_info_id = pi.id) AS filing_count "
+        "FROM personnel_info pi ORDER BY pi.id"
+    ).fetchall()
+    return render_template("personnel/info_list.html", rows=rows)
+
+
+@personnel_bp.route("/personnel/info/<int:info_id>/delete", methods=["POST"])
+@login_required
+def info_delete(info_id) -> ResponseReturnValue:
+    """#2 物理删除信息登记表：仅当无任何备案记录引用时才允许，防止悬空外键。"""
+    db = get_db()
+    if not db.execute("SELECT id FROM personnel_info WHERE id = ?", (info_id,)).fetchone():
+        flash("记录不存在。", "danger")
+        return redirect(url_for("personnel.info_list"))
+    ref = db.execute(
+        "SELECT COUNT(*) FROM personnel_filing WHERE personnel_info_id = ?", (info_id,)
+    ).fetchone()[0]
+    if ref:
+        flash(f"该信息登记表已被 {ref} 条备案记录引用，不能删除。请先删除相关备案记录。", "danger")
+        return redirect(url_for("personnel.info_list"))
+    before = row_snapshot("personnel_info", info_id)
+    db.execute("DELETE FROM personnel_info WHERE id = ?", (info_id,))
+    db.commit()
+    log_action("delete", "personnel_info", info_id, before=before)
+    flash("信息登记表已删除。", "info")
+    return redirect(url_for("personnel.info_list"))
 
 
 # =========================================================================

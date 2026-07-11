@@ -102,6 +102,8 @@ func registerRoutes(mux *http.ServeMux) {
 
 	// 人员备案
 	mux.HandleFunc("GET /personnel/{$}", handlePersonnelList)
+	mux.HandleFunc("GET /personnel/info/{$}", handleInfoList)
+	mux.HandleFunc("POST /personnel/info/{info_id}/delete", handleInfoDelete)
 	mux.HandleFunc("/personnel/info/new", handleInfoNew)
 	mux.HandleFunc("/personnel/info/{info_id}/edit", handleInfoEdit)
 	mux.HandleFunc("/personnel/filing/new", handleFilingNew)

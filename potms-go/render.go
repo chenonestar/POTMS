@@ -25,6 +25,8 @@ var endpointRoutes = map[string]string{
 	"auth.login": "/login", "auth.logout": "/logout", "auth.account": "/account",
 	"dashboard.index": "/", "dashboard.backup_now": "/backup/now",
 	"personnel.list": "/personnel/", "personnel.info_new": "/personnel/info/new",
+	"personnel.info_list":   "/personnel/info/",
+	"personnel.info_delete": "/personnel/info/{info_id}/delete",
 	"personnel.info_edit":   "/personnel/info/{info_id}/edit",
 	"personnel.filing_new":  "/personnel/filing/new",
 	"personnel.filing_edit": "/personnel/filing/{filing_id}/edit",

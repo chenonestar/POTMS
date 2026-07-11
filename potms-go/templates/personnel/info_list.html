@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}信息登记表管理{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-card-list"></i> 信息登记表管理</h4>
+    <div>
+        <a href="{{ url_for('personnel.list') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> 返回备案列表</a>
+        <a href="{{ url_for('personnel.info_new') }}" class="btn btn-primary ms-1"><i class="bi bi-plus-lg"></i> 新增</a>
+    </div>
+</div>
+
+<div class="alert alert-light border small text-muted">
+    此处列出全部信息登记表。<b>关联备案数为 0</b> 的记录（无任何备案引用的孤儿行，通常由填错重建产生）可安全删除；有引用的记录请先处理其备案后再删。
+</div>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+    <thead class="table-light">
+        <tr>
+            <th>编号</th><th>单位</th><th>部门</th><th>姓名</th><th>性别</th>
+            <th>身份证号</th><th>关联备案数</th><th>操作</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.unit }}</td>
+            <td>{{ r.department }}</td>
+            <td>{{ r.name }}</td>
+            <td>{{ r.gender }}</td>
+            <td>{{ r.id_number | default('—', true) }}</td>
+            <td>
+                {% if r.filing_count %}
+                <span class="badge bg-success">{{ r.filing_count }}</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">0（孤儿）</span>
+                {% endif %}
+            </td>
+            <td><div class="btn-group btn-group-sm">
+                <a href="{{ url_for('personnel.info_edit', info_id=r.id) }}" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+                {% if r.filing_count == 0 %}
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('personnel.info_delete', info_id=r.id) }}" data-message="确定要删除 {{ r.name }} 的信息登记表（编号 {{ r.id }}）吗？此操作不可恢复。" title="删除"><i class="bi bi-trash"></i></button>
+                {% else %}
+                <button type="button" class="btn btn-outline-danger" disabled title="有备案引用，不能删除"><i class="bi bi-trash"></i></button>
+                {% endif %}
+            </div></td>
+        </tr>
+    {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">暂无信息登记表</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

@@ -425,3 +425,56 @@ func TestValidators(t *testing.T) {
 	}
 	fmt.Println("validators OK")
 }
+
+// #2/#3/#5 删除守卫与孤儿清理回归
+func TestDeleteGuardsAndOrphan(t *testing.T) {
+	c := newTestApp(t)
+	c.login()
+	seedBusinessData(t, c) // info id=1(有 filing) + filing id=1(有证照)
+
+	// #5 同号信息表拦截：再建同 id_number 的 info 应被拒
+	resp, body := c.post("/personnel/info/new", url.Values{
+		"csrf_token": {c.csrf("/")}, "unit": {"总部"}, "department": {"财务部"},
+		"name": {"张三"}, "gender": {"男"}, "birth_date": {"19900101"},
+		"id_number": {testID}, "work_start_date": {"20100701"},
+		"education": {"03"}, "degree": {"03"}, "title": {"02"}, "rank": {"03"},
+		"political_status": {"群众"}, "position": {"科长"},
+	})
+	if resp.StatusCode == 302 || !strings.Contains(body, "已存在信息登记表") {
+		t.Errorf("#5 同号信息表应被拦截，got %d", resp.StatusCode)
+	}
+
+	// #3 备案删除拦截：filing id=1 名下有证照，删除应被拒且记录仍在
+	c.post("/personnel/1/delete", url.Values{"csrf_token": {c.csrf("/")}})
+	if countQuery("SELECT COUNT(*) FROM personnel_filing WHERE id=1") != 1 {
+		t.Error("#3 有证照的备案不应被删除")
+	}
+
+	// #2 info 一览：info id=1 关联备案数=1，删除应被拒
+	_, body = c.get("/personnel/info/")
+	if !strings.Contains(body, "信息登记表管理") {
+		t.Error("#2 信息表管理页应可访问")
+	}
+	c.post("/personnel/info/1/delete", url.Values{"csrf_token": {c.csrf("/")}})
+	if countQuery("SELECT COUNT(*) FROM personnel_info WHERE id=1") != 1 {
+		t.Error("#2 有备案引用的信息表不应被删除")
+	}
+
+	// 造一条孤儿 info（无 filing），应能删除
+	db.Exec("INSERT INTO personnel_info (unit,department,name,gender,birth_date,id_number,rank,political_status,position,operator) " +
+		"VALUES ('总部','工程部','李四','男','19850101','000000000000000000','03','群众','员工','admin')")
+	orphanID := countQuery("SELECT id FROM personnel_info ORDER BY id DESC LIMIT 1")
+	c.post(fmt.Sprintf("/personnel/info/%d/delete", orphanID), url.Values{"csrf_token": {c.csrf("/")}})
+	if countQuery("SELECT COUNT(*) FROM personnel_info WHERE id=?", orphanID) != 0 {
+		t.Error("#2 孤儿信息表应能被删除")
+	}
+
+	// #4 导出信息表（全量）不含孤儿：再造一条孤儿后导出，JOIN 应排除它
+	db.Exec("INSERT INTO personnel_info (unit,department,name,gender,birth_date,id_number,rank,political_status,position,operator) " +
+		"VALUES ('总部','工程部','王五','男','19850101','111111111111111111','03','群众','员工','admin')")
+	cnt := countQuery("SELECT COUNT(*) FROM (SELECT pi.id FROM personnel_info pi " +
+		"JOIN personnel_filing pf ON pf.personnel_info_id=pi.id GROUP BY pi.id)")
+	if cnt != 1 {
+		t.Errorf("#4 导出应只含有备案引用的 1 条，got %d", cnt)
+	}
+}

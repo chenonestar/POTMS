@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -145,7 +146,15 @@ func dataRow(data map[string]string) Row {
 func handleInfoNew(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		data := extractInfoForm(r)
-		if errs := validateInfoForm(data); len(errs) > 0 {
+		errs := validateInfoForm(data)
+		// #5 防重复：同一身份证号已存在信息登记表则拦截（避免同号孤儿行；
+		// 如需修改请直接编辑原记录）
+		if len(errs) == 0 && data["id_number"] != "" {
+			if dup := queryOne("SELECT id FROM personnel_info WHERE id_number = ? LIMIT 1", data["id_number"]); dup != nil {
+				errs = append(errs, fmt.Sprintf("该身份证号已存在信息登记表（编号 %d），如需修改请直接编辑该记录，请勿重复录入。", toInt64(dup["id"])))
+			}
+		}
+		if len(errs) > 0 {
 			for _, e := range errs {
 				flashMsg(w, r, e, "danger")
 			}
@@ -369,11 +378,56 @@ func handlePersonnelView(w http.ResponseWriter, r *http.Request) {
 
 func handlePersonnelDelete(w http.ResponseWriter, r *http.Request) {
 	filingID := pathInt(r, "filing_id")
+	if queryOne("SELECT id FROM personnel_filing WHERE id = ?", filingID) == nil {
+		flashMsg(w, r, "记录不存在。", "danger")
+		redirect(w, r, "personnel.list", nil)
+		return
+	}
+	// #3 删除前拦截：名下若有证照/出国明细/撤控记录（均 NOT NULL 外键引用本表），
+	// 直接 DELETE 会因外键约束静默失败，故先检查并给出明确提示。
+	certCnt := countQuery("SELECT COUNT(*) FROM certificates WHERE personnel_filing_id = ?", filingID)
+	travelCnt := countQuery("SELECT COUNT(*) FROM travel_details WHERE personnel_filing_id = ?", filingID)
+	decCnt := countQuery("SELECT COUNT(*) FROM decontrol_filing WHERE personnel_filing_id = ?", filingID)
+	if certCnt > 0 || travelCnt > 0 || decCnt > 0 {
+		flashMsg(w, r, fmt.Sprintf("该人员名下尚有证照 %d 条、出国明细 %d 条、撤控记录 %d 条，请先删除或处理这些关联记录后再删除备案。",
+			certCnt, travelCnt, decCnt), "danger")
+		redirect(w, r, "personnel.list", nil)
+		return
+	}
 	before := rowSnapshot("personnel_filing", filingID)
 	db.Exec("DELETE FROM personnel_filing WHERE id = ?", filingID)
 	logAction(r, "delete", "personnel_filing", filingID, "", before, nil)
 	flashMsg(w, r, "备案记录已删除。", "info")
 	redirect(w, r, "personnel.list", nil)
+}
+
+// handleInfoList 信息登记表一览（含关联备案数），供清理无备案引用的孤儿记录（#2）
+func handleInfoList(w http.ResponseWriter, r *http.Request) {
+	rows, _ := queryMaps(
+		"SELECT pi.*, " +
+			"(SELECT COUNT(*) FROM personnel_filing pf WHERE pf.personnel_info_id = pi.id) AS filing_count " +
+			"FROM personnel_info pi ORDER BY pi.id")
+	render(w, r, "personnel/info_list.html", Row{"rows": rowsIface(rows)})
+}
+
+// handleInfoDelete 物理删除信息登记表：仅当无任何备案引用时才允许，防止悬空外键（#2）
+func handleInfoDelete(w http.ResponseWriter, r *http.Request) {
+	infoID := pathInt(r, "info_id")
+	if queryOne("SELECT id FROM personnel_info WHERE id = ?", infoID) == nil {
+		flashMsg(w, r, "记录不存在。", "danger")
+		redirect(w, r, "personnel.info_list", nil)
+		return
+	}
+	if ref := countQuery("SELECT COUNT(*) FROM personnel_filing WHERE personnel_info_id = ?", infoID); ref > 0 {
+		flashMsg(w, r, fmt.Sprintf("该信息登记表已被 %d 条备案记录引用，不能删除。请先删除相关备案记录。", ref), "danger")
+		redirect(w, r, "personnel.info_list", nil)
+		return
+	}
+	before := rowSnapshot("personnel_info", infoID)
+	db.Exec("DELETE FROM personnel_info WHERE id = ?", infoID)
+	logAction(r, "delete", "personnel_info", infoID, "", before, nil)
+	flashMsg(w, r, "信息登记表已删除。", "info")
+	redirect(w, r, "personnel.info_list", nil)
 }
 
 // ---- 小工具 ----
