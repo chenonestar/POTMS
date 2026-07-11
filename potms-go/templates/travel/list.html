@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}出国（境）申请列表{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-airplane"></i> 出国（境）申请列表</h4>
+    <div>
+        <a href="{{ url_for('travel.new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增</a>
+        <a href="{{ url_for('travel.attachments') }}" class="btn btn-outline-secondary ms-1"><i class="bi bi-paperclip"></i> 附件总览</a>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('travel')"><i class="bi bi-printer"></i> 批量打印</button>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('{{ url_for('export.travel_export') }}');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('{{ url_for('export.travel_export') }}');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('export.travel_export') }}">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 目的地" value="{{ search }}"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="category"><option value="">全部类别</option>{% for o in category_opts %}<option value="{{ o.value }}" {{ 'selected' if category_filter == o.value }}>{{ o.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="need_new_passport"><option value="">是否做证</option><option value="是" {{ 'selected' if need_passport_filter == '是' }}>是</option><option value="否" {{ 'selected' if need_passport_filter == '否' }}>否</option></select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="passport_status"><option value="">证件状态</option><option value="storage" {{ 'selected' if passport_status == 'storage' }}>在库</option><option value="inuse" {{ 'selected' if passport_status == 'inuse' }}>领用中</option><option value="overdue" {{ 'selected' if passport_status == 'overdue' }}>逾期未还</option></select></div>
+        <div class="col-md-2"><label class="form-label mb-0 small text-muted">出行日期从</label><input type="text" class="form-control form-control-sm" name="date_from" placeholder="YYYYMMDD" maxlength="8" value="{{ date_from }}"></div>
+        <div class="col-md-2"><label class="form-label mb-0 small text-muted">至</label><input type="text" class="form-control form-control-sm" name="date_to" placeholder="YYYYMMDD" maxlength="8" value="{{ date_to }}"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('travel.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+{% if overdue_ids %}
+<div class="alert alert-danger d-flex align-items-center"><i class="bi bi-exclamation-triangle-fill me-2"></i><div>以下人员证件逾期未还：{% for row in items.rows %}{% if row.id in overdue_ids %}<strong>{{ row.name }}</strong> (应还: {{ deadlines[row.id] }}){% if row.trip_status == 'cancelled' %}·取消行程{% endif %} &nbsp;{% endif %}{% endfor %}</div></div>
+{% endif %}
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="姓名">姓名</th><th data-col="单位">单位</th><th data-col="职务">职务</th><th data-col="目的地">目的地</th><th data-col="出行日期">出行日期</th><th data-col="状态">状态</th><th data-col="是否做证">是否做证</th><th data-col="领用日期">领用日期</th><th data-col="归还日期">归还日期</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for row in items.rows %}
+    <tr class="{{ 'row-danger' if row.id in overdue_ids }}">
+        <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
+        <td>{{ row.name }}</td>
+        <td title="{{ row.unit }}">{{ row.unit }}</td>
+        <td title="{{ row.position }}">{{ row.position }}</td>
+        <td title="{{ row.destination_passport }}">{{ row.destination_passport }}</td>
+        <td>{{ row.travel_dates }}</td>
+        <td>{% if row.trip_status == 'cancelled' %}<span class="badge bg-warning text-dark">取消行程</span>{% else %}<span class="badge bg-light text-secondary">正常</span>{% endif %}</td>
+        <td>{{ row.need_new_passport }}</td>
+        <td>{{ row.passport_collect_date | default('-', true) }}</td>
+        <td class="{{ 'text-danger fw-bold' if row.id in overdue_ids }}">{% if row.id in overdue_ids %}逾期⚠（应还 {{ deadlines[row.id] }}）{% else %}{{ row.passport_return_date | default('-', true) }}{% endif %}</td>
+        <td><div class="btn-group btn-group-sm">
+            <a href="{{ url_for('travel.view', travel_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('export.print_view', print_type='travel', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+            <a href="{{ url_for('travel.edit', travel_id=row.id) }}" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.delete', travel_id=row.id) }}" data-message="确定要删除 {{ row.name }} 的出国申请记录吗？"><i class="bi bi-trash"></i></button>
+        </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="text-center text-muted py-4">暂无出国申请记录</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+{% from "components/pagination.html" import render_pagination %}
+{{ render_pagination(items, 'travel.list') }}
+{% include "components/confirm_modal.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_travel'); });
+</script>
+{% endblock %}

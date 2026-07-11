@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}登录 - 因私出国（境）审批管理{% endblock %}
+{% block content_full %}
+<div class="d-flex align-items-center justify-content-center vh-100 bg-light">
+    <div class="card shadow" style="width: 420px;">
+        <div class="card-body p-4">
+            <div class="text-center mb-4">
+                <i class="bi bi-passport text-primary" style="font-size: 2.8rem;"></i>
+                <h4 class="mt-2" style="font-size: 1.25rem; font-weight: 700; white-space: nowrap;">因私出国（境）人员审批管理系统</h4>
+                <p class="text-muted small">请登录后使用</p>
+            </div>
+            {% include "components/flash.html" %}
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="username" class="form-label">用户名</label>
+                    <input type="text" class="form-control" id="username" name="username"
+                           placeholder="请输入用户名" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">密码</label>
+                    <input type="password" class="form-control" id="password" name="password"
+                           placeholder="请输入密码" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-box-arrow-in-right"></i> 登 录
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

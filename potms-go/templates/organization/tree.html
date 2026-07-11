@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}组织架构{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-diagram-3"></i> 单位 / 部门维护</h4>
+    <button class="btn btn-primary btn-sm" onclick="addRoot()">
+        <i class="bi bi-building-add"></i> 添加单位
+    </button>
+</div>
+
+<div class="alert alert-info d-flex align-items-center py-2">
+    <i class="bi bi-info-circle me-2"></i>
+    <div class="small">
+        本系统采用<strong>两级组织</strong>：<span class="badge bg-primary">单位</span>为顶级组织，<span class="badge bg-info">部门</span>为其下级。
+        在"备案人员信息登记表"中，<strong>单位</strong>下拉只列顶级单位，选中后<strong>部门</strong>联动出其下级部门。
+    </div>
+</div>
+
+{% macro level_badge(level) %}
+    {% if level == 0 %}<span class="badge bg-primary">单位</span>
+    {% elif level == 1 %}<span class="badge bg-info">部门</span>
+    {% else %}<span class="badge bg-secondary">子部门</span>{% endif %}
+{% endmacro %}
+
+{% macro render_tree(orgs, parent_id, level) %}
+{% for o in orgs if o.parent_id == parent_id %}
+{% set child_count = orgs | selectattr('parent_id', 'equalto', o.id) | list | length %}
+<div class="tree-node" style="margin-left: {{ level * 26 }}px;">
+    <div class="d-flex align-items-center py-2 px-2 border-bottom {{ 'bg-light rounded mt-2' if level == 0 }}">
+        <i class="bi bi-{% if level == 0 %}building{% elif level == 1 %}diagram-2{% else %}folder{% endif %} {% if level == 0 %}text-primary{% elif level == 1 %}text-info{% else %}text-muted{% endif %} me-2"></i>
+        <span class="flex-grow-1">
+            <span class="{{ 'fw-bold' if level == 0 }}">{{ o.name }}</span>
+            {{ level_badge(level) }}
+            {% if level == 0 %}<small class="text-muted ms-1">（下辖 {{ child_count }} 个部门）</small>{% endif %}
+        </span>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary btn-sm" onclick="addChild({{ o.id }}, '{{ o.name }}', {{ level }})"
+                    title="{{ '为该单位添加部门' if level == 0 else '添加子部门' }}">
+                <i class="bi bi-plus-lg"></i> {{ '加部门' if level == 0 else '加子部门' }}
+            </button>
+            <button class="btn btn-outline-warning btn-sm" onclick="editNode({{ o.id }}, '{{ o.name }}', {{ o.parent_id }})" title="重命名"><i class="bi bi-pencil"></i></button>
+            <form method="POST" action="{{ url_for('organization.delete', org_id=o.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ o.name }}」吗？{% if child_count %}\n注意：需先删除其下级。{% endif %}');">
+                <button class="btn btn-outline-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
+            </form>
+        </div>
+    </div>
+    {{ render_tree(orgs, o.id, level + 1) }}
+</div>
+{% endfor %}
+{% endmacro %}
+
+<div class="card">
+    <div class="card-body">
+        {% if orgs %}
+        {{ render_tree(orgs, 0, 0) }}
+        {% else %}
+        <p class="text-muted text-center py-4">暂无组织，请点击右上角「添加单位」。</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加模态框 -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('organization.add') }}">
+                <div class="modal-header"><h5 class="modal-title" id="addTitle">添加单位</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" name="parent_id" id="addParentId" value="0">
+                    <label class="form-label" id="addHint">新增一个顶级<strong>单位</strong>。</label>
+                    <input type="text" class="form-control mt-2" name="name" id="addName" placeholder="请输入名称" required>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">添加</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="editForm">
+                <div class="modal-header"><h5 class="modal-title">重命名</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label class="form-label">名称</label>
+                    <input type="text" class="form-control" name="name" id="editName" required>
+                    <input type="hidden" name="parent_id" id="editParentId" value="0">
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function addRoot() {
+    document.getElementById('addParentId').value = 0;
+    document.getElementById('addTitle').textContent = '添加单位';
+    document.getElementById('addHint').innerHTML = '新增一个顶级<strong>单位</strong>。';
+    document.getElementById('addName').value = '';
+    new bootstrap.Modal(document.getElementById('addModal')).show();
+}
+function addChild(pid, pname, level) {
+    document.getElementById('addParentId').value = pid;
+    var isUnit = (level === 0);
+    document.getElementById('addTitle').textContent = isUnit ? '添加部门' : '添加子部门';
+    document.getElementById('addHint').innerHTML = '在「' + pname + '」下新增' + (isUnit ? '<strong>部门</strong>' : '<strong>子部门</strong>') + '。';
+    document.getElementById('addName').value = '';
+    new bootstrap.Modal(document.getElementById('addModal')).show();
+}
+function editNode(id, name, pid) {
+    document.getElementById('editName').value = name;
+    document.getElementById('editParentId').value = pid;
+    document.getElementById('editForm').action = '/org/' + id + '/edit';
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

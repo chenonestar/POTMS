@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}撤控备案列表{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-arrow-repeat"></i> 撤控备案列表</h4>
+    <div>
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#startDecontrolModal"><i class="bi bi-arrow-repeat"></i> 发起撤控</button>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('decontrol')"><i class="bi bi-printer"></i> 批量打印</button>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('{{ url_for('export.decontrol_export') }}');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('{{ url_for('export.decontrol_export') }}');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('export.decontrol_export') }}">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 身份证号 / 原因" value="{{ search }}"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="submit_unit_type"><option value="">全部报送单位类别</option>{% for o in unit_type_opts %}<option value="{{ o.value }}" {{ 'selected' if unit_type_filter == o.value }}>{{ o.value }}</option>{% endfor %}</select></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('decontrol.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="姓名">姓名</th><th data-col="身份证号">身份证号</th><th data-col="工作单位">工作单位</th><th data-col="报送单位">报送单位</th><th data-col="报送类别">报送类别</th><th data-col="撤控原因">撤控原因</th><th data-col="撤控日期">撤控日期</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for row in items.rows %}
+    <tr>
+        <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
+        <td>{{ row.surname }}{{ row.given_name }}</td>
+        <td><code>{{ row.id_number[:3] }}***********{{ row.id_number[-4:] if row.id_number|length >= 7 }}</code></td>
+        <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
+        <td title="{{ row.submit_unit_name }}">{{ row.submit_unit_name }}</td>
+        <td>{{ row.submit_unit_type }}</td>
+        <td title="{{ row.reason }}">{{ row.reason }}</td>
+        <td><small>{{ row.decontrol_date | default(row.created_at | localtime('%Y-%m-%d'), true) }}</small></td>
+        <td><div class="btn-group btn-group-sm">
+            <a href="{{ url_for('export.print_view', print_type='decontrol', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+            <a href="{{ url_for('decontrol.view', dec_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+        </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="text-center text-muted py-4">暂无撤控记录</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+{% from "components/pagination.html" import render_pagination %}
+{{ render_pagination(items, 'decontrol.list') }}
+
+<!-- 发起撤控：选择备案人员 -->
+<div class="modal fade" id="startDecontrolModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> 发起撤控 — 选择备案人员</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% set dec_people = personnel_opts() %}
+                {% if dec_people %}
+                <input type="text" class="form-control" id="decPersonSearch" placeholder="搜索 姓名 / 身份证号 / 单位" oninput="filterPersons('decPersonSearch','decPersonSelect')" autocomplete="off">
+                <select class="form-select mt-2" id="decPersonSelect" size="8" ondblclick="gotoDecontrol()">
+                    {% for p in dec_people %}
+                    <option value="{{ p.id }}" data-search="{{ (p.name ~ (p.id_number | default('', true)) ~ p.unit) | lower }}">{{ p.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">仅列出"有效"备案人员；选中后前往撤控表单（双击可直接进入）。</div>
+                {% else %}
+                <p class="text-muted mb-0">暂无"有效"备案人员可撤控。请先在「人员备案」中完成备案。</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                {% if dec_people %}<button type="button" class="btn btn-danger" onclick="gotoDecontrol()">前往撤控 <i class="bi bi-arrow-right"></i></button>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function gotoDecontrol() {
+    var sel = document.getElementById('decPersonSelect');
+    if (!sel || !sel.value) { alert('请先选择备案人员。'); return; }
+    window.location = '/decontrol/new/' + sel.value;
+}
+document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_decontrol'); });
+</script>
+{% endblock %}

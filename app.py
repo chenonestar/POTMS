@@ -59,6 +59,7 @@ def create_app() -> Flask:
     from blueprints.organization import org_bp
     from blueprints.dict_admin import dict_bp
     from blueprints.submit_unit import submit_unit_bp
+    from blueprints.search import search_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -72,10 +73,23 @@ def create_app() -> Flask:
     app.register_blueprint(org_bp)
     app.register_blueprint(dict_bp)
     app.register_blueprint(submit_unit_bp)
+    app.register_blueprint(search_bp)
 
     # CSRF 防护（轻量内置，覆盖所有状态变更请求）
     from utils.csrf import init_csrf
     init_csrf(app)
+
+    # 中文错误页：404 / 500（500 同时记录异常堆栈到应用日志）
+    from flask import render_template
+
+    @app.errorhandler(404)
+    def _not_found(err):
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def _server_error(err):
+        app.logger.exception("Internal Server Error: %s", err)
+        return render_template("errors/500.html"), 500
 
     # 数据库连接关闭
     from database import close_db

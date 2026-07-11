@@ -210,6 +210,23 @@ def run_migrations():
                     (name, contact or "", phone or "", su_order))
                 su_existing.add(name)
         db.commit()
+
+        # 索引（幂等）：身份证查重、状态过滤、外键关联、日志时间筛选
+        # 逐条容错：个别表/列在极旧库中缺失时跳过该条，不影响其余索引
+        for idx_sql in (
+            "CREATE INDEX IF NOT EXISTS idx_pf_id_number ON personnel_filing(id_number)",
+            "CREATE INDEX IF NOT EXISTS idx_pf_status ON personnel_filing(status)",
+            "CREATE INDEX IF NOT EXISTS idx_td_pf_id ON travel_details(personnel_filing_id)",
+            "CREATE INDEX IF NOT EXISTS idx_cert_pf_id ON certificates(personnel_filing_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dec_pf_id ON decontrol_filing(personnel_filing_id)",
+            "CREATE INDEX IF NOT EXISTS idx_att_travel_id ON attachments(travel_id)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_created_at ON operation_logs(created_at)",
+        ):
+            try:
+                db.execute(idx_sql)
+            except sqlite3.OperationalError:
+                pass
+        db.commit()
     finally:
         db.close()
 

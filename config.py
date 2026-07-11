@@ -50,6 +50,9 @@ class Config:
 
     # 会话
     PERMANENT_SESSION_LIFETIME = 3600  # 1小时超时
+    # Cookie 安全标志显式声明（不依赖框架/浏览器默认行为）
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
 
     # 分页（业务列表一屏可容纳的行数；操作日志因含多行变更详情单独取更小值）
     PAGE_SIZE = 12

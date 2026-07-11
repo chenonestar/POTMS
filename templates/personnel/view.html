@@ -62,7 +62,7 @@
             <div class="col-md-4"><label class="text-muted">备注</label><p>{{ filing.remarks or '-' }}</p></div>
         </div>
         <div class="row mt-2">
-            <div class="col-md-12"><label class="text-muted">操作人 / 时间</label><p>{{ filing.operator }} / {{ filing.created_at | localtime }}</p></div>
+            <div class="col-md-12"><label class="text-muted">录入时间</label><p>{{ filing.created_at | localtime }}</p></div>
         </div>
     </div>
 </div>

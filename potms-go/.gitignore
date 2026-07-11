@@ -1,0 +1,13 @@
+potms-go
+potms-go.exe
+POTMS.exe
+data.db*
+.secret_key
+uploads/
+exports/
+backup/
+
+# 编译产物（二进制名 = 模块名 potms）
+potms
+potms.exe
+POTMS.exe

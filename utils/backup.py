@@ -9,6 +9,10 @@ RETAIN_DAYS = 30
 _PREFIX = "data_"
 _SUFFIX = ".db"
 
+# 进程内"今日已检查"标记：首页每次访问都会触发备份检查，
+# 同一天第二次起直接跳过文件系统检查与清理扫描
+_checked_date: str | None = None
+
 
 def _backup_path(date_str: str) -> str:
     return os.path.join(Config.BACKUP_FOLDER, f"{_PREFIX}{date_str}{_SUFFIX}")
@@ -52,8 +56,12 @@ def run_daily_backup(force: bool = False) -> dict:
     完成后清理超过保留期的旧备份。
     返回 {created: bool, path: str|None, pruned: int, date: str}
     """
-    os.makedirs(Config.BACKUP_FOLDER, exist_ok=True)
+    global _checked_date
     today = datetime.now().strftime("%Y%m%d")
+    if not force and _checked_date == today:
+        return {"created": False, "path": None, "pruned": 0, "date": today}
+
+    os.makedirs(Config.BACKUP_FOLDER, exist_ok=True)
     dest = _backup_path(today)
 
     created = False
@@ -62,5 +70,6 @@ def run_daily_backup(force: bool = False) -> dict:
         created = True
 
     pruned = prune_old_backups()
+    _checked_date = today
     return {"created": created, "path": dest if created else None,
             "pruned": pruned, "date": today}
