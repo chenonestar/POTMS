@@ -99,7 +99,7 @@ pub async fn logout(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respo
 
 pub async fn account_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) {
+    if let Some(r) = require_login(&st, &mut req) {
         return r;
     }
     let username = req.sess.username();
@@ -113,7 +113,7 @@ pub async fn account_post(
     Form(form): Form<HashMap<String, String>>,
 ) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) {
+    if let Some(r) = require_login(&st, &mut req) {
         return r;
     }
     if !req.sess.csrf_ok(form.get("csrf_token").map(|s| s.as_str()).unwrap_or("")) {

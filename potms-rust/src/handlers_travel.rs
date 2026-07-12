@@ -79,7 +79,7 @@ pub fn travel_filters(conn: &rusqlite::Connection, q: &F, ids: &[i64], today: &s
 
 pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let today = helpers::now_local_ymd(st.cfg.tz_offset_hours);
     let (items, mut overdue_ids, mut deadlines) = {
@@ -113,7 +113,7 @@ pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respons
 
 pub async fn attachments(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let data = {
         let conn = st.db.lock().unwrap();
@@ -249,7 +249,7 @@ fn travel_params(d: &VForm, t_start: &str, t_end: &str) -> Vec<SqlValue> {
 
 pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let mut prefill = json!({});
     if let Some(fid) = query_args(&req.query).get("filing_id").and_then(|s| s.parse::<i64>().ok()) {
         let conn = st.db.lock().unwrap();
@@ -266,7 +266,7 @@ pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Resp
 
 pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mp: Multipart) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let (form, files) = parse_multipart(mp).await;
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let mut data = extract(&form, &req.sess.username());
@@ -294,7 +294,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mp: Mu
 
 pub async fn edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(travel_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let (row, atts) = {
         let conn = st.db.lock().unwrap();
         (db::query_one(&conn, "SELECT * FROM travel_details WHERE id = ?", &[I(travel_id)]),
@@ -308,7 +308,7 @@ pub async fn edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(t
 
 pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(travel_id): Path<i64>, mp: Multipart) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let (form, files) = parse_multipart(mp).await;
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM travel_details WHERE id = ?", &[I(travel_id)]).is_some() };
@@ -340,7 +340,7 @@ pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
 
 pub async fn view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(travel_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let (row, atts) = {
         let conn = st.db.lock().unwrap();
         (db::query_one(&conn, "SELECT * FROM travel_details WHERE id = ?", &[I(travel_id)]),
@@ -354,7 +354,7 @@ pub async fn view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(trave
 
 pub async fn delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(travel_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     {
         let conn = st.db.lock().unwrap();
@@ -371,7 +371,7 @@ pub async fn delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(tra
 
 pub async fn cancel(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(travel_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let row = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM travel_details WHERE id = ?", &[I(travel_id)]) };
     let row = match row { Some(r) => r, None => { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "travel.list", &[]); } };
@@ -396,7 +396,7 @@ pub async fn cancel(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(tra
 
 pub async fn restore(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(travel_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM travel_details WHERE id = ?", &[I(travel_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
@@ -445,19 +445,19 @@ fn url_escape(s: &str) -> String {
 
 pub async fn att_download(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(att_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     serve_att(&st, &mut req, att_id, false).await
 }
 
 pub async fn att_preview(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(att_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     serve_att(&st, &mut req, att_id, true).await
 }
 
 pub async fn att_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(att_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let travel_id = {
         let conn = st.db.lock().unwrap();

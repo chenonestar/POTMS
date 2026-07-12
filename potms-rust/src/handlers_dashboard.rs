@@ -7,7 +7,7 @@ use serde_json::json;
 
 pub async fn backup_now(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) {
+    if let Some(r) = require_login(&st, &mut req) {
         return r;
     }
     let (date, pruned) = {
@@ -23,7 +23,7 @@ pub async fn backup_now(State(st): State<St>, headers: HeaderMap, uri: Uri) -> R
 
 pub async fn index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) {
+    if let Some(r) = require_login(&st, &mut req) {
         return r;
     }
     let today = helpers::now_local_ymd(st.cfg.tz_offset_hours);

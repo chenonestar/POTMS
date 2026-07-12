@@ -43,7 +43,7 @@ pub fn personnel_filters(q: &F, ids: &[i64]) -> (String, Vec<SqlValue>) {
 
 pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let (where_, params) = personnel_filters(&q, &[]);
     let base = format!(
@@ -128,13 +128,13 @@ fn info_params(d: &VForm) -> Vec<SqlValue> {
 
 pub async fn info_new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     page(&st, &mut req, "personnel/info_form.html", json!({"data": {}, "editing": false}))
 }
 
 pub async fn info_new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let data = extract_info(&form, &req.sess.username());
     let mut errs = validate_info(&data);
@@ -163,7 +163,7 @@ pub async fn info_new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, F
 
 pub async fn info_edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(info_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let row = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM personnel_info WHERE id = ?", &[I(info_id)]) };
     match row {
         None => { flash(&mut req, "记录不存在。", "danger"); redirect(&st, &req, "personnel.list", &[]) }
@@ -173,7 +173,7 @@ pub async fn info_edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, P
 
 pub async fn info_edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(info_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM personnel_info WHERE id = ?", &[I(info_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
@@ -239,7 +239,7 @@ fn filing_params(d: &VForm) -> Vec<SqlValue> {
 
 pub async fn filing_new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let info_id: i64 = query_args(&req.query).get("info_id").and_then(|s| s.parse().ok()).unwrap_or(0);
     let prefill = if info_id > 0 {
         let conn = st.db.lock().unwrap();
@@ -263,7 +263,7 @@ pub async fn filing_new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) 
 
 pub async fn filing_new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let info_id: i64 = query_args(&req.query).get("info_id").and_then(|s| s.parse().ok()).unwrap_or(0);
     let data = extract_filing(&form, &req.sess.username());
@@ -298,7 +298,7 @@ pub async fn filing_new_post(State(st): State<St>, headers: HeaderMap, uri: Uri,
 
 pub async fn filing_edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filing_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let row = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM personnel_filing WHERE id = ?", &[I(filing_id)]) };
     match row {
         None => { flash(&mut req, "记录不存在。", "danger"); redirect(&st, &req, "personnel.list", &[]) }
@@ -308,7 +308,7 @@ pub async fn filing_edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri,
 
 pub async fn filing_edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filing_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM personnel_filing WHERE id = ?", &[I(filing_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
@@ -333,7 +333,7 @@ pub async fn filing_edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri
 
 pub async fn view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filing_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let data = {
         let conn = st.db.lock().unwrap();
         let filing = match db::query_one(&conn, "SELECT * FROM personnel_filing WHERE id = ?", &[I(filing_id)]) {
@@ -354,7 +354,7 @@ pub async fn view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filin
 
 pub async fn delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filing_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let conn = st.db.lock().unwrap();
     if db::query_one(&conn, "SELECT id FROM personnel_filing WHERE id = ?", &[I(filing_id)]).is_none() {
@@ -379,7 +379,7 @@ pub async fn delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(fil
 // ---- 信息登记表管理（#2）----
 pub async fn info_list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let mut where_ = String::new();
     let mut params: Vec<SqlValue> = vec![];
@@ -404,7 +404,7 @@ pub async fn info_list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Re
 
 pub async fn info_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(info_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.info_list", &[]); }
     let conn = st.db.lock().unwrap();
     if db::query_one(&conn, "SELECT id FROM personnel_info WHERE id = ?", &[I(info_id)]).is_none() {

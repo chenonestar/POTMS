@@ -38,7 +38,7 @@ pub fn cert_filters(q: &F, ids: &[i64]) -> (String, Vec<SqlValue>) {
 
 pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let (where_, params) = cert_filters(&q, &[]);
     let items = { let conn = st.db.lock().unwrap(); helpers::list_all(&conn, &format!("SELECT * FROM certificates WHERE 1=1{where_} ORDER BY updated_at DESC"), &params) };
@@ -116,7 +116,7 @@ fn cert_params(d: &VForm) -> Vec<SqlValue> {
 
 pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let mut prefill = json!({});
     if let Some(fid) = query_args(&req.query).get("filing_id").and_then(|s| s.parse::<i64>().ok()) {
         let conn = st.db.lock().unwrap();
@@ -131,7 +131,7 @@ pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Resp
 
 pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
     let data = extract(&form, &req.sess.username());
     let errs = validate(&data);
@@ -152,7 +152,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(f
 
 pub async fn edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(cert_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let row = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM certificates WHERE id = ?", &[I(cert_id)]) };
     match row {
         None => { flash(&mut req, "记录不存在。", "danger"); redirect(&st, &req, "certificate.list", &[]) }
@@ -162,7 +162,7 @@ pub async fn edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(c
 
 pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(cert_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM certificates WHERE id = ?", &[I(cert_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
@@ -187,7 +187,7 @@ pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
 
 pub async fn delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(cert_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
     {
         let conn = st.db.lock().unwrap();

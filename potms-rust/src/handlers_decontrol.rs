@@ -32,7 +32,7 @@ pub fn decontrol_filters(q: &F, ids: &[i64]) -> (String, Vec<SqlValue>) {
 
 pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let (w, p) = decontrol_filters(&q, &[]);
     let (items, opts) = {
@@ -77,7 +77,7 @@ fn validate(data: &VForm) -> Vec<String> {
 
 pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filing_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let filing = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM personnel_filing WHERE id = ?", &[I(filing_id)]) };
     let filing = match filing { Some(f) => f, None => { flash(&mut req, "备案人员不存在。", "danger"); return redirect(&st, &req, "decontrol.list", &[]); } };
     if helpers::row_str(&filing, "status") == "decontrolled" {
@@ -96,7 +96,7 @@ pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(fi
 
 pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(filing_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "decontrol.list", &[]); }
     let filing = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM personnel_filing WHERE id = ?", &[I(filing_id)]) };
     let filing = match filing { Some(f) => f, None => { flash(&mut req, "备案人员不存在。", "danger"); return redirect(&st, &req, "decontrol.list", &[]); } };
@@ -133,7 +133,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(f
 
 pub async fn view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(dec_id): Path<i64>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let row = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT * FROM decontrol_filing WHERE id = ?", &[I(dec_id)]) };
     match row {
         None => { flash(&mut req, "记录不存在。", "danger"); redirect(&st, &req, "decontrol.list", &[]) }

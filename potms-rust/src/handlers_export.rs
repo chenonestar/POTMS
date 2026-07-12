@@ -17,7 +17,7 @@ macro_rules! export_handler {
     ($name:ident, $target:expr, $back:expr, $build:expr) => {
         pub async fn $name(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
             let mut req = Req::new(&st, &headers, &uri);
-            if let Some(r) = require_login(&st, &req) { return r; }
+            if let Some(r) = require_login(&st, &mut req) { return r; }
             let q = query_args(&req.query);
             let ids = selected_ids(&req.query);
             let (path, filename, where_) = {
@@ -78,7 +78,7 @@ fn print_spec(t: &str) -> Option<(&'static str, &'static str, &'static str)> {
 
 pub async fn print_view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path((print_type, id)): Path<(String, i64)>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let spec = match print_spec(&print_type) { Some(s) => s, None => { flash(&mut req, "不支持的打印类型。", "danger"); return redirect(&st, &req, "dashboard.index", &[]); } };
     let data = {
         let conn = st.db.lock().unwrap();
@@ -101,7 +101,7 @@ pub async fn print_view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path
 
 pub async fn batch_print(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(print_type): Path<String>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let ids = selected_ids(&req.query);
     if ids.is_empty() { flash(&mut req, "请选择要打印的记录。", "warning"); return redirect(&st, &req, "dashboard.index", &[]); }
     let spec = match print_spec(&print_type) { Some(s) => s, None => { flash(&mut req, "不支持的打印类型。", "danger"); return redirect(&st, &req, "dashboard.index", &[]); } };

@@ -82,9 +82,10 @@ pub fn flash(req: &mut Req, msg: &str, cat: &str) {
     req.sess.flash(msg, cat);
 }
 
-// 登录校验：未登录跳转登录页
-pub fn require_login(st: &AppState, req: &Req) -> Option<Response> {
+// 登录校验：未登录时闪现"请先登录。"并跳转登录页
+pub fn require_login(st: &AppState, req: &mut Req) -> Option<Response> {
     if !req.sess.logged_in() {
+        req.sess.flash("请先登录。", "warning");
         return Some(render::redirect(&req.sess, &st.cfg, "auth.login", &[]));
     }
     None

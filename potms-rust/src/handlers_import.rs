@@ -7,13 +7,13 @@ use serde_json::json;
 
 pub async fn index_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     page(&st, &mut req, "import/form.html", json!({"result": null}))
 }
 
 pub async fn index_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mut mp: Multipart) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let mut csrf = String::new();
     let mut filename = String::new();
     let mut filedata: Vec<u8> = vec![];
@@ -59,8 +59,8 @@ pub async fn index_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mut 
 }
 
 pub async fn download_template(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
-    let req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    let mut req = Req::new(&st, &headers, &uri);
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let bytes = crate::excel::generate_import_template();
     let mut resp = (StatusCode::OK, bytes).into_response();
     resp.headers_mut().insert(header::CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".parse().unwrap());

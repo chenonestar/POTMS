@@ -70,7 +70,7 @@ fn compute_changes(snapshot: &str) -> Value {
 
 pub async fn logs_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let page_n: i64 = q.get("page").and_then(|s| s.parse().ok()).filter(|n| *n >= 1).unwrap_or(1);
     let mut base = "SELECT * FROM operation_logs WHERE 1=1".to_string();
@@ -113,7 +113,7 @@ pub async fn logs_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> R
 
 pub async fn logs_export(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let year = query_args(&req.query).get("year").map(|s| s.trim().to_string()).unwrap_or_default();
     if year.len() != 4 || !year.bytes().all(|b| b.is_ascii_digit()) {
         flash(&mut req, "请选择要归档导出的年份。", "warning");
@@ -144,7 +144,7 @@ pub fn send_xlsx(path: &std::path::Path, filename: &str) -> Response {
 // ---- 组织架构 ----
 pub async fn org_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let (orgs, child_counts) = {
         let conn = st.db.lock().unwrap();
         let orgs = db::query_maps(&conn, "SELECT * FROM sys_org ORDER BY parent_id, sort_order", &[]);
@@ -157,7 +157,7 @@ pub async fn org_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Re
 
 pub async fn org_add(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "organization.index", &[]); }
     let name = ff(&form, "name");
     let parent: i64 = ff(&form, "parent_id").parse().unwrap_or(0);
@@ -169,7 +169,7 @@ pub async fn org_add(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(fo
 
 pub async fn org_edit(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(org_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "organization.index", &[]); }
     let name = ff(&form, "name");
     let parent: i64 = ff(&form, "parent_id").parse().unwrap_or(0);
@@ -181,7 +181,7 @@ pub async fn org_edit(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(o
 
 pub async fn org_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(org_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "organization.index", &[]); }
     let conn = st.db.lock().unwrap();
     if db::count(&conn, "SELECT COUNT(*) FROM sys_org WHERE parent_id = ?", &[I(org_id)]) > 0 {
@@ -219,7 +219,7 @@ fn dict_usage(conn: &rusqlite::Connection, category: &str, code: &str, value: &s
 
 pub async fn dict_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let groups = {
         let conn = st.db.lock().unwrap();
         DICT_CATS.iter().map(|(key, label, _)| {
@@ -232,7 +232,7 @@ pub async fn dict_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> R
 
 pub async fn dict_add(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "dict_admin.index", &[]); }
     let category = ff(&form, "category"); let code = ff(&form, "code"); let value = ff(&form, "value");
     let sort: i64 = ff(&form, "sort_order").parse().unwrap_or(0);
@@ -254,7 +254,7 @@ pub async fn dict_add(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(f
 
 pub async fn dict_edit(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(dict_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "dict_admin.index", &[]); }
     let value = ff(&form, "value"); let sort: i64 = ff(&form, "sort_order").parse().unwrap_or(0);
     let conn = st.db.lock().unwrap();
@@ -271,7 +271,7 @@ pub async fn dict_edit(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
 
 pub async fn dict_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(dict_id): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "dict_admin.index", &[]); }
     let conn = st.db.lock().unwrap();
     let row = db::query_one(&conn, "SELECT * FROM sys_dict WHERE id = ?", &[I(dict_id)]);
@@ -290,14 +290,14 @@ pub async fn dict_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Pat
 // ---- 报送单位 ----
 pub async fn su_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let rows = { let conn = st.db.lock().unwrap(); db::query_maps(&conn, "SELECT * FROM sys_submit_unit ORDER BY sort_order, name", &[]) };
     page(&st, &mut req, "submit_unit/list.html", json!({"rows": rows}))
 }
 
 pub async fn su_add(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "submit_unit.index", &[]); }
     let name = ff(&form, "name");
     if name.is_empty() { flash(&mut req, "单位名称为必填。", "danger"); return redirect(&st, &req, "submit_unit.index", &[]); }
@@ -317,7 +317,7 @@ pub async fn su_add(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(for
 
 pub async fn su_edit(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(uid): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "submit_unit.index", &[]); }
     let name = ff(&form, "name");
     let conn = st.db.lock().unwrap();
@@ -334,7 +334,7 @@ pub async fn su_edit(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(ui
 
 pub async fn su_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(uid): Path<i64>, Form(form): Form<F>) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期。", "danger"); return redirect(&st, &req, "submit_unit.index", &[]); }
     let conn = st.db.lock().unwrap();
     let row = db::query_one(&conn, "SELECT * FROM sys_submit_unit WHERE id = ?", &[I(uid)]);
@@ -352,7 +352,7 @@ pub async fn su_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
 // ---- 全局搜索 ----
 pub async fn search(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) { return r; }
+    if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query).get("q").map(|s| s.trim().to_string()).unwrap_or_default();
     let mut results = json!({"personnel": [], "certificate": [], "travel": [], "decontrol": []});
     let mut total = 0i64;
