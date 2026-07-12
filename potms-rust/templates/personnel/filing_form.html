@@ -70,7 +70,7 @@
             <select class="form-select" name="political_status" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('political_status') %}
-                <option value="{{ o.value }}" {{ 'selected' if data.get('political_status') == o.value }}>{{ o.value }}</option>
+                <option value="{{ o.value }}" {{ 'selected' if data['political_status'] == o.value }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -86,7 +86,7 @@
                 <option value="">请选择单位</option>
                 {% for o in org_tree_opts() %}
                 {% set clean_name = o.name | replace('　', '') | replace('└ ', '') %}
-                <option value="{{ clean_name }}" {{ 'selected' if data.get('work_unit') == clean_name }}>{{ o.name }}</option>
+                <option value="{{ clean_name }}" {{ 'selected' if data['work_unit'] == clean_name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -103,9 +103,9 @@
             <select class="form-select" name="supervisor_unit" required>
                 <option value="">请选择</option>
                 {% for o in sup_opts %}
-                <option value="{{ o.value }}" {{ 'selected' if data.get('supervisor_unit') == o.value }}>{{ o.value }}</option>
+                <option value="{{ o.value }}" {{ 'selected' if data['supervisor_unit'] == o.value }}>{{ o.value }}</option>
                 {% endfor %}
-                {% if data.get('supervisor_unit') and data.get('supervisor_unit') not in (sup_opts | map(attribute='value') | list) %}
+                {% if data['supervisor_unit'] and data['supervisor_unit'] not in (sup_opts | map(attribute='value') | list) %}
                 <option value="{{ data.supervisor_unit }}" selected>{{ data.supervisor_unit }}（历史值）</option>
                 {% endif %}
             </select>

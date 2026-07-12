@@ -8,6 +8,7 @@ mod session;
 mod validators;
 mod handlers_auth;
 mod handlers_dashboard;
+mod handlers_personnel;
 
 use axum::{
     extract::{Path, State},
@@ -79,6 +80,43 @@ pub fn require_login(st: &AppState, req: &Req) -> Option<Response> {
         return Some(render::redirect(&req.sess, &st.cfg, "auth.login", &[]));
     }
     None
+}
+
+// CSRF 校验（POST）：失败则跳回登录/来源
+pub fn csrf_check(req: &Req, form: &std::collections::HashMap<String, String>) -> bool {
+    req.sess.csrf_ok(form.get("csrf_token").map(|s| s.as_str()).unwrap_or(""))
+}
+
+// 解析查询串为 map
+pub fn query_args(query: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for pair in query.split('&').filter(|s| !s.is_empty()) {
+        if let Some((k, v)) = pair.split_once('=') {
+            let val = urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_else(|_| v.to_string());
+            out.entry(k.to_string()).or_insert(val);
+        }
+    }
+    out
+}
+
+// 表单字段（去空白）
+pub fn ff(form: &std::collections::HashMap<String, String>, k: &str) -> String {
+    form.get(k).map(|s| s.trim().to_string()).unwrap_or_default()
+}
+
+// 选项列表 [(code,value),...] → JSON
+pub fn opt_list(pairs: &[(&str, &str)]) -> serde_json::Value {
+    serde_json::Value::Array(
+        pairs.iter().map(|(c, v)| serde_json::json!({"code": c, "value": v})).collect(),
+    )
+}
+
+// selectedIDs：读取 ids 查询参数（逗号分隔）
+pub fn selected_ids(query: &str) -> Vec<i64> {
+    query_args(query)
+        .get("ids")
+        .map(|s| s.split(',').filter_map(|x| x.trim().parse::<i64>().ok()).collect())
+        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -157,8 +195,17 @@ async fn main() {
         .route("/account", get(handlers_auth::account_get).post(handlers_auth::account_post))
         .route("/", get(handlers_dashboard::index))
         .route("/backup/now", post(handlers_dashboard::backup_now))
+        // 人员备案
+        .route("/personnel/", get(handlers_personnel::list))
+        .route("/personnel/info/", get(handlers_personnel::info_list))
+        .route("/personnel/info/new", get(handlers_personnel::info_new_get).post(handlers_personnel::info_new_post))
+        .route("/personnel/info/:info_id/edit", get(handlers_personnel::info_edit_get).post(handlers_personnel::info_edit_post))
+        .route("/personnel/info/:info_id/delete", post(handlers_personnel::info_delete))
+        .route("/personnel/filing/new", get(handlers_personnel::filing_new_get).post(handlers_personnel::filing_new_post))
+        .route("/personnel/filing/:filing_id/edit", get(handlers_personnel::filing_edit_get).post(handlers_personnel::filing_edit_post))
+        .route("/personnel/:filing_id", get(handlers_personnel::view))
+        .route("/personnel/:filing_id/delete", post(handlers_personnel::delete))
         // 以下为占位路由（逐步替换）
-        .route("/personnel/", get(todo_page))
         .route("/certificate/", get(todo_page))
         .route("/travel/", get(todo_page))
         .route("/decontrol/", get(todo_page))

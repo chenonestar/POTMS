@@ -9,9 +9,9 @@
 <!-- 统计 -->
 <div class="row g-2 mb-3">
     <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ total_att }}</div><small class="text-muted">附件总数</small></div></div></div>
-    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ type_counts.get('个人申请报告', 0) }}</div><small class="text-muted">个人申请报告</small></div></div></div>
-    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ type_counts.get('审批表', 0) }}</div><small class="text-muted">审批表</small></div></div></div>
-    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ type_counts.get('同意申办函', 0) }}</div><small class="text-muted">同意申办函</small></div></div></div>
+    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ type_counts['个人申请报告'] | default(0) }}</div><small class="text-muted">个人申请报告</small></div></div></div>
+    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ type_counts['审批表'] | default(0) }}</div><small class="text-muted">审批表</small></div></div></div>
+    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body py-2"><div class="fs-5 fw-bold">{{ type_counts['同意申办函'] | default(0) }}</div><small class="text-muted">同意申办函</small></div></div></div>
 </div>
 
 <!-- 缺件检查 -->

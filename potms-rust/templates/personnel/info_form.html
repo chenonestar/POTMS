@@ -30,7 +30,7 @@
             <select class="form-select" name="unit" id="orgUnit" required onchange="updateDept()">
                 <option value="">请选择单位</option>
                 {% for o in all_orgs if o.parent_id == 0 %}
-                <option value="{{ o.name }}" data-oid="{{ o.id }}" {{ 'selected' if data.get('unit') == o.name }}>{{ o.name }}</option>
+                <option value="{{ o.name }}" data-oid="{{ o.id }}" {{ 'selected' if data['unit'] == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
             <div class="form-text">单位为顶级组织；部门为其下级。可在"组织架构"中维护层级。</div>
@@ -40,11 +40,11 @@
             <select class="form-select" name="department" id="orgDept" required>
                 <option value="">请先选择单位</option>
                 {% for o in all_orgs if o.depth >= 1 %}
-                <option value="{{ o.name }}" data-root="{{ o.root_id }}" data-oid="{{ o.id }}" data-depth="{{ o.depth }}" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.indent }}{{ o.name }}</option>
+                <option value="{{ o.name }}" data-root="{{ o.root_id }}" data-oid="{{ o.id }}" data-depth="{{ o.depth }}" style="display:none" {{ 'selected' if data['department'] == o.name }}>{{ o.indent }}{{ o.name }}</option>
                 {% endfor %}
                 {# 无下级部门的单位：回退为可选“单位本身” #}
                 {% for o in all_orgs if o.depth == 0 %}
-                <option value="{{ o.name }}" data-root="{{ o.id }}" data-oid="{{ o.id }}" data-depth="0" style="display:none" {{ 'selected' if data.get('department') == o.name }}>{{ o.name }}</option>
+                <option value="{{ o.name }}" data-root="{{ o.id }}" data-oid="{{ o.id }}" data-depth="0" style="display:none" {{ 'selected' if data['department'] == o.name }}>{{ o.name }}</option>
                 {% endfor %}
             </select>
             <div class="form-text">按层级缩进展示部门 / 子部门，任意层级均可选。</div>
@@ -91,7 +91,7 @@
             <select class="form-select" name="education" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('education') %}
-                <option value="{{ o.code }}" {{ 'selected' if data.get('education') == o.code }}>{{ o.value }}</option>
+                <option value="{{ o.code }}" {{ 'selected' if data['education'] == o.code }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -100,7 +100,7 @@
             <select class="form-select" name="degree" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('degree') %}
-                <option value="{{ o.code }}" {{ 'selected' if data.get('degree') == o.code }}>{{ o.value }}</option>
+                <option value="{{ o.code }}" {{ 'selected' if data['degree'] == o.code }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -109,7 +109,7 @@
             <select class="form-select" name="title" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('title') %}
-                <option value="{{ o.code }}" {{ 'selected' if data.get('title') == o.code }}>{{ o.value }}</option>
+                <option value="{{ o.code }}" {{ 'selected' if data['title'] == o.code }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -118,7 +118,7 @@
             <select class="form-select" name="rank" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('rank') %}
-                <option value="{{ o.code }}" {{ 'selected' if data.get('rank') == o.code }}>{{ o.value }}</option>
+                <option value="{{ o.code }}" {{ 'selected' if data['rank'] == o.code }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -133,7 +133,7 @@
             <select class="form-select" name="political_status" id="politicalStatus" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('political_status') %}
-                <option value="{{ o.value }}" {{ 'selected' if data.get('political_status') == o.value }}>{{ o.value }}</option>
+                <option value="{{ o.value }}" {{ 'selected' if data['political_status'] == o.value }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>

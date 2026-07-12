@@ -24,7 +24,7 @@
             <div class="d-flex align-items-center">
                 <form method="GET" action="{{ url_for('search.index') }}" class="d-none d-md-flex me-3">
                     <div class="input-group input-group-sm" style="width:240px;">
-                        <input type="text" class="form-control" name="q" value="{{ request.args.get('q','') if request.endpoint == 'search.index' else '' }}" placeholder="全局搜索：姓名 / 身份证 / 证件号">
+                        <input type="text" class="form-control" name="q" value="{{ request.args['q'] | default('') if request.endpoint == 'search.index' else '' }}" placeholder="全局搜索：姓名 / 身份证 / 证件号">
                         <button class="btn btn-outline-light" type="submit"><i class="bi bi-search"></i></button>
                     </div>
                 </form>

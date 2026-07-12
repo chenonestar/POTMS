@@ -59,9 +59,9 @@
             <select class="form-select" name="supervisor_unit" required>
                 <option value="">请选择</option>
                 {% for o in sup_opts %}
-                <option value="{{ o.value }}" {{ 'selected' if data.get('supervisor_unit') == o.value }}>{{ o.value }}</option>
+                <option value="{{ o.value }}" {{ 'selected' if data['supervisor_unit'] == o.value }}>{{ o.value }}</option>
                 {% endfor %}
-                {% if data.get('supervisor_unit') and data.get('supervisor_unit') not in (sup_opts | map(attribute='value') | list) %}
+                {% if data['supervisor_unit'] and data['supervisor_unit'] not in (sup_opts | map(attribute='value') | list) %}
                 <option value="{{ data.supervisor_unit }}" selected>{{ data.supervisor_unit }}（历史值）</option>
                 {% endif %}
             </select>
@@ -78,9 +78,9 @@
             <select class="form-select" name="submit_unit_name" id="submitUnitName" required onchange="fillSubmitUnit()">
                 <option value="">请选择</option>
                 {% for u in su_opts %}
-                <option value="{{ u.name }}" data-contact="{{ u.contact }}" data-phone="{{ u.phone }}" {{ 'selected' if data.get('submit_unit_name') == u.name }}>{{ u.name }}</option>
+                <option value="{{ u.name }}" data-contact="{{ u.contact }}" data-phone="{{ u.phone }}" {{ 'selected' if data['submit_unit_name'] == u.name }}>{{ u.name }}</option>
                 {% endfor %}
-                {% if data.get('submit_unit_name') and data.get('submit_unit_name') not in (su_opts | map(attribute='name') | list) %}
+                {% if data['submit_unit_name'] and data['submit_unit_name'] not in (su_opts | map(attribute='name') | list) %}
                 <option value="{{ data.submit_unit_name }}" data-contact="{{ data.submit_contact or '' }}" data-phone="{{ data.submit_phone or '' }}" selected>{{ data.submit_unit_name }}（历史值）</option>
                 {% endif %}
             </select>
@@ -91,7 +91,7 @@
             <select class="form-select" name="submit_unit_type" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('submit_unit_type') %}
-                <option value="{{ o.value }}" {{ 'selected' if data.get('submit_unit_type') == o.value }}>{{ o.value }}</option>
+                <option value="{{ o.value }}" {{ 'selected' if data['submit_unit_type'] == o.value }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -115,7 +115,7 @@
             <select class="form-select" name="political_status" required>
                 <option value="">请选择</option>
                 {% for o in dict_opts('political_status') %}
-                <option value="{{ o.value }}" {{ 'selected' if data.get('political_status') == o.value }}>{{ o.value }}</option>
+                <option value="{{ o.value }}" {{ 'selected' if data['political_status'] == o.value }}>{{ o.value }}</option>
                 {% endfor %}
             </select>
         </div>
