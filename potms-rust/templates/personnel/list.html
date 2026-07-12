@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}人员备案列表{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-people"></i> 人员备案列表</h4>
+    <div>
+        <a href="{{ url_for('personnel.info_new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增</a>
+        <a href="{{ url_for('personnel.info_list') }}" class="btn btn-outline-secondary ms-1" title="管理信息登记表、清理无备案引用的孤儿记录"><i class="bi bi-card-list"></i> 信息表管理</a>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('filing')"><i class="bi bi-printer"></i> 批量打印</button>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出备案表</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('{{ url_for('export.filing_export') }}');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('{{ url_for('export.filing_export') }}');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('export.filing_export') }}">全量导出</a></li>
+            </ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出信息表</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('{{ url_for('export.info_export') }}');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('{{ url_for('export.info_export') }}');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('export.info_export') }}">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 身份证号 / 单位" value="{{ search }}"></div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="residence" placeholder="户口所在地" value="{{ residence_filter }}"></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="status"><option value="">全部状态</option>{% for s in statuses %}<option value="{{ s.code }}" {{ 'selected' if status_filter == s.code }}>{{ s.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="political_status"><option value="">政治面貌</option>{% for o in political_opts %}<option value="{{ o.value }}" {{ 'selected' if political_filter == o.value }}>{{ o.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="rank"><option value="">职级</option>{% for o in rank_opts %}<option value="{{ o.code }}" {{ 'selected' if rank_filter == o.code }}>{{ o.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="gender"><option value="">性别</option>{% for g in genders %}<option value="{{ g.code }}" {{ 'selected' if gender_filter == g.code }}>{{ g.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="tag"><option value="">标记</option>{% for t in tags %}<option value="{{ t.code }}" {{ 'selected' if tag_filter == t.code }}>{{ t.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="sort">{% for s in sorts %}<option value="{{ s.code }}" {{ 'selected' if sort_by == s.code }}>{{ s.value }}</option>{% endfor %}</select></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('personnel.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="姓名">姓名</th><th data-col="性别">性别</th><th data-col="出生日期">出生日期</th><th data-col="身份证号">身份证号</th><th data-col="工作单位">工作单位</th><th data-col="职务/职称">职务/职称</th><th data-col="标记">标记</th><th data-col="状态">状态</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for row in items.rows %}
+    <tr class="{{ 'row-danger' if row.status == 'decontrolled' }}">
+        <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
+        <td>{{ row.surname }}{{ row.given_name }}</td>
+        <td>{{ row.gender }}</td><td>{{ row.birth_date }}</td>
+        <td><code>{{ row.id_number[:3] }}***********{{ row.id_number[-4:] if row.id_number|length >= 7 }}</code></td>
+        <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
+        <td title="{{ row.position_or_title }}">{{ row.position_or_title }}</td>
+        <td><span class="{{ 'tag-new' if row.tag == '新增' else 'tag-update' }}">{{ row.tag }}</span></td>
+        <td><span class="{{ 'status-active' if row.status == 'active' else 'status-decontrolled' }}">{{ '有效' if row.status == 'active' else '已撤控' }}</span></td>
+        <td><div class="btn-group btn-group-sm">
+            <a href="{{ url_for('personnel.view', filing_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('export.print_view', print_type='filing', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+            {% if row.info_id %}
+            <a href="{{ url_for('personnel.info_edit', info_id=row.info_id) }}" class="btn btn-outline-warning" title="编辑信息表"><i class="bi bi-pencil-square"></i></a>
+            {% endif %}
+            {% if row.status == 'active' %}
+            <a href="{{ url_for('personnel.filing_edit', filing_id=row.id) }}" class="btn btn-outline-warning" title="编辑备案表"><i class="bi bi-pencil"></i></a>
+            <a href="{{ url_for('decontrol.new', filing_id=row.id) }}" class="btn btn-outline-secondary" title="撤控"><i class="bi bi-arrow-repeat"></i></a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('personnel.delete', filing_id=row.id) }}" data-message="确定要删除 {{ row.surname }}{{ row.given_name }} 的备案记录吗？"><i class="bi bi-trash"></i></button>
+            {% endif %}
+        </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10" class="text-center text-muted py-4">暂无备案记录</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+{% from "components/pagination.html" import render_pagination %}
+{{ render_pagination(items, 'personnel.list') }}
+{% include "components/confirm_modal.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_personnel'); });
+</script>
+{% endblock %}

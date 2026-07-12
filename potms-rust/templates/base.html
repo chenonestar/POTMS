@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}因私出国（境）人员审批管理系统{% endblock %}</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {% if session.logged_in %}
+    <!-- 顶部导航 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container-fluid">
+            <button class="btn btn-sm btn-outline-light border-0 d-md-none me-2" type="button" id="sidebarToggle" title="菜单">
+                <i class="bi bi-list"></i>
+            </button>
+            <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">
+                <i class="bi bi-passport"></i> 因私出国（境）审批管理
+            </a>
+            <div class="d-flex align-items-center">
+                <form method="GET" action="{{ url_for('search.index') }}" class="d-none d-md-flex me-3">
+                    <div class="input-group input-group-sm" style="width:240px;">
+                        <input type="text" class="form-control" name="q" value="{{ request.args.get('q','') if request.endpoint == 'search.index' else '' }}" placeholder="全局搜索：姓名 / 身份证 / 证件号">
+                        <button class="btn btn-outline-light" type="submit"><i class="bi bi-search"></i></button>
+                    </div>
+                </form>
+                <div class="dropdown">
+                    <a class="text-light dropdown-toggle text-decoration-none" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle"></i> {{ session.username }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="{{ url_for('auth.account') }}"><i class="bi bi-person-gear"></i> 账户设置</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> 退出登录</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 侧边栏 -->
+            <nav class="col-md-2 d-none d-md-block bg-light sidebar">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dashboard.index') }}">
+                                <i class="bi bi-speedometer2"></i> 首页仪表盘
+                            </a>
+                        </li>
+                    </ul>
+                    <h6 class="sidebar-heading px-3 mt-4 mb-1 text-muted">
+                        <small>系统设置</small>
+                    </h6>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('organization.index') }}">
+                                <i class="bi bi-diagram-3"></i> 组织架构
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('dict_admin.index') }}">
+                                <i class="bi bi-card-list"></i> 数据字典
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('submit_unit.index') }}">
+                                <i class="bi bi-buildings"></i> 报送单位
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('auth.account') }}">
+                                <i class="bi bi-person-gear"></i> 账户设置
+                            </a>
+                        </li>
+                    </ul>
+                    <h6 class="sidebar-heading px-3 mt-4 mb-1 text-muted">
+                        <small>数据管理</small>
+                    </h6>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('import_data.index') }}">
+                                <i class="bi bi-upload"></i> 批量导入
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('logs.index') }}">
+                                <i class="bi bi-journal-text"></i> 操作日志
+                            </a>
+                        </li>
+                    </ul>
+                    <h6 class="sidebar-heading px-3 mt-4 mb-1 text-muted">
+                        <small>业务功能</small>
+                    </h6>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('personnel.list') }}">
+                                <i class="bi bi-people"></i> 人员备案
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('certificate.list') }}">
+                                <i class="bi bi-card-checklist"></i> 证照登记
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('travel.list') }}">
+                                <i class="bi bi-airplane"></i> 出国（境）申请
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('travel.attachments') }}">
+                                <i class="bi bi-paperclip"></i> 附件总览
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('decontrol.list') }}">
+                                <i class="bi bi-arrow-repeat"></i> 撤控备案
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- 主内容区 -->
+            <main class="col-md-10 ms-sm-auto px-md-4">
+                {% include "components/flash.html" %}
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- 未登录：直接渲染内容 -->
+    {% include "components/flash.html" %}
+    {% block content_full %}{% endblock %}
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

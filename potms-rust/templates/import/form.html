@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}批量导入{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-upload"></i> Excel 批量导入备案人员</h4>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header"><strong>上传文件</strong></div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label">选择 Excel 文件（.xlsx）</label>
+                        <input type="file" class="form-control" name="file" accept=".xlsx" required>
+                        <div class="form-text">请先下载模板，按模板格式填写数据后上传。</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> 开始导入</button>
+                    <a href="{{ url_for('import_data.download_template') }}" class="btn btn-outline-success">
+                        <i class="bi bi-download"></i> 下载导入模板
+                    </a>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><strong>模板字段说明</strong></div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>列</th><th>字段</th><th>说明</th></tr></thead>
+                    <tbody>
+                        <tr><td>A</td><td>单位</td><td>必填，写全称</td></tr>
+                        <tr><td>B</td><td>部门</td><td>必填</td></tr>
+                        <tr><td>C</td><td>姓名</td><td>必填，与身份证一致</td></tr>
+                        <tr><td>D</td><td>性别</td><td>必填：男/女</td></tr>
+                        <tr><td>E</td><td>出生日期</td><td>必填，YYYYMMDD</td></tr>
+                        <tr><td>G</td><td>身份证号</td><td>必填，18位</td></tr>
+                        <tr><td>H</td><td>户口所在地</td><td>填至区级，省份不加"省"字</td></tr>
+                        <tr><td>I</td><td>政治面貌</td><td>必填（如：中共党员、群众）</td></tr>
+                        <tr><td>J</td><td>职务/职称</td><td>处级/副处级/正科/副高/正高</td></tr>
+                        <tr><td>K</td><td>人事主管单位</td><td>名称需与印章一致</td></tr>
+                        <tr><td>Q</td><td>职务（岗位名称）</td><td>必填</td></tr>
+                        <tr><td>R</td><td>标记</td><td>新增 / 更新</td></tr>
+                        <tr><td>S</td><td>已告知本人</td><td>是 / 否</td></tr>
+                    </tbody>
+                </table>
+                <p class="text-muted small mt-2 mb-0">* 学历、学位、职称、职级列可填字典代码，系统自动识别。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入结果 -->
+    <div class="col-md-6">
+        {% if result %}
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between">
+                <strong>导入结果</strong>
+                <span class="badge bg-{{ 'success' if result.errors|length == 0 else 'warning' }}">
+                    {{ result.success }}/{{ result.total }} 成功
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row text-center mb-3">
+                    <div class="col-4">
+                        <div class="fs-3 fw-bold">{{ result.total }}</div>
+                        <small class="text-muted">总计</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="fs-3 fw-bold text-success">{{ result.success }}</div>
+                        <small class="text-muted">成功</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="fs-3 fw-bold text-danger">{{ result.errors|length }}</div>
+                        <small class="text-muted">失败</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if result.errors %}
+        <div class="card">
+            <div class="card-header"><strong>错误报告</strong></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>行</th><th>字段</th><th>错误信息</th></tr></thead>
+                    <tbody>
+                        {% for e in result.errors %}
+                        <tr>
+                            <td class="text-center">{{ e.row }}</td>
+                            <td>{{ e.field }}</td>
+                            <td class="text-danger small">{{ e.message }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
