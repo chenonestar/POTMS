@@ -42,7 +42,7 @@ fn travel_overdue_ids(conn: &rusqlite::Connection, today: &str) -> Vec<i64> {
     rows.iter().filter(|r| helpers::is_cert_overdue(r, today)).map(|r| helpers::row_i64(r, "id")).collect()
 }
 
-fn travel_filters(conn: &rusqlite::Connection, q: &F, today: &str) -> (String, Vec<SqlValue>) {
+pub fn travel_filters(conn: &rusqlite::Connection, q: &F, ids: &[i64], today: &str) -> (String, Vec<SqlValue>) {
     let mut w = String::new();
     let mut p: Vec<SqlValue> = vec![];
     let s = q.get("search").map(|x| x.trim()).unwrap_or("");
@@ -70,6 +70,10 @@ fn travel_filters(conn: &rusqlite::Connection, q: &F, today: &str) -> (String, V
     if !df.is_empty() { w.push_str(" AND travel_end >= ? AND travel_end != ''"); p.push(T(df)); }
     let dt = v::parse_date_input(q.get("date_to").map(|s| s.as_str()).unwrap_or(""));
     if !dt.is_empty() { w.push_str(" AND travel_start <= ? AND travel_start != ''"); p.push(T(dt)); }
+    if !ids.is_empty() {
+        w.push_str(&format!(" AND id IN ({})", vec!["?"; ids.len()].join(",")));
+        for id in ids { p.push(I(*id)); }
+    }
     (w, p)
 }
 
@@ -80,7 +84,7 @@ pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respons
     let today = helpers::now_local_ymd(st.cfg.tz_offset_hours);
     let (items, mut overdue_ids, mut deadlines) = {
         let conn = st.db.lock().unwrap();
-        let (w, p) = travel_filters(&conn, &q, &today);
+        let (w, p) = travel_filters(&conn, &q, &[], &today);
         let items = helpers::list_all(&conn, &format!("SELECT * FROM travel_details WHERE 1=1{w} ORDER BY created_at DESC"), &p);
         (items, vec![], serde_json::Map::new())
     };

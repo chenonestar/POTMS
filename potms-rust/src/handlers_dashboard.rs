@@ -6,12 +6,18 @@ use axum::response::Response;
 use serde_json::json;
 
 pub async fn backup_now(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
-    let req = Req::new(&st, &headers, &uri);
+    let mut req = Req::new(&st, &headers, &uri);
     if let Some(r) = require_login(&st, &req) {
         return r;
     }
-    let mut req = req;
-    flash(&mut req, "备份功能移植中。", "info");
+    let (date, pruned) = {
+        let conn = st.db.lock().unwrap();
+        let res = crate::backup::run_daily_backup(&conn, &st.cfg, true);
+        helpers::log_action(&conn, &req.sess.username(), &req.ip, "backup", "database", None, &format!("手动备份 {}，清理旧备份 {} 个", res.0, res.1), None, None);
+        res
+    };
+    let _ = pruned;
+    flash(&mut req, &format!("数据库已备份（{date}）。"), "success");
     redirect(&st, &req, "dashboard.index", &[])
 }
 
@@ -24,6 +30,11 @@ pub async fn index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respon
     let warn_date = {
         let d = time::OffsetDateTime::now_utc() + time::Duration::days(crate::config::CERT_WARN_DAYS);
         format!("{:04}{:02}{:02}", d.year(), d.month() as u8, d.day())
+    };
+    let backup_date = {
+        let conn = st.db.lock().unwrap();
+        crate::backup::run_daily_backup(&conn, &st.cfg, false); // 每日备份检查（同日跳过）
+        crate::backup::latest_backup(&st.cfg)
     };
 
     let data = {
@@ -71,7 +82,7 @@ pub async fn index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respon
             "by_unit": by_unit, "by_political": by_political, "by_rank": by_rank,
             "cert_in_storage": cert_in_storage, "cert_in_use": cert_in_use, "cert_overdue": overdue.len(),
             "expiring": expiring, "overdue": overdue,
-            "recent_travel": recent_travel, "backup_date": "",
+            "recent_travel": recent_travel, "backup_date": backup_date,
         })
     };
     page(&st, &mut req, "dashboard.html", data)

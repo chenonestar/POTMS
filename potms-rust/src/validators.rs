@@ -279,3 +279,49 @@ pub fn check_identity(data: &Form, birth_field: &str, gender_field: &str) -> Vec
     }
     errs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_id_number() {
+        assert!(validate_id_number("110101199001012133").0);
+        assert!(!validate_id_number("11010119900101213X").0); // 错误校验位
+        assert!(!validate_id_number("123").0);
+    }
+
+    #[test]
+    fn test_gender_match() {
+        // 第17位 3 为奇数 → 男
+        assert!(validate_gender_match("110101199001012133", "男").0);
+        assert!(!validate_gender_match("110101199001012133", "女").0);
+    }
+
+    #[test]
+    fn test_date_format() {
+        assert!(validate_date_format("20260101").0);
+        assert!(!validate_date_format("20260230").0); // 2月30日不存在
+        assert!(!validate_date_format("2026131").0);
+    }
+
+    #[test]
+    fn test_working_days() {
+        // 2026-08-11(周二) + 10 工作日 → 2026-08-25(周二)
+        assert_eq!(add_working_days("20260811", 10), "20260825");
+    }
+
+    #[test]
+    fn test_travel_range() {
+        assert!(validate_travel_range("2026/08/01-2026/08/11").0);
+        assert!(!validate_travel_range("2026/08/11-2026/08/01").0); // 起晚于止
+        assert_eq!(format_travel_range("20260801", "20260811"), "2026/08/01-2026/08/11");
+    }
+
+    #[test]
+    fn test_parse_travel_range() {
+        let (s, e) = parse_travel_range("2026-8-1-2026-8-11");
+        assert_eq!(s, "20260801");
+        assert_eq!(e, "20260811");
+    }
+}

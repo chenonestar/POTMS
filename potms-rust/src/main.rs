@@ -11,6 +11,12 @@ mod handlers_dashboard;
 mod handlers_personnel;
 mod handlers_certificate;
 mod handlers_travel;
+mod handlers_decontrol;
+mod handlers_misc;
+mod handlers_export;
+mod handlers_import;
+mod excel;
+mod backup;
 
 use axum::{
     extract::{Path, State},
@@ -113,6 +119,22 @@ pub fn opt_list(pairs: &[(&str, &str)]) -> serde_json::Value {
     )
 }
 
+// RFC5987 文件名转义（附件/导出下载名）
+pub fn url_escape(s: &str) -> String {
+    const HEX: &[u8] = b"0123456789ABCDEF";
+    let mut out = String::new();
+    for &c in s.as_bytes() {
+        if c.is_ascii_alphanumeric() || c == b'.' || c == b'-' || c == b'_' {
+            out.push(c as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(c >> 4) as usize] as char);
+            out.push(HEX[(c & 15) as usize] as char);
+        }
+    }
+    out
+}
+
 // selectedIDs：读取 ids 查询参数（逗号分隔）
 pub fn selected_ids(query: &str) -> Vec<i64> {
     query_args(query)
@@ -150,16 +172,6 @@ fn mime_of(path: &str) -> &'static str {
     } else {
         "application/octet-stream"
     }
-}
-
-// 未移植路由的临时占位（逐步替换为真实处理器）
-async fn todo_page(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
-    let mut req = Req::new(&st, &headers, &uri);
-    if let Some(r) = require_login(&st, &req) {
-        return r;
-    }
-    flash(&mut req, "该功能正在移植中……", "info");
-    page(&st, &mut req, "errors/500.html", serde_json::json!({"message": "开发中"}))
 }
 
 async fn not_found(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
@@ -224,14 +236,42 @@ async fn main() {
         .route("/travel/attachment/:att_id/download", get(handlers_travel::att_download))
         .route("/travel/attachment/:att_id/preview", get(handlers_travel::att_preview))
         .route("/travel/attachment/:att_id/delete", post(handlers_travel::att_delete))
-        // 以下为占位路由（逐步替换）
-        .route("/decontrol/", get(todo_page))
-        .route("/logs/", get(todo_page))
-        .route("/org/", get(todo_page))
-        .route("/dict/", get(todo_page))
-        .route("/submit-unit/", get(todo_page))
-        .route("/import/", get(todo_page))
-        .route("/search", get(todo_page))
+        // 撤控
+        .route("/decontrol/", get(handlers_decontrol::list))
+        .route("/decontrol/new/:filing_id", get(handlers_decontrol::new_get).post(handlers_decontrol::new_post))
+        .route("/decontrol/:dec_id", get(handlers_decontrol::view))
+        // 日志
+        .route("/logs/", get(handlers_misc::logs_index))
+        .route("/logs/export", get(handlers_misc::logs_export))
+        // 组织架构
+        .route("/org/", get(handlers_misc::org_index))
+        .route("/org/add", post(handlers_misc::org_add))
+        .route("/org/:org_id/edit", post(handlers_misc::org_edit))
+        .route("/org/:org_id/delete", post(handlers_misc::org_delete))
+        // 数据字典
+        .route("/dict/", get(handlers_misc::dict_index))
+        .route("/dict/add", post(handlers_misc::dict_add))
+        .route("/dict/:dict_id/edit", post(handlers_misc::dict_edit))
+        .route("/dict/:dict_id/delete", post(handlers_misc::dict_delete))
+        // 报送单位
+        .route("/submit-unit/", get(handlers_misc::su_index))
+        .route("/submit-unit/add", post(handlers_misc::su_add))
+        .route("/submit-unit/:uid/edit", post(handlers_misc::su_edit))
+        .route("/submit-unit/:uid/delete", post(handlers_misc::su_delete))
+        // 全局搜索
+        .route("/search", get(handlers_misc::search))
+        // 导出
+        .route("/export/info", get(handlers_export::info_export))
+        .route("/export/filing", get(handlers_export::filing_export))
+        .route("/export/certificate", get(handlers_export::certificate_export))
+        .route("/export/travel", get(handlers_export::travel_export))
+        .route("/export/decontrol", get(handlers_export::decontrol_export))
+        // 打印
+        .route("/print/batch/:print_type", get(handlers_export::batch_print))
+        .route("/print/:print_type/:id", get(handlers_export::print_view))
+        // 导入
+        .route("/import/", get(handlers_import::index_get).post(handlers_import::index_post))
+        .route("/import/template", get(handlers_import::download_template))
         .route("/static/*path", get(static_handler))
         .layer(axum::extract::DefaultBodyLimit::max(config::MAX_CONTENT_LENGTH))
         .fallback(not_found)
