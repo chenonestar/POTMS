@@ -146,6 +146,26 @@ pub fn build_env(db: Db, cfg: Config) -> Environment<'static> {
         Value::from(format!("{base}?{}", qs.join("&")))
     });
 
+    // 证照到期预警助手（读取 State 中 _warn_set / _warn_map，由证照列表 handler 注入）
+    env.add_function("cert_warn", |state: &State, id: i64, label: &str| -> bool {
+        let key = format!("{id}:{label}");
+        state.lookup("_warn_set")
+            .and_then(|m| m.get_item(&Value::from(key)).ok())
+            .map(|v| v.is_true()).unwrap_or(false)
+    });
+    env.add_function("cert_warn_label", |state: &State, id: i64| -> Value {
+        state.lookup("_warn_map")
+            .and_then(|m| m.get_item(&Value::from(id.to_string())).ok())
+            .and_then(|a| a.get_item(&Value::from(0)).ok())
+            .unwrap_or_else(|| Value::from(""))
+    });
+    env.add_function("cert_warn_expiry", |state: &State, id: i64| -> Value {
+        state.lookup("_warn_map")
+            .and_then(|m| m.get_item(&Value::from(id.to_string())).ok())
+            .and_then(|a| a.get_item(&Value::from(1)).ok())
+            .unwrap_or_else(|| Value::from(""))
+    });
+
     // DB 数据源全局（捕获 db）
     let d = db.clone();
     env.add_function("dict_opts", move |cat: &str| -> Value {

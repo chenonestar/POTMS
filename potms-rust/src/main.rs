@@ -9,6 +9,8 @@ mod validators;
 mod handlers_auth;
 mod handlers_dashboard;
 mod handlers_personnel;
+mod handlers_certificate;
+mod handlers_travel;
 
 use axum::{
     extract::{Path, State},
@@ -205,9 +207,24 @@ async fn main() {
         .route("/personnel/filing/:filing_id/edit", get(handlers_personnel::filing_edit_get).post(handlers_personnel::filing_edit_post))
         .route("/personnel/:filing_id", get(handlers_personnel::view))
         .route("/personnel/:filing_id/delete", post(handlers_personnel::delete))
+        // 证照
+        .route("/certificate/", get(handlers_certificate::list))
+        .route("/certificate/new", get(handlers_certificate::new_get).post(handlers_certificate::new_post))
+        .route("/certificate/:cert_id/edit", get(handlers_certificate::edit_get).post(handlers_certificate::edit_post))
+        .route("/certificate/:cert_id/delete", post(handlers_certificate::delete))
+        // 出国明细 + 附件
+        .route("/travel/", get(handlers_travel::list))
+        .route("/travel/attachments", get(handlers_travel::attachments))
+        .route("/travel/new", get(handlers_travel::new_get).post(handlers_travel::new_post))
+        .route("/travel/:travel_id/edit", get(handlers_travel::edit_get).post(handlers_travel::edit_post))
+        .route("/travel/:travel_id", get(handlers_travel::view))
+        .route("/travel/:travel_id/delete", post(handlers_travel::delete))
+        .route("/travel/:travel_id/cancel", post(handlers_travel::cancel))
+        .route("/travel/:travel_id/restore", post(handlers_travel::restore))
+        .route("/travel/attachment/:att_id/download", get(handlers_travel::att_download))
+        .route("/travel/attachment/:att_id/preview", get(handlers_travel::att_preview))
+        .route("/travel/attachment/:att_id/delete", post(handlers_travel::att_delete))
         // 以下为占位路由（逐步替换）
-        .route("/certificate/", get(todo_page))
-        .route("/travel/", get(todo_page))
         .route("/decontrol/", get(todo_page))
         .route("/logs/", get(todo_page))
         .route("/org/", get(todo_page))
@@ -216,6 +233,7 @@ async fn main() {
         .route("/import/", get(todo_page))
         .route("/search", get(todo_page))
         .route("/static/*path", get(static_handler))
+        .layer(axum::extract::DefaultBodyLimit::max(config::MAX_CONTENT_LENGTH))
         .fallback(not_found)
         .with_state(state);
 
