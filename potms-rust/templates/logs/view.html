@@ -65,11 +65,11 @@
                     <td><small>{{ log.created_at | localtime }}</small></td>
                     <td>
                         {% set action_labels = {'create': '新建', 'update': '修改', 'delete': '删除', 'cancel': '取消行程', 'restore': '恢复行程', 'lock': '登录锁定', 'export': '导出', 'import': '导入', 'backup': '备份'} %}
-                        <span class="badge bg-{{ 'success' if log.action == 'create' else 'warning' if log.action == 'update' else 'danger' if log.action == 'delete' else 'secondary' if log.action == 'backup' else 'info' }}">{{ action_labels.get(log.action, log.action) }}</span>
+                        <span class="badge bg-{{ 'success' if log.action == 'create' else 'warning' if log.action == 'update' else 'danger' if log.action == 'delete' else 'secondary' if log.action == 'backup' else 'info' }}">{{ action_labels[log.action] | default(log.action) }}</span>
                     </td>
                     <td>
                         {% set target_labels = {'personnel_info': '信息表', 'personnel_filing': '备案表', 'certificates': '证照表', 'travel_details': '明细表', 'decontrol_filing': '撤控表', 'batch': '批量导入'} %}
-                        <small>{{ target_labels.get(log.target_type, log.target_type) }}</small>
+                        <small>{{ target_labels[log.target_type] | default(log.target_type) }}</small>
                     </td>
                     <td>
                         <small class="text-muted">{{ log.detail or '—' }}</small>
