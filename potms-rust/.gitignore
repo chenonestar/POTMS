@@ -1,0 +1,7 @@
+target/
+data.db*
+.secret_key
+uploads/
+exports/
+backup/
+*.exe

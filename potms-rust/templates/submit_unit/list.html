@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}报送单位维护{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-buildings"></i> 报送单位维护</h4>
+
+<div class="alert alert-info d-flex align-items-center py-2">
+    <i class="bi bi-info-circle me-2"></i>
+    <div class="small">维护常用报送单位（名称 + 联系人 + 电话）。在撤控备案表中选择<strong>报送单位名称</strong>时，联系人与电话会自动带出（仍可修改）。已被撤控记录引用的单位不可删除。</div>
+</div>
+
+<div class="table-card"><div class="table-responsive">
+<table class="table table-hover mb-0 align-middle">
+    <thead class="table-light"><tr><th>报送单位名称</th><th>联系人</th><th>联系电话</th><th style="width:64px">排序</th><th style="width:110px" class="text-end">操作</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.name }}</td>
+        <td>{{ r.contact or '-' }}</td>
+        <td>{{ r.phone or '-' }}</td>
+        <td>{{ r.sort_order }}</td>
+        <td class="text-end">
+            <button class="btn btn-sm btn-outline-warning" onclick="editSU(this)" data-id="{{ r.id }}" data-name="{{ r.name }}" data-contact="{{ r.contact or '' }}" data-phone="{{ r.phone or '' }}" data-sort="{{ r.sort_order }}" title="编辑"><i class="bi bi-pencil"></i></button>
+            <form method="POST" action="{{ url_for('submit_unit.delete', uid=r.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ r.name }}」吗？');">
+                <button class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+            </form>
+        </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="text-center text-muted py-4">暂无报送单位，请在下方添加。</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+<div class="card mt-3"><div class="card-body py-2">
+    <form method="POST" action="{{ url_for('submit_unit.add') }}" class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="form-label mb-0 small">报送单位名称</label><input class="form-control form-control-sm" name="name" placeholder="必填" required></div>
+        <div class="col-md-3"><label class="form-label mb-0 small">联系人</label><input class="form-control form-control-sm" name="contact"></div>
+        <div class="col-md-3"><label class="form-label mb-0 small">联系电话</label><input class="form-control form-control-sm" name="phone"></div>
+        <div class="col-md-1"><label class="form-label mb-0 small">排序</label><input class="form-control form-control-sm" name="sort_order" value="0"></div>
+        <div class="col-md-1"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i> 添加</button></div>
+    </form>
+</div></div>
+
+<!-- 编辑模态框 -->
+<div class="modal fade" id="editSUModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="editSUForm">
+                <div class="modal-header"><h5 class="modal-title">编辑报送单位</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-2"><label class="form-label">报送单位名称</label><input class="form-control" name="name" id="suName" required></div>
+                    <div class="row g-2">
+                        <div class="col"><label class="form-label">联系人</label><input class="form-control" name="contact" id="suContact"></div>
+                        <div class="col"><label class="form-label">联系电话</label><input class="form-control" name="phone" id="suPhone"></div>
+                    </div>
+                    <div class="mt-2"><label class="form-label">排序</label><input class="form-control" name="sort_order" id="suSort" value="0"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function editSU(btn) {
+    document.getElementById('suName').value = btn.getAttribute('data-name');
+    document.getElementById('suContact').value = btn.getAttribute('data-contact');
+    document.getElementById('suPhone').value = btn.getAttribute('data-phone');
+    document.getElementById('suSort').value = btn.getAttribute('data-sort');
+    document.getElementById('editSUForm').action = '/submit-unit/' + btn.getAttribute('data-id') + '/edit';
+    new bootstrap.Modal(document.getElementById('editSUModal')).show();
+}
+</script>
+{% endblock %}

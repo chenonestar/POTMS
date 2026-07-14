@@ -1,0 +1,37 @@
+[package]
+name = "potms"
+version = "1.0.0"
+edition = "2021"
+description = "因私出国（境）人员审批管理系统 — 纯 Rust 版（axum + minijinja + rusqlite，单文件 exe）"
+
+[[bin]]
+name = "potms"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["limit"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+minijinja = { version = "2", features = ["loader", "builtins"] }
+rust-embed = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bcrypt = "0.15"
+pbkdf2 = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+urlencoding = "2"
+rust_xlsxwriter = "0.79"
+calamine = "0.26"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}备案人员信息登记表{% endblock %}
+{% block content %}
+<h4 class="mb-3">
+    <i class="bi bi-person-plus"></i>
+    {{ '编辑' if editing else '新增' }}备案人员信息登记表
+</h4>
+
+{% if not editing %}
+<div class="d-flex align-items-center mb-4" style="max-width:520px;">
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-primary" style="width:26px;height:26px;line-height:18px;">1</span>
+        <div class="small mt-1 fw-bold text-primary">信息登记表</div>
+    </div>
+    <div class="flex-fill border-top border-2 mx-2" style="margin-top:-14px;"></div>
+    <div class="text-center" style="width:140px;">
+        <span class="badge rounded-pill bg-secondary" style="width:26px;height:26px;line-height:18px;">2</span>
+        <div class="small mt-1 text-muted">登记备案表</div>
+    </div>
+</div>
+{% endif %}
+
+{% set all_orgs = org_flat() %}{# 缓存一次查询，下方三处循环复用 #}
+<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_info"{% endif %}>
+<div class="form-section">
+    <h5>基本信息</h5>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label required">单位</label>
+            <select class="form-select" name="unit" id="orgUnit" required onchange="updateDept()">
+                <option value="">请选择单位</option>
+                {% for o in all_orgs if o.parent_id == 0 %}
+                <option value="{{ o.name }}" data-oid="{{ o.id }}" {{ 'selected' if data['unit'] == o.name }}>{{ o.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">单位为顶级组织；部门为其下级。可在"组织架构"中维护层级。</div>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label required">部门</label>
+            <select class="form-select" name="department" id="orgDept" required>
+                <option value="">请先选择单位</option>
+                {% for o in all_orgs if o.depth >= 1 %}
+                <option value="{{ o.name }}" data-root="{{ o.root_id }}" data-oid="{{ o.id }}" data-depth="{{ o.depth }}" style="display:none" {{ 'selected' if data['department'] == o.name }}>{{ o.indent }}{{ o.name }}</option>
+                {% endfor %}
+                {# 无下级部门的单位：回退为可选“单位本身” #}
+                {% for o in all_orgs if o.depth == 0 %}
+                <option value="{{ o.name }}" data-root="{{ o.id }}" data-oid="{{ o.id }}" data-depth="0" style="display:none" {{ 'selected' if data['department'] == o.name }}>{{ o.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">按层级缩进展示部门 / 子部门，任意层级均可选。</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label required">姓名</label>
+            <input type="text" class="form-control" name="name" value="{{ data.name or '' }}"
+                   placeholder="与身份证一致" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label required">性别</label>
+            <select class="form-select" name="gender" required>
+                <option value="">请选择</option>
+                <option value="男" {{ 'selected' if data.gender == '男' }}>男</option>
+                <option value="女" {{ 'selected' if data.gender == '女' }}>女</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">出生日期</label>
+            <input type="text" class="form-control" name="birth_date" value="{{ data.birth_date or '' }}"
+                   placeholder="YYYYMMDD 如19800103" maxlength="8" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">参加工作日期</label>
+            <input type="text" class="form-control" name="work_start_date" value="{{ data.work_start_date or '' }}"
+                   placeholder="YYYYMMDD" maxlength="8" required>
+        </div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-6">
+            <label class="form-label required">身份证号</label>
+            <input type="text" class="form-control" name="id_number" value="{{ data.id_number or '' }}"
+                   placeholder="18位，需与出生日期一致" maxlength="18" required>
+            <div class="form-text">系统校验校验位并核对出生日期；登记备案表、明细表将自动带入此身份证。</div>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>学历与职称</h5>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label required">学历</label>
+            <select class="form-select" name="education" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('education') %}
+                <option value="{{ o.code }}" {{ 'selected' if data['education'] == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">学位</label>
+            <select class="form-select" name="degree" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('degree') %}
+                <option value="{{ o.code }}" {{ 'selected' if data['degree'] == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">职称</label>
+            <select class="form-select" name="title" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('title') %}
+                <option value="{{ o.code }}" {{ 'selected' if data['title'] == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label required">职级</label>
+            <select class="form-select" name="rank" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('rank') %}
+                <option value="{{ o.code }}" {{ 'selected' if data['rank'] == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>政治面貌与职务</h5>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label required">政治面貌</label>
+            <select class="form-select" name="political_status" id="politicalStatus" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('political_status') %}
+                <option value="{{ o.value }}" {{ 'selected' if data['political_status'] == o.value }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" id="partyDateLabel">入党日期</label>
+            <input type="text" class="form-control" name="party_join_date" id="partyJoinDate"
+                   value="{{ data.party_join_date or '' }}" placeholder="中共党员时必填" maxlength="8">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label required">职务（岗位名称）</label>
+            <input type="text" class="form-control" name="position" value="{{ data.position or '' }}" required>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="{{ url_for('personnel.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// 单位→部门树状级联：显示该单位下的所有部门/子部门（按层级缩进），任意层级可选
+function updateDept(preserve) {
+    var unitSel = document.getElementById('orgUnit');
+    var deptSel = document.getElementById('orgDept');
+    var keep = preserve ? deptSel.value : '';
+    var oid = unitSel.options[unitSel.selectedIndex].getAttribute('data-oid') || '';
+    var opts = deptSel.options, firstReal = -1, selfIdx = -1, realCount = 0;
+    for (var i = 0; i < opts.length; i++) {
+        if (!opts[i].value) { continue; }  // 占位项
+        var belongs = ((opts[i].getAttribute('data-root') || '') === oid);
+        var isSelf = (opts[i].getAttribute('data-depth') === '0');
+        if (belongs && !isSelf) {
+            opts[i].style.display = '';                 // 真实部门/子部门
+            if (firstReal < 0) firstReal = i;
+            realCount++;
+        } else {
+            opts[i].style.display = 'none';
+            if (belongs && isSelf) selfIdx = i;         // 记录“单位本身”回退项
+        }
+    }
+    // 该单位无任何下级部门时，回退为可选“单位本身”
+    if (realCount === 0 && selfIdx >= 0) {
+        opts[selfIdx].style.display = '';
+        firstReal = selfIdx;
+    }
+    // 保留已保存的部门（编辑态）
+    if (keep) deptSel.value = keep;
+    var cur = deptSel.selectedIndex;
+    var valid = cur > 0 && opts[cur].style.display !== 'none';
+    if (!valid) deptSel.selectedIndex = firstReal >= 0 ? firstReal : 0;
+}
+// Init on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('orgUnit').value) updateDept(true);
+});
+// 入党日期联动：中共党员/预备党员时显示
+(function() {
+    var sel = document.getElementById('politicalStatus');
+    var input = document.getElementById('partyJoinDate');
+    var label = document.getElementById('partyDateLabel');
+    function toggle() {
+        var v = sel.value;
+        var show = v === '中共党员' || v === '中共预备党员';
+        input.style.display = show ? '' : 'none';
+        label.style.display = show ? '' : 'none';
+        if (!show) input.value = '';
+    }
+    sel.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
+{% endblock %}

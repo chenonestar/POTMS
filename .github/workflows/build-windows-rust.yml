@@ -1,0 +1,57 @@
+name: Build Windows EXE (Rust)
+
+on:
+  push:
+    branches: [main, claude/rust-version]
+    paths:
+      - 'potms-rust/**'
+      - '.github/workflows/build-windows-rust.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试（Linux）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: potms-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: potms-rust
+      - name: cargo test
+        run: cargo test --release
+
+  build-windows:
+    name: 构建 Windows EXE
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: potms-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: potms-rust
+      - name: 构建 release exe
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: 组装发布目录（单文件 exe，模板/静态已嵌入）
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/POTMS-rust | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/potms.exe dist/POTMS-rust/POTMS.exe
+          Copy-Item README.md dist/POTMS-rust/
+          Get-ChildItem dist/POTMS-rust
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: POTMS-rust-windows-x64
+          path: potms-rust/dist/POTMS-rust
+          if-no-files-found: error
+          retention-days: 30

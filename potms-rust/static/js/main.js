@@ -1,0 +1,456 @@
+/**
+ * 通用前端功能
+ */
+
+// ================= CSRF：向所有 POST 表单自动注入令牌 =================
+(function () {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    window.CSRF_TOKEN = token;
+
+    function injectInto(form) {
+        if (!form || (form.method || '').toLowerCase() !== 'post') return;
+        var existing = form.querySelector('input[name="csrf_token"]');
+        if (existing) { existing.value = token; return; }
+        var inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'csrf_token';
+        inp.value = token;
+        form.appendChild(inp);
+    }
+
+    // 提交瞬间注入（捕获阶段，先于其它 submit 处理），覆盖动态创建/改 action 的表单
+    document.addEventListener('submit', function (e) { injectInto(e.target); }, true);
+    // 载入时预注入一遍（应对通过 form.submit() 触发、不派发 submit 事件的场景）
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('form').forEach(injectInto);
+    });
+})();
+
+document.addEventListener('DOMContentLoaded', function () {
+    // --- 确认删除对话框 ---
+    const confirmModal = document.getElementById('confirmModal');
+    if (confirmModal) {
+        confirmModal.addEventListener('show.bs.modal', function (event) {
+            const trigger = event.relatedTarget;
+            const message = trigger.getAttribute('data-message') || '确定要执行此操作吗？';
+            const actionUrl = trigger.getAttribute('data-action');
+            document.getElementById('confirmMessage').textContent = message;
+            document.getElementById('confirmForm').action = actionUrl;
+        });
+    }
+
+    // --- 自动关闭 Alert（错误/警告不自动消失，避免用户没看清就没了）---
+    document.querySelectorAll('.alert-dismissible:not(.alert-danger):not(.alert-warning)').forEach(function (alert) {
+        setTimeout(function () {
+            const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+            if (bsAlert) bsAlert.close();
+        }, 5000);
+    });
+
+    // --- 侧边栏活跃状态（首页需精确匹配，避免恒亮）---
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.sidebar .nav-link').forEach(function (link) {
+        const href = link.getAttribute('href');
+        const active = (href === '/') ? (currentPath === '/') : currentPath.startsWith(href);
+        if (active) link.classList.add('active');
+    });
+
+    // --- 侧边栏移动端折叠 ---
+    const sbToggle = document.getElementById('sidebarToggle');
+    if (sbToggle) {
+        sbToggle.addEventListener('click', function () {
+            const sb = document.querySelector('.sidebar');
+            if (sb) sb.classList.toggle('show');
+        });
+    }
+
+    // --- 退出登录时清空本地草稿（草稿含身份证等敏感字段，防共用电脑残留）---
+    document.querySelectorAll('a[href$="/logout"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+            try {
+                Object.keys(localStorage)
+                    .filter(function (k) { return k.indexOf('draft_') === 0; })
+                    .forEach(function (k) { localStorage.removeItem(k); });
+            } catch (e) {}
+        });
+    });
+
+    // --- 可访问性：图标按钮 title → aria-label ---
+    document.querySelectorAll('[title]:not([aria-label])').forEach(function (el) {
+        el.setAttribute('aria-label', el.getAttribute('title'));
+    });
+
+    // --- 日期字段即时校验：拒绝不存在的日期（如 20260230） ---
+    function isRealDate(s) {
+        if (!/^\d{8}$/.test(s)) return false;
+        var y = +s.slice(0, 4), m = +s.slice(4, 6), d = +s.slice(6, 8);
+        if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+        var dt = new Date(y, m - 1, d);
+        return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+    }
+    document.querySelectorAll('input[placeholder="YYYYMMDD"]').forEach(function (el) {
+        function check() {
+            var v = el.value.trim();
+            if (v && !isRealDate(v)) {
+                el.setCustomValidity('日期不合法，请输入存在的日期（YYYYMMDD）。');
+            } else {
+                el.setCustomValidity('');
+            }
+        }
+        el.addEventListener('blur', check);
+        el.addEventListener('input', function () { el.setCustomValidity(''); });
+    });
+
+    // --- 计划出行日期：固定格式 YYYY/MM/DD-YYYY/MM/DD 输入掩码 + 即时校验 ---
+    document.querySelectorAll('input[name="travel_dates"]').forEach(function (el) {
+        el.setAttribute('maxlength', '21');
+        // 掩码：仅保留数字，按 YYYY/MM/DD-YYYY/MM/DD 自动补分隔符
+        function mask() {
+            var ds = el.value.replace(/\D/g, '').slice(0, 16);
+            var out = '';
+            for (var i = 0; i < ds.length && i < 8; i++) { if (i === 4 || i === 6) out += '/'; out += ds[i]; }
+            if (ds.length > 8) {
+                out += '-';
+                for (var j = 8; j < ds.length; j++) { if (j === 12 || j === 14) out += '/'; out += ds[j]; }
+            }
+            el.value = out;
+        }
+        function check() {
+            var ds = el.value.replace(/\D/g, '');
+            if (!ds) { el.setCustomValidity(''); return; }
+            if (ds.length !== 8 && ds.length !== 16) {
+                el.setCustomValidity('请按 YYYY/MM/DD-YYYY/MM/DD 完整填写起止日期。');
+                return;
+            }
+            var start = ds.slice(0, 8), end = ds.length === 16 ? ds.slice(8, 16) : start;
+            if (!isRealDate(start)) { el.setCustomValidity('起始日期不合法（' + start + '）。'); return; }
+            if (!isRealDate(end)) { el.setCustomValidity('结束日期不合法（' + end + '）。'); return; }
+            if (start > end) { el.setCustomValidity('起始日期不应晚于结束日期。'); return; }
+            el.setCustomValidity('');
+        }
+        el.addEventListener('input', function () { mask(); el.setCustomValidity(''); });
+        el.addEventListener('blur', check);
+        mask();  // 载入时把已有值规整为统一格式
+    });
+
+    // --- 身份证号即时校验：18位 + 校验位；并与性别顺序码交叉核对 ---
+    var ID_W = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2], ID_C = '10X98765432';
+    function idCheckMsg(id) {
+        id = (id || '').toUpperCase();
+        if (!id) return '';
+        if (!/^\d{17}[0-9X]$/.test(id)) return '身份证号须为18位（前17位数字，末位数字或X）。';
+        var sum = 0;
+        for (var i = 0; i < 17; i++) sum += (+id[i]) * ID_W[i];
+        if (ID_C[sum % 11] !== id[17]) return '身份证校验位不正确，应为 ' + ID_C[sum % 11] + '。';
+        var b = id.slice(6, 14), y = +b.slice(0, 4), m = +b.slice(4, 6), d = +b.slice(6, 8);
+        var dt = new Date(y, m - 1, d);
+        if (!(dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d)) return '身份证号中出生日期不合法。';
+        return '';
+    }
+    document.querySelectorAll('input[name="id_number"]').forEach(function (el) {
+        if (el.readOnly) return;
+        var genderEl = el.form ? el.form.querySelector('[name="gender"]') : null;
+        function check() {
+            var id = el.value.trim().toUpperCase();
+            var msg = idCheckMsg(id);
+            if (!msg && genderEl && genderEl.value && /^\d{17}[0-9X]$/.test(id)) {
+                var expect = (+id[16]) % 2 === 1 ? '男' : '女';
+                if (genderEl.value !== expect) msg = '性别与身份证号不一致（身份证中为 ' + expect + '）。';
+            }
+            el.setCustomValidity(msg);
+        }
+        el.addEventListener('blur', check);
+        el.addEventListener('input', function () { el.setCustomValidity(''); });
+        if (genderEl) genderEl.addEventListener('change', check);
+    });
+
+    // --- 表单前端必填校验：阻止提交并定位首个错误字段 ---
+    document.querySelectorAll('form.needs-validation').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                e.stopPropagation();
+                const first = form.querySelector(':invalid');
+                if (first) {
+                    first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    // 显示原生校验气泡（含自定义日期/身份证/性别错误信息）
+                    form.reportValidity();
+                }
+            }
+            form.classList.add('was-validated');
+        }, false);
+    });
+});
+
+// ================= 列表通用：选中导出 / 筛选导出 / 列显示 =================
+
+// 全选/取消全选行复选框
+function toggleAll(el) {
+    document.querySelectorAll('.row-check').forEach(function (cb) { cb.checked = el.checked; });
+}
+
+// 批量打印选中行
+function batchPrint(type) {
+    var ids = selectedRowIds();
+    if (!ids.length) { alert('请先勾选要打印的记录。'); return; }
+    window.open('/print/batch/' + type + '?ids=' + ids.join(','), '_blank');
+}
+
+// 收集已勾选行的 ID
+function selectedRowIds() {
+    var ids = [];
+    document.querySelectorAll('.row-check:checked').forEach(function (cb) { ids.push(cb.value); });
+    return ids;
+}
+
+// 导出选中行
+function exportSelected(baseUrl) {
+    var ids = selectedRowIds();
+    if (!ids.length) { alert('请先勾选要导出的记录。'); return; }
+    window.location = baseUrl + '?ids=' + ids.join(',');
+}
+
+// 按当前筛选条件导出（沿用地址栏查询串）
+function exportFiltered(baseUrl) {
+    window.location = baseUrl + window.location.search;
+}
+
+// 表单暂存草稿：输入自动存 localStorage，加载时可恢复，提交后清除
+function initFormDraft(form) {
+    var key = 'draft_' + form.getAttribute('data-draft');
+    function fieldEls() { return form.querySelectorAll('input[name], select[name], textarea[name]'); }
+    function skip(el) { return el.type === 'file' || el.type === 'password' || el.type === 'hidden' || el.name === 'csrf_token'; }
+    function serialize() {
+        var o = {};
+        fieldEls().forEach(function (el) { if (!skip(el)) o[el.name] = el.value; });
+        return o;
+    }
+    function save() { try { localStorage.setItem(key, JSON.stringify(serialize())); } catch (e) {} }
+    form.addEventListener('input', save);
+    form.addEventListener('change', save);
+    form.addEventListener('submit', function () { try { localStorage.removeItem(key); } catch (e) {} });
+
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { saved = null; }
+    if (saved) {
+        var bar = document.createElement('div');
+        bar.className = 'alert alert-info d-flex justify-content-between align-items-center py-2';
+        bar.innerHTML = '<span><i class="bi bi-clock-history"></i> 发现上次未保存的草稿，是否恢复？</span>' +
+            '<span><button type="button" class="btn btn-sm btn-primary me-1" data-act="restore">恢复草稿</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary" data-act="discard">清除</button></span>';
+        form.parentNode.insertBefore(bar, form);
+        bar.querySelector('[data-act=restore]').addEventListener('click', function () {
+            fieldEls().forEach(function (el) {
+                if (skip(el) || el.readOnly) return;
+                if (Object.prototype.hasOwnProperty.call(saved, el.name)) {
+                    el.value = saved[el.name];
+                    el.dispatchEvent(new Event('change'));
+                }
+            });
+            bar.remove();
+        });
+        bar.querySelector('[data-act=discard]').addEventListener('click', function () {
+            try { localStorage.removeItem(key); } catch (e) {}
+            bar.remove();
+        });
+    }
+}
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form[data-draft]').forEach(initFormDraft);
+});
+
+// 户口所在地 省市区三级联动（数据来自 regions.js，写入目标文本框）
+function initRegionCascade(provId, cityId, distId, targetId) {
+    var regions = window.CHINA_REGIONS || [];
+    var prov = document.getElementById(provId), city = document.getElementById(cityId),
+        dist = document.getElementById(distId), target = document.getElementById(targetId);
+    if (!prov || !city || !dist || !target || !regions.length) return;
+
+    regions.forEach(function (p) { prov.add(new Option(p.n, p.n)); });
+
+    function findProv() { return regions.filter(function (x) { return x.n === prov.value; })[0]; }
+    function findCity(p) { return p ? p.c.filter(function (x) { return x.n === city.value; })[0] : null; }
+
+    function fillCities() {
+        city.length = 1; dist.length = 1;
+        var p = findProv();
+        if (p) p.c.forEach(function (c) { city.add(new Option(c.n, c.n)); });
+    }
+    function fillDists() {
+        dist.length = 1;
+        var c = findCity(findProv());
+        if (c) c.d.forEach(function (d) { dist.add(new Option(d, d)); });
+    }
+    function updateTarget() {
+        var parts = [prov.value];
+        if (city.value && city.value !== '市辖区' && city.value !== '县') parts.push(city.value);
+        if (dist.value) parts.push(dist.value);
+        target.value = parts.filter(Boolean).join('');
+    }
+    prov.addEventListener('change', function () { fillCities(); updateTarget(); });
+    city.addEventListener('change', function () { fillDists(); updateTarget(); });
+    dist.addEventListener('change', updateTarget);
+}
+
+// 自定义列显示/隐藏：从 thead th[data-col] 生成菜单，localStorage 持久化
+function initColumnToggle(tableId, menuId, storageKey) {
+    var table = document.getElementById(tableId);
+    var menu = document.getElementById(menuId);
+    if (!table || !menu) return;
+    var ths = table.querySelectorAll('thead th');
+    var hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch (e) { hidden = []; }
+
+    function apply() {
+        ths.forEach(function (th, idx) {
+            var col = th.getAttribute('data-col');
+            if (!col) return;
+            var hide = hidden.indexOf(col) !== -1;
+            th.style.display = hide ? 'none' : '';
+            table.querySelectorAll('tbody tr').forEach(function (tr) {
+                var cell = tr.children[idx];
+                if (cell) cell.style.display = hide ? 'none' : '';
+            });
+        });
+    }
+
+    ths.forEach(function (th) {
+        var col = th.getAttribute('data-col');
+        if (!col) return;
+        var li = document.createElement('li');
+        var checked = hidden.indexOf(col) === -1;
+        li.innerHTML = '<label class="dropdown-item mb-0" style="cursor:pointer;">' +
+            '<input type="checkbox" class="me-1" ' + (checked ? 'checked' : '') + '> ' + col + '</label>';
+        var cb = li.querySelector('input');
+        cb.addEventListener('change', function () {
+            if (cb.checked) { hidden = hidden.filter(function (c) { return c !== col; }); }
+            else if (hidden.indexOf(col) === -1) { hidden.push(col); }
+            localStorage.setItem(storageKey, JSON.stringify(hidden));
+            apply();
+        });
+        menu.appendChild(li);
+    });
+    apply();
+}
+
+// ============ 列表分页：纯前端窗口化（服务端全量下发，浏览器按视口分页） ============
+// 服务端一次性返回全部行，前端按“视口可用高 ÷ 单行高”算出每页条数，只显示当前页的行，
+// 自建分页控件；改变窗口大小/缩放时实时重排，无需刷新。
+function clientWindowPaginate() {
+    var table = document.getElementById('mainTable');
+    if (!table || !table.tBodies.length) return;
+    var tbody = table.tBodies[0];
+    var rows = Array.prototype.filter.call(tbody.rows, function (tr) {
+        // 数据行 = 非“暂无记录”空状态行（空状态行用 td[colspan]）；
+        // 兼容有/无勾选框的列表（附件总览等只读列表无 .row-check）
+        return !tr.querySelector('td[colspan]');
+    });
+    if (!rows.length) return;
+
+    // 单行高恒定（tbody td 已 nowrap），初始全部可见时测量一次并缓存
+    var rowH = rows[0].getBoundingClientRect().height || 37;
+    var state = { page: 1, size: 12 };
+
+    var pager = document.createElement('nav');
+    pager.setAttribute('aria-label', 'Page navigation');
+    pager.className = 'mt-3';
+    var host = table.closest('.table-card') || table;
+    host.parentNode.insertBefore(pager, host.nextSibling);
+
+    function computeSize() {
+        var theadH = table.tHead ? table.tHead.getBoundingClientRect().height : 0;
+        var top = table.getBoundingClientRect().top;
+        var reserve = 96;                        // 分页条 + 底部留白
+        var avail = window.innerHeight - top - theadH - reserve;
+        return Math.max(5, Math.min(50, Math.floor(avail / rowH)));
+    }
+    function totalPages() { return Math.max(1, Math.ceil(rows.length / state.size)); }
+
+    // ---- 表头点击排序（纯前端；数据已全量在浏览器中，零后端开销）----
+    var ths = table.tHead ? table.tHead.rows[0].cells : [];
+    var sortState = { idx: -1, dir: 1 };
+    function initSorting() {
+        Array.prototype.forEach.call(ths, function (th, idx) {
+            if (th.querySelector('input')) return;          // 全选勾选框列
+            if (idx === ths.length - 1) return;             // 操作列
+            th.style.cursor = 'pointer';
+            th.title = '点击排序';
+            var ind = document.createElement('span');
+            ind.className = 'sort-ind';
+            ind.style.marginLeft = '3px';
+            th.appendChild(ind);
+            th.addEventListener('click', function () {
+                sortState.dir = (sortState.idx === idx) ? -sortState.dir : 1;
+                sortState.idx = idx;
+                rows.sort(function (a, b) {
+                    var x = (a.cells[idx] ? a.cells[idx].textContent : '').trim();
+                    var y = (b.cells[idx] ? b.cells[idx].textContent : '').trim();
+                    var nx = parseFloat(x.replace(/[,\s]/g, '')), ny = parseFloat(y.replace(/[,\s]/g, ''));
+                    var cmp = (!isNaN(nx) && !isNaN(ny) && /^[\d.,\/\-\s]+$/.test(x) && /^[\d.,\/\-\s]+$/.test(y))
+                        ? nx - ny : x.localeCompare(y, 'zh-Hans-CN');
+                    return cmp * sortState.dir;
+                });
+                rows.forEach(function (tr) { tbody.appendChild(tr); });  // 按新顺序重排 DOM
+                Array.prototype.forEach.call(table.querySelectorAll('.sort-ind'), function (s) { s.textContent = ''; });
+                ind.textContent = sortState.dir === 1 ? '▲' : '▼';
+                state.page = 1;
+                render();
+            });
+        });
+    }
+    initSorting();
+
+    function render() {
+        var tp = totalPages();
+        state.page = Math.min(Math.max(1, state.page), tp);
+        var start = (state.page - 1) * state.size, end = start + state.size;
+        rows.forEach(function (tr, i) { tr.style.display = (i >= start && i < end) ? '' : 'none'; });
+        drawPager(tp);
+    }
+
+    function pageItem(label, page, opts) {
+        opts = opts || {};
+        var dis = opts.disabled ? ' disabled' : '', act = opts.active ? ' active' : '';
+        if (opts.disabled || opts.active)
+            return '<li class="page-item' + dis + act + '"><span class="page-link">' + label + '</span></li>';
+        return '<li class="page-item"><a class="page-link" href="#" data-page="' + page + '">' + label + '</a></li>';
+    }
+    function drawPager(tp) {
+        if (tp <= 1) {
+            pager.innerHTML = '<div class="text-center text-muted small">共 ' + rows.length + ' 条记录</div>';
+            return;
+        }
+        var html = '<ul class="pagination justify-content-center mb-1">';
+        html += pageItem('上一页', state.page - 1, { disabled: state.page <= 1 });
+        var s = Math.max(1, state.page - 2), e = Math.min(tp, state.page + 2);
+        if (s > 1) { html += pageItem('1', 1); if (s > 2) html += pageItem('…', 0, { disabled: true }); }
+        for (var p = s; p <= e; p++) html += pageItem(p, p, { active: p === state.page });
+        if (e < tp) { if (e < tp - 1) html += pageItem('…', 0, { disabled: true }); html += pageItem(tp, tp); }
+        html += pageItem('下一页', state.page + 1, { disabled: state.page >= tp });
+        html += '</ul><div class="text-center text-muted small">共 ' + rows.length + ' 条记录，第 ' + state.page + '/' + tp + ' 页</div>';
+        pager.innerHTML = html;
+    }
+
+    pager.addEventListener('click', function (e) {
+        var a = e.target.closest('a[data-page]');
+        if (!a) return;
+        e.preventDefault();
+        state.page = parseInt(a.getAttribute('data-page'), 10) || 1;
+        render();
+        window.scrollTo({ top: 0 });
+    });
+
+    var t;
+    window.addEventListener('resize', function () {
+        clearTimeout(t);
+        t = setTimeout(function () {
+            var ns = computeSize();
+            if (ns !== state.size) { state.size = ns; render(); }
+        }, 150);
+    });
+
+    state.size = computeSize();
+    render();
+}
+document.addEventListener('DOMContentLoaded', clientWindowPaginate);
