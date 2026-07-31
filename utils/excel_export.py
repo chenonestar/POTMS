@@ -344,7 +344,127 @@ def export_decontrol(operator: str, where_sql: str = "", params: tuple = ()) -> 
 
 
 # =========================================================================
-# 6. 操作日志年度归档
+# 6. 证件领用登记表（含手写签名图片）
+# =========================================================================
+HEADERS_ISS = ["单位", "领用人", "身份证号", "证件种类", "证件号码", "领用日期",
+               "经办人(发放)", "领用签名", "归还日期", "经办人(接收)", "归还签名",
+               "状态", "备注"]
+
+_STATUS_LABEL = {"issued": "已领用", "returned": "已归还", "voided": "已作废"}
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_size(data: bytes) -> tuple:
+    """从 PNG 的 IHDR 块解析 (宽, 高)。
+
+    PNG 结构：8 字节签名 + 4 字节块长度 + 'IHDR' + 宽(4) + 高(4)，
+    故宽高固定位于第 16–24 字节，无需图像库即可读取。
+    """
+    if len(data) < 24 or data[:8] != _PNG_MAGIC or data[12:16] != b"IHDR":
+        raise ValueError("不是有效的 PNG 数据")
+    return (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"))
+
+
+def _make_png_image(data: bytes):
+    """构造 openpyxl 图片对象（不依赖 Pillow）。
+
+    openpyxl 的 Image 需要 Pillow 才能读出尺寸；但签名图固定为 PNG，
+    尺寸可自行解析，故在此继承并跳过 Pillow 分支 —— 本项目依赖刻意保持
+    精简（纯 Python，便于打包单文件 exe），不为读一个尺寸引入 C 扩展。
+    继承是必需的：openpyxl 序列化时以 isinstance(obj, Image) 判定图片。
+    """
+    import io
+    from openpyxl.drawing.image import Image as XLImage
+
+    class _PngImage(XLImage):
+        def __init__(self, raw: bytes):
+            self.ref = io.BytesIO(raw)
+            self._raw = raw
+            self.width, self.height = _png_size(raw)
+            self.format = "png"
+
+        def _data(self):
+            return self._raw
+
+    return _PngImage(data)
+
+# 签名图在 Excel 中的显示高度（磅→像素按 96dpi 估算），行高随之调整
+_SIGN_ROW_HEIGHT = 40
+_SIGN_IMG_HEIGHT = 48
+
+
+def export_issuance(operator: str, where_sql: str = "", params: tuple = ()) -> tuple:
+    """导出证件领用记录。签名以图片嵌入对应单元格。
+
+    JOIN personnel_filing 以排除孤儿行（延续既有数据完整性口径）。
+    """
+    from utils.helpers import get_dict_value
+
+    db = get_db()
+    rows = db.execute(
+        "SELECT i.*, pf.work_unit FROM cert_issuance i "
+        "JOIN personnel_filing pf ON i.personnel_filing_id = pf.id "
+        "WHERE 1=1 " + where_sql + " ORDER BY i.issue_date DESC, i.id DESC",
+        params,
+    ).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "证件领用登记表"
+    _style_header(ws, "因私出国（境）证件领用登记表", HEADERS_ISS)
+
+    # 图片对象需在写盘前保持引用，否则可能被 GC 回收
+    _keep = []
+    for i, row in enumerate(rows, 3):
+        types = "、".join(
+            get_dict_value("cert_type", c) or c
+            for c in (row["cert_types"] or "").split(",") if c
+        )
+        values = [
+            row["work_unit"], row["holder_name"], row["id_number"] or "", types,
+            row["cert_nos"] or "", row["issue_date"], row["issuer"], "",
+            row["return_date"] or "", row["return_operator"] or "", "",
+            _STATUS_LABEL.get(row["status"], row["status"]), row["remarks"] or "",
+        ]
+        for col, val in enumerate(values, 1):
+            ws.cell(row=i, column=col, value=val)
+
+        # 第 8 列＝领用签名，第 11 列＝归还签名
+        has_img = False
+        for col, blob in ((8, row["sign_image"]), (11, row["return_sign_image"])):
+            if not blob:
+                continue
+            try:
+                img = _make_png_image(bytes(blob))
+                ratio = _SIGN_IMG_HEIGHT / img.height if img.height else 1
+                img.height = _SIGN_IMG_HEIGHT
+                img.width = max(int(img.width * ratio), 1)
+                img.anchor = f"{get_column_letter(col)}{i}"
+                ws.add_image(img)
+                _keep.append(img)
+                has_img = True
+            except Exception:
+                # 单张签名渲染失败不应中断整表导出
+                ws.cell(row=i, column=col, value="[签名图无法读取]")
+        if has_img:
+            ws.row_dimensions[i].height = _SIGN_ROW_HEIGHT
+
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_ISS))
+    _auto_width(ws, len(HEADERS_ISS))
+    # 签名列按图片宽度留白（自动列宽只看文本，会把空单元格压窄）
+    for col in (8, 11):
+        ws.column_dimensions[get_column_letter(col)].width = 22
+
+    return _save_and_return(ws, "证件领用登记表", operator, [
+        "1. 签名为领用/归还时现场手写采集，保存后不可修改；登记有误须作废后重新登记。",
+        "2. 证件号码为领用当时的快照，后续修改证照信息不影响本次领用凭证。",
+        "3. 状态：已领用（未归还）/ 已归还 / 已作废。",
+    ])
+
+
+# =========================================================================
+# 7. 操作日志年度归档
 # =========================================================================
 HEADERS_LOGS = ["时间（本地）", "操作人", "动作", "对象类型", "对象ID", "详情", "IP", "变更快照(JSON)"]
 

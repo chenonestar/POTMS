@@ -113,8 +113,11 @@ def log_action(action: str, target_type: str, target_id: Optional[int] = None,
     db.commit()
 
 
-# 快照中忽略的字段（时间戳等无意义变更）
-_SNAPSHOT_SKIP = {"created_at", "updated_at"}
+# 快照中忽略的字段（时间戳等无意义变更；签名位图/笔迹矢量体积大且不可读，不入快照）
+_SNAPSHOT_SKIP = {
+    "created_at", "updated_at",
+    "sign_image", "sign_meta", "return_sign_image", "return_sign_meta",
+}
 
 
 def _clean_snapshot(data: Any) -> Optional[dict]:
@@ -128,7 +131,7 @@ def _clean_snapshot(data: Any) -> Optional[dict]:
 # row_snapshot 允许查询的表白名单（防御性：杜绝动态表名注入的可能）
 _SNAPSHOT_TABLES = frozenset({
     "personnel_info", "personnel_filing", "certificates", "travel_details",
-    "decontrol_filing", "sys_dict", "sys_org", "sys_submit_unit",
+    "decontrol_filing", "sys_dict", "sys_org", "sys_submit_unit", "cert_issuance",
 })
 
 
@@ -299,14 +302,19 @@ def get_personnel_options() -> list[dict]:
         "WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name"
     ).fetchall()
     # 每人已登记的证件号（护照/港澳/台湾），一次查询建映射
+    # cert_map：扁平列表（下游 datalist 用）；cert_type_map：按证件种类代码索引（领用登记用）
     cert_map: dict = {}
+    cert_type_map: dict = {}
     for cr in db.execute(
         "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates"
     ).fetchall():
         lst = cert_map.setdefault(cr["personnel_filing_id"], [])
-        for v in (cr["passport_no"], cr["hm_pass_no"], cr["tw_pass_no"]):
-            if v and v.strip() and v.strip() not in lst:
-                lst.append(v.strip())
+        by_type = cert_type_map.setdefault(cr["personnel_filing_id"], {})
+        for code, v in (("01", cr["passport_no"]), ("02", cr["hm_pass_no"]), ("03", cr["tw_pass_no"])):
+            if v and v.strip():
+                if v.strip() not in lst:
+                    lst.append(v.strip())
+                by_type.setdefault(code, v.strip())
     result = []
     for r in rows:
         name = f"{r['surname']}{r['given_name']}"
@@ -320,5 +328,6 @@ def get_personnel_options() -> list[dict]:
             "position": r["position_or_title"],
             "title": r["title_val"] or "",
             "cert_nos": cert_map.get(r["id"], []),
+            "cert_by_type": cert_type_map.get(r["id"], {}),
         })
     return result

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}证件领用{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4><i class="bi bi-vector-pen"></i> 证件领用登记</h4>
+    <div>
+        <a href="{{ url_for('issuance.new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增领用</a>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('{{ url_for('export.issuance_export') }}');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('{{ url_for('export.issuance_export') }}');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('export.issuance_export') }}">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 身份证 / 证件号" value="{{ search }}"></div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="status">
+                <option value="">全部状态</option>
+                <option value="issued" {{ 'selected' if status_filter == 'issued' }}>已领用（未归还）</option>
+                <option value="returned" {{ 'selected' if status_filter == 'returned' }}>已归还</option>
+                <option value="voided" {{ 'selected' if status_filter == 'voided' }}>已作废</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="cert_type">
+                <option value="">全部证件种类</option>
+                {% for o in dict_opts('cert_type') %}
+                <option value="{{ o.code }}" {{ 'selected' if cert_type_filter == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_from" placeholder="领用起始 YYYYMMDD" value="{{ date_from }}"></div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_to" placeholder="领用截止 YYYYMMDD" value="{{ date_to }}"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('issuance.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="单位">单位</th>
+        <th data-col="领用人">领用人</th>
+        <th data-col="证件种类">证件种类</th>
+        <th data-col="证件号码">证件号码</th>
+        <th data-col="领用日期">领用日期</th>
+        <th data-col="归还日期">归还日期</th>
+        <th data-col="经办人">经办人</th>
+        <th data-col="签名">签名</th>
+        <th data-col="状态">状态</th>
+        <th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for row in items.rows %}
+    <tr class="{{ 'text-muted' if row.status == 'voided' }}">
+        <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
+        <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
+        <td>{{ row.holder_name }}</td>
+        <td>
+            {% for c in (row.cert_types or '').split(',') %}{% if c %}
+            <span class="badge bg-light text-dark border">{{ dict_value('cert_type', c) }}</span>
+            {% endif %}{% endfor %}
+        </td>
+        <td><small>{{ row.cert_nos or '-' }}</small></td>
+        <td>{{ row.issue_date }}</td>
+        <td>{{ row.return_date or '-' }}</td>
+        <td>{{ row.issuer }}</td>
+        <td>
+            {% if row.sign_image %}
+            <img src="{{ url_for('issuance.signature', iss_id=row.id) }}" alt="签名" style="height:28px;">
+            {% else %}<span class="text-muted small">无</span>{% endif %}
+        </td>
+        <td>
+            {% if row.status == 'issued' %}<span class="badge bg-warning text-dark">已领用</span>
+            {% elif row.status == 'returned' %}<span class="badge bg-success">已归还</span>
+            {% else %}<span class="badge bg-secondary">已作废</span>{% endif %}
+        </td>
+        <td><div class="btn-group btn-group-sm">
+            <a href="{{ url_for('issuance.view', iss_id=row.id) }}" class="btn btn-outline-primary" title="详情"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('export.print_view', print_type='issuance', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+            {% if row.status == 'issued' %}
+            <a href="{{ url_for('issuance.do_return', iss_id=row.id) }}" class="btn btn-outline-success" title="归还登记"><i class="bi bi-box-arrow-in-left"></i></a>
+            {% endif %}
+        </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="text-center text-muted py-4">暂无领用记录</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+{% from "components/pagination.html" import render_pagination %}
+{{ render_pagination(items, 'issuance.list') }}
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_issuance'); });
+</script>
+{% endblock %}

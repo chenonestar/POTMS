@@ -52,6 +52,7 @@ def create_app() -> Flask:
     from blueprints.personnel import personnel_bp
     from blueprints.certificate import certificate_bp
     from blueprints.travel import travel_bp
+    from blueprints.issuance import issuance_bp
     from blueprints.decontrol import decontrol_bp
     from blueprints.export import export_bp
     from blueprints.import_data import import_bp
@@ -66,6 +67,7 @@ def create_app() -> Flask:
     app.register_blueprint(personnel_bp)
     app.register_blueprint(certificate_bp)
     app.register_blueprint(travel_bp)
+    app.register_blueprint(issuance_bp)
     app.register_blueprint(decontrol_bp)
     app.register_blueprint(export_bp)
     app.register_blueprint(import_bp)

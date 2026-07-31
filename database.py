@@ -62,6 +62,10 @@ SEED_DICT = [
     ("submit_unit_type", "99", "其他单位", 5),
     # 人事主管单位（下拉配置，可在数据字典维护）
     ("supervisor_unit", "S01", "人事处", 1),
+    # 证件种类（证件领用登记用；与 certificates 表的三类证件一一对应）
+    ("cert_type", "01", "因私护照", 1),
+    ("cert_type", "02", "往来港澳通行证", 2),
+    ("cert_type", "03", "大陆居民往来台湾通行证", 3),
 ]
 
 
@@ -143,7 +147,58 @@ def run_migrations():
             "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
             "contact TEXT, phone TEXT, sort_order INTEGER DEFAULT 0)")
 
+        # 证件领用记录表（含手写签名）
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS cert_issuance ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "travel_id INTEGER REFERENCES travel_details(id), "
+            "personnel_filing_id INTEGER NOT NULL REFERENCES personnel_filing(id), "
+            "holder_name TEXT NOT NULL, id_number TEXT, "
+            "cert_types TEXT NOT NULL, cert_nos TEXT, "
+            "issue_date TEXT NOT NULL, issuer TEXT NOT NULL, "
+            "sign_image BLOB, sign_meta TEXT, "
+            "return_date TEXT, return_sign_image BLOB, return_sign_meta TEXT, "
+            "return_operator TEXT, "
+            "status TEXT NOT NULL DEFAULT 'issued', void_reason TEXT, remarks TEXT, "
+            "operator TEXT NOT NULL, "
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_issuance_travel ON cert_issuance(travel_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_issuance_filing ON cert_issuance(personnel_filing_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_issuance_status ON cert_issuance(status)")
+
+        # 证件种类字典（seed_data 仅首次运行执行，存量库在此补齐）
+        for _cat, _code, _val, _ord in SEED_DICT:
+            if _cat == "cert_type":
+                db.execute(
+                    "INSERT OR IGNORE INTO sys_dict (category, code, value, sort_order) "
+                    "VALUES (?, ?, ?, ?)", (_cat, _code, _val, _ord))
+
         db.commit()
+
+        # 历史回填：已有「证件领用日期」的出行记录 → 生成对应领用记录（无签名）。
+        # 幂等守卫：仅对尚无领用记录的 travel_id 回填。
+        # 早期库允许 personnel_filing_id 为空，此类记录无法确定领用人，跳过回填
+        # （其出行表上的领用日期保持原样，不影响既有逾期口径）。
+        legacy_issue = db.execute(
+            "SELECT t.id, t.personnel_filing_id, t.name, t.id_number, t.passport_no, "
+            "       t.passport_collect_date, t.passport_return_date, t.operator "
+            "FROM travel_details t "
+            "WHERE t.passport_collect_date IS NOT NULL AND t.passport_collect_date != '' "
+            "  AND t.personnel_filing_id IS NOT NULL "
+            "  AND NOT EXISTS (SELECT 1 FROM cert_issuance c WHERE c.travel_id = t.id)"
+        ).fetchall()
+        for tid, pfid, nm, idn, pno, cdate, rdate, op in legacy_issue:
+            db.execute(
+                "INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, "
+                "cert_types, cert_nos, issue_date, issuer, return_date, return_operator, status, "
+                "remarks, operator) VALUES (?, ?, ?, ?, '01', ?, ?, ?, ?, ?, ?, ?, ?)",
+                (tid, pfid, nm or "", idn or "", pno or "", cdate,
+                 op or "system", rdate or None, (op or "system") if rdate else None,
+                 "returned" if rdate else "issued",
+                 "历史数据回填（证件种类按护照推定，无签名）", op or "system"))
+        if legacy_issue:
+            db.commit()
 
         # 回填历史出行记录的起止日期
         if need_backfill:
@@ -401,6 +456,30 @@ CREATE TABLE IF NOT EXISTS sys_submit_unit (
     contact TEXT,
     phone TEXT,
     sort_order INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS cert_issuance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    travel_id INTEGER REFERENCES travel_details(id),
+    personnel_filing_id INTEGER NOT NULL REFERENCES personnel_filing(id),
+    holder_name TEXT NOT NULL,
+    id_number TEXT,
+    cert_types TEXT NOT NULL,
+    cert_nos TEXT,
+    issue_date TEXT NOT NULL,
+    issuer TEXT NOT NULL,
+    sign_image BLOB,
+    sign_meta TEXT,
+    return_date TEXT,
+    return_sign_image BLOB,
+    return_sign_meta TEXT,
+    return_operator TEXT,
+    status TEXT NOT NULL DEFAULT 'issued',
+    void_reason TEXT,
+    remarks TEXT,
+    operator TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS attachments (

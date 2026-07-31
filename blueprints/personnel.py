@@ -401,9 +401,13 @@ def delete(filing_id) -> ResponseReturnValue:
     dec_cnt = db.execute(
         "SELECT COUNT(*) FROM decontrol_filing WHERE personnel_filing_id = ?", (filing_id,)
     ).fetchone()[0]
-    if cert_cnt or travel_cnt or dec_cnt:
+    iss_cnt = db.execute(
+        "SELECT COUNT(*) FROM cert_issuance WHERE personnel_filing_id = ?", (filing_id,)
+    ).fetchone()[0]
+    if cert_cnt or travel_cnt or dec_cnt or iss_cnt:
         flash(
-            f"该人员名下尚有证照 {cert_cnt} 条、出国明细 {travel_cnt} 条、撤控记录 {dec_cnt} 条，"
+            f"该人员名下尚有证照 {cert_cnt} 条、出国明细 {travel_cnt} 条、"
+            f"撤控记录 {dec_cnt} 条、证件领用 {iss_cnt} 条，"
             "请先删除或处理这些关联记录后再删除备案。",
             "danger",
         )
