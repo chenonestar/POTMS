@@ -1,0 +1,92 @@
+@page "/Dict"
+@model POTMS.Pages.Dict.IndexModel
+@{ ViewData["Title"] = "数据字典"; }
+<h4 class="mb-3 mt-3"><i class="bi bi-card-list"></i> 数据字典 — @Model.CatLabel</h4>
+
+<ul class="nav nav-pills mb-3">
+@foreach (var (cat, label, _, _) in POTMS.Pages.Dict.IndexModel.Categories)
+{
+    <li class="nav-item"><a class="nav-link @(Model.Cat == cat ? "active" : "")" href="/Dict?cat=@cat">@label</a></li>
+}
+</ul>
+
+<div class="row">
+<div class="col-md-7">
+<div class="table-card"><div class="table-responsive">
+<table class="table table-hover mb-0">
+    <thead class="table-light"><tr><th>代码</th><th>显示值</th><th>排序</th><th>引用</th><th>操作</th></tr></thead>
+    <tbody>
+    @foreach (var it in Model.Items)
+    {
+        <tr>
+            <td><code>@it.Code</code></td><td>@it.Value</td><td>@it.SortOrder</td>
+            <td>
+                @if (it.Usage < 0) { <span class="text-muted small">—</span> }
+                else if (it.Usage == 0) { <span class="text-muted">0</span> }
+                else { <span class="badge bg-secondary">@it.Usage</span> }
+            </td>
+            <td><div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-warning" title="编辑"
+                        onclick="dictEdit(@it.Id, '@it.Code', '@it.Value', @it.SortOrder)"><i class="bi bi-pencil"></i></button>
+                @if (it.Usage > 0)
+                {
+                    <button type="button" class="btn btn-outline-secondary" disabled title="已被 @it.Usage 条数据引用"><i class="bi bi-trash"></i></button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                            data-action="/Dict?handler=Delete&amp;cat=@Model.Cat&amp;id=@it.Id"
+                            data-message="确定要删除字典条目「@it.Value」吗？"><i class="bi bi-trash"></i></button>
+                }
+            </div></td>
+        </tr>
+    }
+    @if (Model.Items.Count == 0)
+    { <tr><td colspan="5" class="text-center text-muted py-4">该分类暂无条目</td></tr> }
+    </tbody>
+</table>
+</div></div>
+</div>
+
+<div class="col-md-5">
+<div class="form-section">
+    <h5 id="dictFormTitle">新增条目</h5>
+    <form method="post" asp-page-handler="Save">
+        <input type="hidden" name="cat" value="@Model.Cat">
+        <input type="hidden" name="id" id="dictId">
+        <div class="mb-3"><label class="form-label required">代码</label>
+            <input type="text" class="form-control" name="code" id="dictCode" required></div>
+        <div class="mb-3"><label class="form-label required">显示值</label>
+            <input type="text" class="form-control" name="value" id="dictValue" required></div>
+        <div class="mb-3"><label class="form-label">排序</label>
+            <input type="number" class="form-control" name="sortOrder" id="dictSort" value="0"></div>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+        <button type="button" class="btn btn-secondary" onclick="dictReset()">清空</button>
+    </form>
+    <p class="text-muted small mt-3 mb-0">
+        「引用」为该条目已被业务数据使用的条数；有引用时不允许删除，避免历史数据显示为裸代码。
+        标「—」的分类未统计引用。
+    </p>
+</div>
+</div>
+</div>
+<partial name="_ConfirmModal" />
+
+@section Scripts {
+<script>
+function dictEdit(id, code, value, sort) {
+    document.getElementById('dictId').value = id;
+    document.getElementById('dictCode').value = code;
+    document.getElementById('dictValue').value = value;
+    document.getElementById('dictSort').value = sort;
+    document.getElementById('dictFormTitle').textContent = '编辑条目 #' + id;
+}
+function dictReset() {
+    document.getElementById('dictId').value = '';
+    document.getElementById('dictCode').value = '';
+    document.getElementById('dictValue').value = '';
+    document.getElementById('dictSort').value = '0';
+    document.getElementById('dictFormTitle').textContent = '新增条目';
+}
+</script>
+}

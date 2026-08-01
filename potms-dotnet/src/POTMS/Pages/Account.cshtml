@@ -1,0 +1,26 @@
+@page "/Account"
+@model POTMS.Pages.AccountModel
+@{ ViewData["Title"] = "账户设置"; }
+<h4 class="mb-3 mt-3"><i class="bi bi-person-gear"></i> 账户设置</h4>
+
+<div class="row"><div class="col-md-6">
+<div class="form-section">
+    <h5>修改账户</h5>
+    <p class="text-muted small">修改密码后需重新登录。用户名与密码可分别修改，也可一次同时修改。</p>
+    <form method="post" class="needs-validation" novalidate>
+        <div class="mb-3"><label class="form-label required">当前密码</label>
+            <input type="password" class="form-control" name="currentPassword" required autocomplete="current-password"></div>
+        <hr>
+        <div class="mb-3"><label class="form-label">新用户名</label>
+            <input type="text" class="form-control" name="newUsername" value="@Model.Username" autocomplete="username">
+            <div class="form-text">至少 3 个字符；不修改请保持原值</div></div>
+        <div class="mb-3"><label class="form-label">新密码</label>
+            <input type="password" class="form-control" name="newPassword" autocomplete="new-password">
+            <div class="form-text">至少 6 个字符；不修改请留空</div></div>
+        <div class="mb-3"><label class="form-label">确认新密码</label>
+            <input type="password" class="form-control" name="confirmPassword" autocomplete="new-password"></div>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+        <a href="/" class="btn btn-secondary">返回</a>
+    </form>
+</div>
+</div></div>

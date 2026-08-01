@@ -1,0 +1,83 @@
+@page "/Search"
+@model POTMS.Pages.SearchModel
+@{ ViewData["Title"] = "全局搜索"; }
+<h4 class="mb-3 mt-3"><i class="bi bi-search"></i> 全局搜索</h4>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-6"><input type="text" class="form-control" name="q" value="@Model.Q"
+               placeholder="姓名 / 身份证号 / 证件号 / 单位 / 地点" autofocus></div>
+        <div class="col-auto"><button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> 搜索</button></div>
+    </form>
+</div></div>
+
+@if (Model.Q.Length == 0)
+{
+    <p class="text-muted">请输入关键词开始搜索。</p>
+}
+else
+{
+    <p class="text-muted">关键词「<strong>@Model.Q</strong>」共匹配 <strong>@Model.Total</strong> 条记录（各类最多显示 50 条）。</p>
+
+    @if (Model.Filings.Count > 0)
+    {
+        <div class="form-section"><h5>人员备案（@Model.Filings.Count）</h5>
+        <table class="table table-sm mb-0"><thead class="table-light"><tr><th>姓名</th><th>身份证号</th><th>工作单位</th><th>状态</th><th></th></tr></thead><tbody>
+        @foreach (var r in Model.Filings)
+        {
+            <tr><td>@r.Name</td><td><small>@r.IdNumber</small></td><td>@r.WorkUnit</td>
+                <td>@(r.Status == "active" ? "在案" : "已撤控")</td>
+                <td><a href="/Personnel/View/@r.Id" class="btn btn-sm btn-outline-info">查看</a></td></tr>
+        }
+        </tbody></table></div>
+    }
+    @if (Model.Certificates.Count > 0)
+    {
+        <div class="form-section"><h5>证照登记（@Model.Certificates.Count）</h5>
+        <table class="table table-sm mb-0"><thead class="table-light"><tr><th>姓名</th><th>护照</th><th>港澳</th><th>台湾</th><th></th></tr></thead><tbody>
+        @foreach (var r in Model.Certificates)
+        {
+            <tr><td>@r.Name</td><td>@(r.PassportNo ?? "-")</td><td>@(r.HmPassNo ?? "-")</td><td>@(r.TwPassNo ?? "-")</td>
+                <td><a href="/Certificate/Form?id=@r.Id" class="btn btn-sm btn-outline-warning">编辑</a></td></tr>
+        }
+        </tbody></table></div>
+    }
+    @if (Model.Travels.Count > 0)
+    {
+        <div class="form-section"><h5>出国明细（@Model.Travels.Count）</h5>
+        <table class="table table-sm mb-0"><thead class="table-light"><tr><th>姓名</th><th>地点、证照</th><th>计划出行日期</th><th></th></tr></thead><tbody>
+        @foreach (var r in Model.Travels)
+        {
+            <tr><td>@r.Name</td><td>@r.DestinationPassport</td><td>@r.TravelDates</td>
+                <td><a href="/Travel/View/@r.Id" class="btn btn-sm btn-outline-info">查看</a></td></tr>
+        }
+        </tbody></table></div>
+    }
+    @if (Model.Issuances.Count > 0)
+    {
+        <div class="form-section"><h5>证件领用（@Model.Issuances.Count）</h5>
+        <table class="table table-sm mb-0"><thead class="table-light"><tr><th>领用人</th><th>证件号码</th><th>领用日期</th><th>状态</th><th></th></tr></thead><tbody>
+        @foreach (var r in Model.Issuances)
+        {
+            <tr><td>@r.HolderName</td><td>@(r.CertNos ?? "-")</td><td>@r.IssueDate</td>
+                <td>@(r.Status == "issued" ? "已领用" : r.Status == "returned" ? "已归还" : "已作废")</td>
+                <td><a href="/Issuance/View/@r.Id" class="btn btn-sm btn-outline-info">查看</a></td></tr>
+        }
+        </tbody></table></div>
+    }
+    @if (Model.Decontrols.Count > 0)
+    {
+        <div class="form-section"><h5>撤控备案（@Model.Decontrols.Count）</h5>
+        <table class="table table-sm mb-0"><thead class="table-light"><tr><th>姓名</th><th>身份证号</th><th>撤控日期</th><th></th></tr></thead><tbody>
+        @foreach (var r in Model.Decontrols)
+        {
+            <tr><td>@r.Name</td><td><small>@r.IdNumber</small></td><td>@(r.DecontrolDate ?? "-")</td>
+                <td><a href="/Decontrol/View/@r.Id" class="btn btn-sm btn-outline-info">查看</a></td></tr>
+        }
+        </tbody></table></div>
+    }
+    @if (Model.Total == 0)
+    {
+        <div class="alert alert-light border">未找到匹配记录。</div>
+    }
+}

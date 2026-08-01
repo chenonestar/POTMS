@@ -1,0 +1,63 @@
+@page "/Import"
+@model POTMS.Pages.Import.IndexModel
+@{ ViewData["Title"] = "批量导入"; }
+<h4 class="mb-3 mt-3"><i class="bi bi-upload"></i> 批量导入备案人员</h4>
+
+<div class="form-section">
+    <h5>操作步骤</h5>
+    <ol class="mb-3">
+        <li>下载导入模板，按列填写数据（带 * 的为必填项，第 2 行示例请删除）。</li>
+        <li>上传填好的 .xlsx 文件，系统会逐行校验。</li>
+        <li>校验通过的行会同时写入<strong>信息登记表</strong>与<strong>登记备案表</strong>；
+            有错误的行会被跳过并在下方列出，修正后可重新上传。</li>
+    </ol>
+    <a href="/Import?handler=Template" class="btn btn-outline-primary">
+        <i class="bi bi-download"></i> 下载导入模板
+    </a>
+</div>
+
+<div class="form-section">
+    <h5>上传文件</h5>
+    <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
+        <div class="col-md-6">
+            <input type="file" class="form-control" name="file" accept=".xlsx" required>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> 开始导入</button>
+        </div>
+    </form>
+</div>
+
+@if (Model.Result is not null)
+{
+    var r = Model.Result;
+    <div class="form-section">
+        <h5>导入报告</h5>
+        <div class="row mb-3">
+            <div class="col-md-3"><div class="card text-center"><div class="card-body py-3">
+                <div class="fs-4 fw-bold">@r.Total</div><small class="text-muted">总行数</small></div></div></div>
+            <div class="col-md-3"><div class="card text-center"><div class="card-body py-3">
+                <div class="fs-4 fw-bold text-success">@r.Success</div><small class="text-muted">成功导入</small></div></div></div>
+            <div class="col-md-3"><div class="card text-center"><div class="card-body py-3">
+                <div class="fs-4 fw-bold text-danger">@r.Errors.Count</div><small class="text-muted">错误条目</small></div></div></div>
+        </div>
+        @if (r.Errors.Count > 0)
+        {
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light"><tr><th style="width:90px">行号</th><th style="width:180px">字段</th><th>错误信息</th></tr></thead>
+                <tbody>
+                @foreach (var e in r.Errors)
+                {
+                    <tr><td>第 @e.Row 行</td><td>@e.Field</td><td class="text-danger">@e.Message</td></tr>
+                }
+                </tbody>
+            </table>
+            </div>
+        }
+        else if (r.Success > 0)
+        {
+            <div class="alert alert-success mb-0"><i class="bi bi-check-circle"></i> 全部数据导入成功，无错误。</div>
+        }
+    </div>
+}

@@ -1,0 +1,85 @@
+@page "/Logs"
+@model POTMS.Pages.Logs.IndexModel
+@{
+    ViewData["Title"] = "操作日志";
+    string AL(string? a) => a is not null && POTMS.Pages.Logs.IndexModel.ActionLabels.TryGetValue(a, out var v) ? v : (a ?? "");
+    string TL(string? t) => t is not null && POTMS.Pages.Logs.IndexModel.TargetLabels.TryGetValue(t, out var v) ? v : (t ?? "");
+    string Badge(string? a) => a switch
+    {
+        "create" => "success", "update" => "warning", "delete" => "danger",
+        "void" => "danger", "backup" => "secondary", "login_fail" or "lock" => "dark", _ => "info",
+    };
+}
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-journal-text"></i> 操作日志</h4>
+    <div>
+        <a href="/Export/Logs@(string.IsNullOrEmpty(Model.YearFilter) ? "" : "?year=" + Model.YearFilter)"
+           class="btn btn-outline-success"><i class="bi bi-file-earmark-excel"></i> 按年归档导出</a>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2"><select class="form-select form-select-sm" name="year">
+            <option value="">全部年份</option>
+            @foreach (var y in Model.Years) { <option value="@y" selected="@(Model.YearFilter == y)">@y 年</option> }
+        </select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="action">
+            <option value="">全部操作</option>
+            @foreach (var kv in POTMS.Pages.Logs.IndexModel.ActionLabels)
+            { <option value="@kv.Key" selected="@(Model.ActionFilter == kv.Key)">@kv.Value</option> }
+        </select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="target">
+            <option value="">全部对象</option>
+            @foreach (var kv in POTMS.Pages.Logs.IndexModel.TargetLabels)
+            { <option value="@kv.Key" selected="@(Model.TargetFilter == kv.Key)">@kv.Value</option> }
+        </select></div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="dateFrom" placeholder="起始 YYYYMMDD" value="@Model.DateFrom"></div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="dateTo" placeholder="截止 YYYYMMDD" value="@Model.DateTo"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="/Logs" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+<div class="table-card"><div class="table-responsive">
+<table class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th>时间</th><th>操作人</th><th>操作</th><th>对象</th><th>详情</th><th>IP</th>
+    </tr></thead>
+    <tbody>
+    @foreach (var log in Model.Items.Rows)
+    {
+        <tr>
+            <td><small>@POTMS.Services.Helpers.ToLocalTime(log.CreatedAt, Cfg)</small></td>
+            <td>@log.Operator</td>
+            <td><span class="badge bg-@Badge(log.Action)">@AL(log.Action)</span></td>
+            <td><small>@TL(log.TargetType)</small></td>
+            <td>
+                <small class="text-muted">@(string.IsNullOrEmpty(log.Detail) ? "—" : log.Detail)</small>
+                @if (log.TargetId is not null) { <small class="text-muted"> (ID: @log.TargetId)</small> }
+                @if (Model.Changes.TryGetValue(log.Id, out var chs))
+                {
+                    <a class="small ms-1" data-bs-toggle="collapse" href="#snap@(log.Id)" role="button">变更详情 ▾</a>
+                    <div class="collapse mt-1" id="snap@(log.Id)">
+                        <table class="table table-sm table-bordered mb-0" style="font-size:.8rem;">
+                            <thead class="table-light"><tr><th>字段</th><th>变更前</th><th>变更后</th></tr></thead>
+                            <tbody>
+                            @foreach (var c in chs)
+                            {
+                                <tr><td>@c.Field</td>
+                                    <td class="text-muted">@(string.IsNullOrEmpty(c.Before) ? "（空）" : c.Before)</td>
+                                    <td class="text-success">@(string.IsNullOrEmpty(c.After) ? "（空）" : c.After)</td></tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </td>
+            <td><small class="text-muted">@log.IpAddress</small></td>
+        </tr>
+    }
+    @if (Model.Items.Total == 0)
+    { <tr><td colspan="6" class="text-center text-muted py-4">暂无操作日志</td></tr> }
+    </tbody>
+</table>
+</div></div>
+<partial name="_Pagination" model="Model.Pager" />
