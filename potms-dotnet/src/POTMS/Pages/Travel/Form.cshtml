@@ -1,0 +1,155 @@
+@page "/Travel/Form"
+@model POTMS.Pages.Travel.FormModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "出国明细表";
+    using var cn = Database.Open();
+    var cats = POTMS.Services.Helpers.GetDictOptions(cn, "travel_category");
+    var persons = POTMS.Services.Helpers.GetPersonnelOptions(cn);
+    string V(string k) => Model.Data.TryGetValue(k, out var v) ? v ?? "" : "";
+    var draftAttr = Model.Editing ? null : "travel";
+}
+<h4 class="mb-3 mt-3"><i class="bi bi-airplane"></i> @(Model.Editing ? "编辑" : "新增")因私出国（境）人员明细表</h4>
+
+<form method="post" enctype="multipart/form-data" class="needs-validation" novalidate data-draft="@draftAttr">
+<div class="form-section">
+    <h5>选择备案人员</h5>
+    <p class="text-muted small mb-2">选择人员后，单位 / 姓名 / 职务 / 职称 / 身份证号自动带入；职称来自信息登记表，只读。</p>
+    <div class="row g-3">
+        <div class="col-md-5"><label class="form-label">搜索备案人员</label>
+            <input type="text" class="form-control" id="personSearch" placeholder="输入姓名 / 身份证号 / 单位 过滤"
+                   oninput="filterPersons('personSearch','personSelect')" autocomplete="off"></div>
+        <div class="col-md-5"><label class="form-label required">备案人员</label>
+            <select class="form-select" name="personnel_filing_id" id="personSelect" required size="6">
+                <option value="">请选择备案人员</option>
+                @foreach (var p in persons)
+                {
+                    <option value="@p.Id" data-unit="@p.Unit" data-dept="@p.Department" data-name="@p.Name"
+                            data-pos="@p.Position" data-title="@p.Title" data-idno="@p.IdNumber"
+                            data-certs="@string.Join("|", p.CertNos)"
+                            data-search="@((p.Name + p.IdNumber + p.Unit).ToLowerInvariant())"
+                            selected="@(V("personnel_filing_id") == p.Id.ToString())">@p.FullName</option>
+                }
+            </select></div>
+    </div>
+    <div class="row g-3 mt-2">
+        <div class="col-md-3"><label class="form-label required">单位</label>
+            <input type="text" class="form-control" name="unit" id="tUnit" value="@V("unit")" required readonly></div>
+        <div class="col-md-3"><label class="form-label required">部门</label>
+            <input type="text" class="form-control" name="department" id="tDept" value="@V("department")" required></div>
+        <div class="col-md-2"><label class="form-label required">姓名</label>
+            <input type="text" class="form-control" name="name" id="tName" value="@V("name")" required readonly></div>
+        <div class="col-md-2"><label class="form-label required">职务</label>
+            <input type="text" class="form-control" name="position" id="tPos" value="@V("position")" required></div>
+        <div class="col-md-2"><label class="form-label">职称 <span class="text-muted">(带入)</span></label>
+            <input type="text" class="form-control" name="title" id="tTitle" value="@V("title")" readonly></div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-4"><label class="form-label required">身份证号 <span class="text-muted">(带入)</span></label>
+            <input type="text" class="form-control" name="id_number" id="tIdNo" value="@V("id_number")" required readonly></div>
+    </div>
+</div>
+
+<div class="form-section"><h5>出行信息</h5><div class="row g-3">
+    <div class="col-md-4"><label class="form-label required">地点、证照</label>
+        <input type="text" class="form-control" name="destination_passport" value="@V("destination_passport")" placeholder="如：美国/护照" required></div>
+    <div class="col-md-2"><label class="form-label required">类别</label>
+        <select class="form-select" name="category" required>
+            <option value="">请选择</option>
+            @foreach (var o in cats) { <option value="@o.Code" selected="@(V("category") == o.Code)">@o.Value</option> }
+        </select></div>
+    <div class="col-md-3"><label class="form-label required">计划出行日期</label>
+        <input type="text" class="form-control" name="travel_dates" value="@V("travel_dates")" placeholder="2026-8-1-2026-8-11" required>
+        <div class="form-text">须能解析出起止两个真实日期，起始不晚于结束</div></div>
+    <div class="col-md-3"><label class="form-label">批准日期</label>
+        <input type="text" class="form-control" name="approval_date" value="@V("approval_date")" placeholder="YYYYMMDD" maxlength="8"></div>
+</div></div>
+
+<div class="form-section"><h5>证件流转</h5><div class="row g-3">
+    <div class="col-md-3"><label class="form-label required">是否做证</label>
+        <select class="form-select" name="need_new_passport" id="needPassport" required>
+            <option value="否" selected="@(V("need_new_passport") == "否")">否（已有证件，路径A）</option>
+            <option value="是" selected="@(V("need_new_passport") == "是")">是（需新办，路径B）</option>
+        </select></div>
+    <div class="col-md-3"><label class="form-label">证件号码</label>
+        <input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="@V("passport_no")" placeholder="选已登记证件或手输新证件号" autocomplete="off">
+        <datalist id="certNoList"></datalist></div>
+    <div class="col-md-3"><label class="form-label">实际回国日期</label>
+        <input type="text" class="form-control" name="actual_return_date" value="@V("actual_return_date")" placeholder="YYYYMMDD" maxlength="8">
+        <div class="form-text">回国后须于 10 个工作日内交回证件</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label">证件领用日期 <span class="text-muted">(派生)</span></label>
+        <input type="text" class="form-control" value="@V("passport_collect_date")" placeholder="未领用" readonly></div>
+    <div class="col-md-3"><label class="form-label">证件归还日期 <span class="text-muted">(派生)</span></label>
+        <input type="text" class="form-control" value="@V("passport_return_date")" placeholder="未归还" readonly></div>
+</div>
+<div class="alert alert-light border mt-2 mb-0 py-2 small">
+    <i class="bi bi-info-circle"></i>
+    证件领用 / 归还日期由<strong>证件领用模块</strong>统一登记（需领用人手写签名），此处只读展示，以保证签名凭证与日期口径一致。
+    @if (Model.Editing && Model.TravelId is not null)
+    { <a href="/Issuance/Form?travelId=@Model.TravelId" class="ms-1">前往领用登记 →</a> }
+</div>
+</div>
+
+<div class="form-section"><h5>附件（PDF）</h5>
+    <p class="text-muted small mb-2">
+        路径A 须上传《个人申请报告》《审批表》；路径B 另须《同意申办函》。仅接受真实 PDF（提交时校验文件魔数）。
+        @if (Model.Editing) { <text>编辑时不重传则保留原附件。</text> }
+    </p>
+    <div class="row g-3">
+        <div class="col-md-4"><label class="form-label">个人申请报告</label>
+            <input type="file" class="form-control" name="att_application" accept="application/pdf" multiple></div>
+        <div class="col-md-4"><label class="form-label">审批表</label>
+            <input type="file" class="form-control" name="att_approval" accept="application/pdf" multiple></div>
+        <div class="col-md-4"><label class="form-label">同意申办函 <span class="text-muted">(路径B)</span></label>
+            <input type="file" class="form-control" name="att_consent" accept="application/pdf" multiple></div>
+    </div>
+    @if (Model.ExistingAttachments.Count > 0)
+    {
+        <div class="mt-3"><label class="form-label text-muted small">已有附件</label>
+            <ul class="list-unstyled small mb-0">
+            @foreach (var a in Model.ExistingAttachments)
+            {
+                <li><i class="bi bi-file-earmark-pdf text-danger"></i>
+                    <span class="badge bg-light text-dark border">@a.FileType</span>
+                    <a href="/Travel/Attachment/@a.Id?mode=preview" target="_blank">@a.FileName</a>
+                    <small class="text-muted">(@(a.FileSize / 1024) KB)</small></li>
+            }
+            </ul></div>
+    }
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="/Travel" class="btn btn-secondary">取消</a>
+</div>
+</form>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sel = document.getElementById('personSelect');
+    function fill() {
+        var o = sel.options[sel.selectedIndex];
+        if (!o || !o.value) return;
+        document.getElementById('tUnit').value = o.getAttribute('data-unit') || '';
+        document.getElementById('tName').value = o.getAttribute('data-name') || '';
+        document.getElementById('tIdNo').value = o.getAttribute('data-idno') || '';
+        document.getElementById('tTitle').value = o.getAttribute('data-title') || '';
+        var dept = document.getElementById('tDept');
+        if (!dept.value) dept.value = o.getAttribute('data-dept') || '';
+        var pos = document.getElementById('tPos');
+        if (!pos.value) pos.value = o.getAttribute('data-pos') || '';
+        // 已登记证件号填入 datalist，供下拉选择；做证新号仍可手输
+        var dl = document.getElementById('certNoList');
+        dl.innerHTML = '';
+        (o.getAttribute('data-certs') || '').split('|').filter(Boolean).forEach(function (no) {
+            var opt = document.createElement('option'); opt.value = no; dl.appendChild(opt);
+        });
+    }
+    sel.addEventListener('change', fill);
+    if (sel.value) fill();
+});
+</script>
+}

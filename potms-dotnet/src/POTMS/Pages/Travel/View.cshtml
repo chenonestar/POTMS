@@ -1,0 +1,123 @@
+@page "/Travel/View/{id:long}"
+@model POTMS.Pages.Travel.ViewPageModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "出国明细详情";
+    var t = Model.Travel;
+    using var cn = Database.Open();
+    string DV(string? c) => POTMS.Services.Helpers.GetDictValue(cn, "travel_category", c);
+    string IT(string? c) => POTMS.Services.IssuanceOps.TypesLabel(cn, c);
+}
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-airplane"></i> 出国明细 #@t.Id — @t.Name</h4>
+    <div>
+        <a href="/Print/travel/@t.Id" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> 打印</a>
+        <a href="/Issuance/Form?travelId=@t.Id" class="btn btn-outline-success ms-1"><i class="bi bi-vector-pen"></i> 证件领用</a>
+        <a href="/Travel/Form?id=@t.Id" class="btn btn-warning ms-1"><i class="bi bi-pencil"></i> 编辑</a>
+        @if (t.TripStatus == "cancelled")
+        {
+            <form method="post" action="/Travel?handler=Restore&amp;id=@t.Id" class="d-inline ms-1">
+                <button type="submit" class="btn btn-outline-primary"><i class="bi bi-arrow-counterclockwise"></i> 恢复行程</button>
+            </form>
+        }
+        else
+        {
+            <button type="button" class="btn btn-outline-dark ms-1" data-bs-toggle="modal" data-bs-target="#cancelModal"><i class="bi bi-x-octagon"></i> 取消行程</button>
+        }
+        <a href="/Travel" class="btn btn-secondary ms-1">返回列表</a>
+    </div>
+</div>
+
+@if (t.TripStatus == "cancelled")
+{
+    <div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle"></i>
+        本行程已取消（取消日期：@(t.CancelDate ?? "-")）。已申领证件须于取消日起 <strong>5 个工作日</strong> 内送回保管。</div>
+}
+@if (Model.IsOverdue)
+{
+    <div class="alert alert-danger py-2"><i class="bi bi-exclamation-octagon"></i>
+        <strong>证件逾期未还</strong>：应归还日期 @Model.Deadline，至今未登记归还。</div>
+}
+
+<div class="form-section"><h5>出行信息</h5>
+<div class="row g-3">
+    <div class="col-md-3"><label class="form-label text-muted small">单位</label><div>@t.Unit</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">部门</label><div>@t.Department</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">姓名</label><div><strong>@t.Name</strong></div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">职务</label><div>@t.Position</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">身份证号</label><div>@t.IdNumber</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label text-muted small">地点、证照</label><div>@t.DestinationPassport</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">类别</label><div>@DV(t.Category)</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">计划出行日期</label><div>@t.TravelDates</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">批准日期</label><div>@(t.ApprovalDate ?? "-")</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">是否做证</label><div>@t.NeedNewPassport</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label text-muted small">证件号码</label><div>@(t.PassportNo ?? "-")</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">证件领用日期</label><div>@(t.PassportCollectDate ?? "-")</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">证件归还日期</label><div>@(t.PassportReturnDate ?? "-")</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">实际回国日期</label><div>@(t.ActualReturnDate ?? "-")</div></div>
+</div>
+</div>
+
+<div class="form-section"><h5>附件（@Model.Files.Count）</h5>
+@if (Model.Files.Count == 0)
+{ <p class="text-muted mb-0">暂无附件</p> }
+else
+{
+    <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>类别</th><th>文件名</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
+        <tbody>
+        @foreach (var a in Model.Files)
+        {
+            <tr>
+                <td><span class="badge bg-light text-dark border">@a.FileType</span></td>
+                <td><i class="bi bi-file-earmark-pdf text-danger"></i> @a.FileName</td>
+                <td>@(a.FileSize / 1024) KB</td>
+                <td><small>@POTMS.Services.Helpers.ToLocalTime(a.UploadedAt, Cfg)</small></td>
+                <td><div class="btn-group btn-group-sm">
+                    <a href="/Travel/Attachment/@a.Id?mode=preview" class="btn btn-outline-info" target="_blank" title="预览"><i class="bi bi-eye"></i></a>
+                    <a href="/Travel/Attachment/@a.Id" class="btn btn-outline-secondary" title="下载"><i class="bi bi-download"></i></a>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                            data-action="/Travel/View/@t.Id?handler=DeleteAttachment&amp;attId=@a.Id"
+                            data-message="确定要删除附件 @a.FileName 吗？"><i class="bi bi-trash"></i></button>
+                </div></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+</div>
+
+@if (Model.Issuances.Count > 0)
+{
+    <div class="form-section"><h5>证件领用记录（@Model.Issuances.Count）</h5>
+    <ul class="list-unstyled small mb-0">
+    @foreach (var s in Model.Issuances)
+    {
+        <li><a href="/Issuance/View/@s.Id">#@s.Id @s.IssueDate @IT(s.CertTypes)</a>
+            — @(s.Status == "issued" ? "已领用" : s.Status == "returned" ? $"已归还 {s.ReturnDate}" : "已作废")</li>
+    }
+    </ul></div>
+}
+
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <form method="post" action="/Travel?handler=Cancel&amp;id=@t.Id">
+            <div class="modal-header"><h5 class="modal-title">取消行程</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p>已申领证件须于取消日起 <strong>5 个工作日</strong> 内送回保管。</p>
+                <label class="form-label">取消日期</label>
+                <input type="text" class="form-control" name="cancel_date" placeholder="YYYYMMDD（留空取今天）" maxlength="8">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="submit" class="btn btn-dark">确认取消行程</button>
+            </div>
+        </form>
+    </div></div>
+</div>
+<partial name="_ConfirmModal" />

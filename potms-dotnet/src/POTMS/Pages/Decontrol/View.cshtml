@@ -1,0 +1,52 @@
+@page "/Decontrol/View/{id:long}"
+@model POTMS.Pages.Decontrol.ViewPageModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "撤控详情";
+    var d = Model.Item;
+    using var cn = Database.Open();
+    string DV(string? c) => POTMS.Services.Helpers.GetDictValue(cn, "submit_unit_type", c);
+}
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-arrow-repeat"></i> 撤控备案 #@d.Id — @d.Name</h4>
+    <div>
+        <a href="/Print/decontrol/@d.Id" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> 打印</a>
+        <a href="/Decontrol" class="btn btn-secondary ms-1">返回列表</a>
+    </div>
+</div>
+
+@if (Model.Successor is not null)
+{
+    <div class="alert alert-info py-2"><i class="bi bi-arrow-right-circle"></i>
+        本人已重报，新备案记录：<a href="/Personnel/View/@Model.Successor.Id">#@Model.Successor.Id @Model.Successor.Name</a></div>
+}
+
+<div class="form-section"><h5>人员信息</h5>
+<div class="row g-3">
+    <div class="col-md-2"><label class="form-label text-muted small">姓名</label><div><strong>@d.Name</strong></div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">性别</label><div>@d.Gender</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">出生日期</label><div>@d.BirthDate</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">身份证号</label><div>@d.IdNumber</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">政治面貌</label><div>@d.PoliticalStatus</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-6"><label class="form-label text-muted small">户口所在地</label><div>@d.Residence</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">工作单位</label><div>@d.WorkUnit</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">人事主管单位</label><div>@d.SupervisorUnit</div></div>
+</div></div>
+
+<div class="form-section"><h5>报送与撤控</h5>
+<div class="row g-3">
+    <div class="col-md-4"><label class="form-label text-muted small">报送单位名称</label><div>@d.SubmitUnitName</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">报送单位类别</label><div>@DV(d.SubmitUnitType)</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">联系人</label><div>@d.SubmitContact</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">联系电话</label><div>@d.SubmitPhone</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label text-muted small">入库批号</label><div>@d.BatchNo</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">撤控日期</label><div>@(d.DecontrolDate ?? "-")</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">证件移交日期</label><div>@(d.CertHandoverDate ?? "-")</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-12"><label class="form-label text-muted small">撤控原因</label><div>@d.Reason</div></div>
+</div></div>

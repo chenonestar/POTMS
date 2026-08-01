@@ -2,6 +2,10 @@ namespace POTMS.Data;
 
 // 实体记录 —— 列名 snake_case 由 Dapper 的 MatchNamesWithUnderscores 自动映射到 PascalCase。
 // 全部字段可空以容忍历史数据，与其它三版「读时宽容、写时校验」的口径一致。
+//
+// 注意：此处一律用「属性式 record」而非位置式（主构造函数）record。
+// Dapper 对属性式走 setter 并做类型转换；对位置式则要求构造函数签名类型
+// 与 SQLite 返回类型精确匹配（INTEGER → Int64），int 会导致物化失败。
 
 public record PersonnelInfo
 {
