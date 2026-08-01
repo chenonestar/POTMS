@@ -36,15 +36,30 @@ public class AttachmentsModel(Db db, Flash flash) : AppPageModel(flash)
             var owned = have.TryGetValue(t.Id, out var s) ? s : [];
             var lack = required.Where(r => !owned.Contains(r)).ToList();
             if (lack.Count > 0)
-                Missing.Add(new MissingItem(t.Id, t.Name, t.Unit,
+                Missing.Add(new MissingItem(t.Id, t.Name ?? "", t.Unit ?? "",
                     t.NeedNewPassport == "是" ? "B" : "A", lack));
         }
 
         foreach (var g in cn.Query("SELECT file_type, COUNT(*) AS n FROM attachments GROUP BY file_type"))
-            TypeCounts[(string)g.file_type] = (int)(long)g.n;
+        {
+            var key = (string?)g.file_type;
+            if (key is null) continue;      // 字典键不可为 null
+            TypeCounts[key] = Convert.ToInt32(g.n);
+        }
     }
 
-    public record Row(long Id, string Name, string Unit, string? NeedNewPassport,
-                      string? TravelDates, long FileCount);
+    /// <summary>必须用属性式 record：FileCount 来自 COUNT(*) 子查询，是无声明类型的计算列。
+    /// 结果集为空时 SQLite 无值可推断，Microsoft.Data.Sqlite 的 GetFieldType() 退化为 byte[]，
+    /// 位置式 record 会因构造函数签名不匹配而在「出行表为空」时抛异常。
+    /// 属性式走 setter，空结果集下不读取任何值，因而安全。</summary>
+    public record Row
+    {
+        public long Id { get; init; }
+        public string? Name { get; init; }
+        public string? Unit { get; init; }
+        public string? NeedNewPassport { get; init; }
+        public string? TravelDates { get; init; }
+        public long FileCount { get; init; }
+    }
     public record MissingItem(long Id, string Name, string Unit, string Path, List<string> Lack);
 }

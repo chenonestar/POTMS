@@ -65,6 +65,16 @@ dotnet run
 dotnet test potms-dotnet/POTMS.sln
 ```
 
+除校验器 / 安全 / 签名 / schema 一致性的单元测试外，还有一组**全站页面冒烟**
+（`PageSmokeTests.cs`）：把应用跑在临时数据目录上，登录后逐个 GET 全部页面，
+断言不出现 5xx。**空库与有数据各跑一遍**——两者触发的失败路径不同：
+
+- 空库：`(SELECT COUNT(*) …)` 这类计算列没有声明类型，结果集为空时
+  Microsoft.Data.Sqlite 的 `GetFieldType()` 无值可推断而退化为 `byte[]`，
+  Dapper 便无法匹配**位置式 record** 的构造函数签名（`/Travel/Attachments`
+  曾因此在首次部署时 500，而人工冒烟总是带着数据做，测不出来）。
+- 有数据：dynamic 拆箱、字典键为 null、空集合上的 `First()` 等只有真取到行才会炸。
+
 ## 发布
 
 自包含发布为**目录**，目标机无需安装 .NET 运行时：
