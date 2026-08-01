@@ -19,8 +19,12 @@ public static class Signature
         if (raw.Length == 0) return (null, "请手写签名后再提交。");
         if (!raw.StartsWith(Prefix, StringComparison.Ordinal)) return (null, "签名数据格式不正确。");
 
+        var payload = raw[Prefix.Length..];
+        // 先按 base64 长度粗判体积再解码，避免为超大载荷先分配一遍内存
+        if ((long)payload.Length * 3 / 4 > MaxSignBytes) return (null, "签名图像过大，请重新签名。");
+
         byte[] blob;
-        try { blob = Convert.FromBase64String(raw[Prefix.Length..]); }
+        try { blob = Convert.FromBase64String(payload); }
         catch (FormatException) { return (null, "签名数据解析失败，请重新签名。"); }
 
         if (blob.Length < PngMagic.Length || !blob.Take(PngMagic.Length).SequenceEqual(PngMagic))
