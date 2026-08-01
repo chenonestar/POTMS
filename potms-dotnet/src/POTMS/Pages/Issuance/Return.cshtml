@@ -1,0 +1,49 @@
+@page "/Issuance/Return/{id:long}"
+@model POTMS.Pages.Issuance.ReturnModel
+@{ ViewData["Title"] = "证件归还登记"; var it = Model.Item; }
+<h4 class="mb-3 mt-3"><i class="bi bi-box-arrow-in-left"></i> 证件归还登记</h4>
+
+<div class="alert alert-info py-2">
+    <strong>@it.HolderName</strong> · @Model.TypeLabels
+    @if (!string.IsNullOrEmpty(it.CertNos)) { <text>· @it.CertNos</text> }
+    · 领用日期 @it.IssueDate · 经办人 @it.Issuer
+</div>
+
+<form method="post" id="signForm" class="needs-validation" novalidate>
+<div class="form-section">
+    <h5>归还信息</h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label required">归还日期</label>
+            <input type="text" class="form-control" name="return_date" value="@Model.ReturnDate" placeholder="YYYYMMDD" maxlength="8" required></div>
+        <div class="col-md-3"><label class="form-label">经办人（接收人）</label>
+            <input type="text" class="form-control" value="@User.Identity?.Name" readonly></div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>归还人签名</h5>
+    <partial name="_SignaturePad" model="@("归还人手写签名")" />
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存归还登记</button>
+    <a href="/Issuance/View/@it.Id" class="btn btn-secondary">取消</a>
+</div>
+</form>
+
+@section Scripts {
+<script src="~/js/signature.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    POTMSSignature.attach({
+        canvas: document.getElementById('signCanvas'),
+        clearBtn: document.getElementById('signClear'),
+        undoBtn: document.getElementById('signUndo'),
+        pngInput: document.getElementById('signPng'),
+        metaInput: document.getElementById('signMeta'),
+        hintEl: document.getElementById('signHint'),
+        form: document.getElementById('signForm')
+    });
+});
+</script>
+}

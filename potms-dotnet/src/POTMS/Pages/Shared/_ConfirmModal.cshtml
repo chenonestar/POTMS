@@ -1,0 +1,14 @@
+@* 通用确认对话框：由 main.js 读取按钮上的 data-action / data-message *@
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">确认操作</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><p id="confirmMessage">确定要执行此操作吗？</p></div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+            <form method="post" id="confirmForm" class="m-0 d-inline">
+                <button type="submit" class="btn btn-danger">确认</button>
+            </form>
+        </div>
+    </div></div>
+</div>

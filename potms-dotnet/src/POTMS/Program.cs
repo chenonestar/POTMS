@@ -7,6 +7,9 @@ using POTMS;
 using POTMS.Data;
 using POTMS.Services;
 
+// Dapper：snake_case 列名自动映射到 PascalCase 属性，省去逐列 AS 别名
+Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+
 var cfg = new Config();
 
 // 初始化数据库（首次运行建表 + 种子），随后执行幂等迁移

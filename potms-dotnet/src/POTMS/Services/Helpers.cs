@@ -42,7 +42,7 @@ public static class Helpers
     private static readonly string[] CompoundSurnames =
     {
         "欧阳", "司马", "上官", "诸葛", "令狐", "皇甫", "尉迟", "长孙",
-        "宇文", "慕容", "夏侯", "东方", "independent",
+        "宇文", "慕容", "夏侯", "东方",
     };
 
     /// <summary>按常见复姓拆分姓/名。</summary>
@@ -225,7 +225,7 @@ public static class Helpers
 }
 
 public record DictOption(string Code, string Value);
-public record OrgNode(long Id, string Name, long ParentId, int SortOrder);
+public record OrgNode(long Id, string Name, long ParentId, long SortOrder);
 public record OrgOption(long Id, string Label, string Name, int Depth);
 public record SubmitUnit(long Id, string Name, string? Contact, string? Phone);
 public record PersonOption(long Id, string Name, string FullName, string Unit, string Department,
