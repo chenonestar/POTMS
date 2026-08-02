@@ -56,6 +56,42 @@ public final class Helpers {
         return LocalDateTime.now(ZoneOffset.UTC).format(SQL_TS);
     }
 
+    // ---- 姓名 / 户口 ----
+
+    private static final String[] COMPOUND_SURNAMES = {
+        "欧阳", "司马", "上官", "诸葛", "令狐", "皇甫", "尉迟", "长孙",
+        "宇文", "慕容", "夏侯", "东方",
+    };
+
+    public record NameSplit(String surname, String givenName) {}
+
+    /** 按常见复姓拆分姓/名。 */
+    public static NameSplit detectSurnameSplit(String fullName) {
+        String n = fullName == null ? "" : fullName.trim();
+        if (n.isEmpty()) {
+            return new NameSplit("", "");
+        }
+        for (String cs : COMPOUND_SURNAMES) {
+            if (n.length() > 2 && n.startsWith(cs)) {
+                return new NameSplit(cs, n.substring(2));
+            }
+        }
+        return n.length() <= 1 ? new NameSplit(n, "")
+                : new NameSplit(n.substring(0, 1), n.substring(1));
+    }
+
+    /** 户口所在地规范化：历史区名统一映射。 */
+    public static String normalizeResidence(String raw) {
+        String s = raw == null ? "" : raw.trim();
+        if (s.isEmpty()) {
+            return "";
+        }
+        if (s.contains("江东区") || s.contains("鄞县")) {
+            return "浙江宁波市鄞州区";
+        }
+        return s;
+    }
+
     // ---- 操作日志 ----
 
     /** 快照中不记录的字段：时间戳无意义，签名 BLOB 过大且不应进日志。 */
@@ -152,6 +188,36 @@ public final class Helpers {
                         n.name(), depth));
                 walk(all, out, n.id(), depth + 1);
             }
+        }
+    }
+
+    /**
+     * 扁平组织列表，附带层级信息 — 对应 Python 模板里的 {@code org_flat()} 全局函数。
+     *
+     * @param rootId 所属顶级单位 id（供「单位→部门」前端级联按 data-root 过滤）
+     * @param depth  层级，0 为顶级单位
+     * @param indent 展示用缩进前缀
+     */
+    public record OrgFlatOption(long id, String name, long parentId, long rootId,
+                                int depth, String indent) {}
+
+    public static List<OrgFlatOption> orgFlatOptions(JdbcTemplate jdbc) {
+        List<OrgNode> all = orgFlat(jdbc);
+        List<OrgFlatOption> out = new ArrayList<>();
+        flatWalk(all, out, 0, 0, 0);
+        return out;
+    }
+
+    private static void flatWalk(List<OrgNode> all, List<OrgFlatOption> out,
+                                 long parent, long rootId, int depth) {
+        for (OrgNode n : all) {
+            if (n.parentId() != parent) {
+                continue;
+            }
+            long root = depth == 0 ? n.id() : rootId;
+            out.add(new OrgFlatOption(n.id(), n.name(), n.parentId(), root, depth,
+                    "　".repeat(depth)));
+            flatWalk(all, out, n.id(), root, depth + 1);
         }
     }
 

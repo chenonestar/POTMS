@@ -15,9 +15,13 @@ import java.util.List;
  * @param flashes   本次请求要展示的闪现消息（取出即清空）
  * @param path      当前请求路径，供侧边栏高亮
  * @param query     原始查询串，供分页拼接
+ * @param tzOffset  展示时区偏移（数据库统一存 UTC），供模板格式化时间戳
  */
 public record Ctx(String user, String csrfToken, List<Flash.Message> flashes,
-                  String path, String query) {
+                  String path, String query, int tzOffset) {
+
+    /** 由 CtxAdvice 在请求进入时注入，避免每个控制器都要拿一次 Config。 */
+    static volatile int defaultTzOffset = 8;
 
     public static Ctx of(HttpServletRequest req) {
         return new Ctx(
@@ -25,7 +29,17 @@ public record Ctx(String user, String csrfToken, List<Flash.Message> flashes,
                 Csrf.token(req),
                 Flash.pop(req),
                 req.getRequestURI(),
-                req.getQueryString() == null ? "" : req.getQueryString());
+                req.getQueryString() == null ? "" : req.getQueryString(),
+                defaultTzOffset);
+    }
+
+    /** UTC 时间戳 → 本地展示串。 */
+    public String localTime(Object value) {
+        return Fmt.localTime(value, tzOffset, "yyyy-MM-dd HH:mm:ss");
+    }
+
+    public String localDate(Object value) {
+        return Fmt.localTime(value, tzOffset, "yyyy-MM-dd");
     }
 
     public boolean loggedIn() {

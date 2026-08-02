@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,12 +33,42 @@ public class Db {
 
     public Db(Config cfg) {
         this.cfg = cfg;
-        DriverManagerDataSource ds = new DriverManagerDataSource(cfg.jdbcUrl());
-        ds.setDriverClassName("org.sqlite.JDBC");
-        this.dataSource = ds;
-        this.jdbc = new JdbcTemplate(ds);
-        // SQLite 默认关闭外键约束，须逐连接开启
-        this.jdbc.execute("PRAGMA foreign_keys=ON");
+        // 必须用连接池而非 DriverManagerDataSource：后者每条语句新开一个连接，
+        // 会造成两个隐蔽故障——
+        //   1) SQLite 的 PRAGMA foreign_keys 是「逐连接」设置，一次性执行等于没开，
+        //      所有删除守卫赖以生效的外键约束会全程失效；
+        //   2) last_insert_rowid() 落在另一条连接上，永远返回 0。
+        // 这里用连接池 + connectionInitSql，保证每条连接都开启外键。
+        var hikari = new com.zaxxer.hikari.HikariConfig();
+        hikari.setJdbcUrl(cfg.jdbcUrl());
+        hikari.setDriverClassName("org.sqlite.JDBC");
+        hikari.setConnectionInitSql("PRAGMA foreign_keys=ON");
+        hikari.setMaximumPoolSize(4);        // 单用户系统，够用且避免 SQLite 写锁竞争
+        hikari.setPoolName("potms-sqlite");
+        this.dataSource = new com.zaxxer.hikari.HikariDataSource(hikari);
+        this.jdbc = new JdbcTemplate(dataSource);
+    }
+
+    /**
+     * 插入并返回自增主键。
+     *
+     * <p>不能用 {@code SELECT last_insert_rowid()} —— 连接池下那条查询未必落在
+     * 刚写入的连接上。必须走 JDBC 的 getGeneratedKeys()，由驱动在同一连接内取回。
+     */
+    public long insert(String sql, Object... params) {
+        var holder = new org.springframework.jdbc.support.GeneratedKeyHolder();
+        jdbc.update(cn -> {
+            var ps = cn.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS);
+            for (int i = 0; i < params.length; i++) {
+                ps.setObject(i + 1, params[i]);
+            }
+            return ps;
+        }, holder);
+        Number key = holder.getKey();
+        if (key == null) {
+            throw new IllegalStateException("插入后未取到自增主键: " + sql);
+        }
+        return key.longValue();
     }
 
     public JdbcTemplate jdbc() {
