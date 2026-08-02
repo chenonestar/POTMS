@@ -1,0 +1,92 @@
+name: 构建 Java 版 Windows 包
+
+on:
+  push:
+    branches: [claude/java-version, main]
+    paths: ['potms-java/**', '.github/workflows/build-java.yml', 'database.py']
+  pull_request:
+    paths: ['potms-java/**', 'database.py']
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试（Linux）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 刻意用 Temurin：Oracle JDK 的 NFTC 免费窗口到期后需 Java SE Universal
+      # Subscription（按企业总员工数计费）。详见 potms-java/README.md 许可证一节。
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # schema.sql / Schema.java 由 Python 版 database.py 生成，五版共用 data.db，
+      # 此处校验生成物未与源头脱节
+      - name: 校验 schema 与 database.py 同步
+        run: python3 potms-java/tools/gen-schema-java.py --check
+
+      - name: 构建
+        run: mvn -B -f potms-java/pom.xml package -DskipTests
+
+      # 全站冒烟会起真进程走真 HTTP，须先有 target/potms.jar
+      - name: 测试
+        run: mvn -B -f potms-java/pom.xml test
+
+  build-windows:
+    name: 构建 Windows 包
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 打包胖 jar
+        run: mvn -B -f potms-java/pom.xml package -DskipTests
+
+      # jlink 只挑用得上的模块，把运行时压到 ~50MB
+      - name: 裁剪运行时（jlink）
+        shell: bash
+        run: |
+          jlink --add-modules java.base,java.desktop,java.sql,java.naming,java.management,\
+          java.instrument,java.security.jgss,java.security.sasl,java.xml,java.xml.crypto,\
+          java.logging,java.net.http,java.prefs,java.scripting,java.transaction.xa,\
+          jdk.crypto.ec,jdk.crypto.cryptoki,jdk.unsupported,jdk.zipfs \
+            --strip-debug --no-header-files --no-man-pages --compress=zip-6 \
+            --output runtime
+
+      # 目录版而非 exe 安装包：政务终端常无管理员权限，解压即用最稳妥
+      - name: 生成免装 JRE 的目录版（jpackage）
+        shell: bash
+        run: |
+          jpackage --type app-image \
+            --name POTMS \
+            --app-version 1.0.0 \
+            --vendor POTMS \
+            --description "因私出国（境）人员审批管理系统" \
+            --input potms-java/target \
+            --main-jar potms.jar \
+            --main-class org.springframework.boot.loader.launch.JarLauncher \
+            --runtime-image runtime \
+            --java-options "-Dfile.encoding=UTF-8" \
+            --dest dist
+
+      - name: 附带说明与备用胖 jar
+        shell: bash
+        run: |
+          cp potms-java/README.md dist/POTMS/README.md
+          cp potms-java/target/potms.jar dist/POTMS/potms-fatjar.jar
+          du -sh dist/POTMS
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: POTMS-java-windows-x64
+          path: dist/POTMS
+          retention-days: 30

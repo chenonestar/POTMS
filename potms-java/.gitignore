@@ -10,3 +10,4 @@ data.db-wal
 uploads/
 exports/
 backup/
+.sm2.p12
