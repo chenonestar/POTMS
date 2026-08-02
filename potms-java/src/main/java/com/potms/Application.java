@@ -59,6 +59,11 @@ public class Application {
         return new Db(cfg);
     }
 
+    @Bean
+    com.potms.service.Sm2Seal sm2Seal(Config cfg) {
+        return new com.potms.service.Sm2Seal(cfg);
+    }
+
     private static String envOr(String key, String dflt) {
         String v = System.getenv(key);
         return (v == null || v.isBlank()) ? dflt : v;

@@ -209,6 +209,21 @@ public class Db {
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_issuance_filing ON cert_issuance(personnel_filing_id)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_issuance_status ON cert_issuance(status)");
 
+        // 国密签章存证表 —— 仅 Java 版写入，是本版相对其它四版的功能增量。
+        // 刻意不往 cert_issuance 加列：那张表由 database.py 统一定义、五版共用，
+        // 加列会牵动全部版本；独立成表则是纯增量，其它四版对它无感知。
+        jdbc.execute("CREATE TABLE IF NOT EXISTS cert_issuance_seal ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "issuance_id INTEGER NOT NULL REFERENCES cert_issuance(id), "
+                + "kind TEXT NOT NULL, "              // issue | return
+                + "payload_hash TEXT NOT NULL, "      // SM3(规范化待签数据)
+                + "signature TEXT NOT NULL, "         // SM3withSM2 签名值
+                + "cert_subject TEXT, cert_serial TEXT, cert_source TEXT, "
+                + "signed_at TEXT NOT NULL, "
+                + "UNIQUE(issuance_id, kind))");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_seal_issuance "
+                + "ON cert_issuance_seal(issuance_id)");
+
         // 字典种子（存量库补齐新增分类，如 cert_type）
         seedDict();
 

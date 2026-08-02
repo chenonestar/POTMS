@@ -8,6 +8,7 @@ import static com.potms.web.PersonnelController.trim;
 import com.potms.Config;
 import com.potms.data.Db;
 import com.potms.service.IssuanceOps;
+import com.potms.service.SealStore;
 import com.potms.service.Signature;
 import com.potms.util.Validators;
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,10 +56,12 @@ public class IssuanceController {
 
     private final Db db;
     private final Config cfg;
+    private final SealStore seals;
 
-    public IssuanceController(Db db, Config cfg) {
+    public IssuanceController(Db db, Config cfg, SealStore seals) {
         this.db = db;
         this.cfg = cfg;
+        this.seals = seals;
     }
 
     /** 列表 WHERE 拼装，供列表页与导出复用。 */
@@ -157,6 +160,7 @@ public class IssuanceController {
                 data.get("remarks"), data.get("operator"));
 
         IssuanceOps.syncTravelDates(db.jdbc(), travelId);
+        sealQuietly(req, id, "issue", sig.bytes(), Signature.cleanMeta(req.getParameter("sign_meta")));
         Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
                 "create", "cert_issuance", id,
                 "证件领用登记：" + data.get("holder_name") + "，"
@@ -177,6 +181,10 @@ public class IssuanceController {
         model.addAttribute("item", row);
         model.addAttribute("travel", travelBrief(longOrNull(str(row.get("travel_id")))));
         model.addAttribute("typeLabels", IssuanceOps.typesLabel(db.jdbc(), str(row.get("cert_types"))));
+        model.addAttribute("issueSeal", seals.verify(db.jdbc(), id, "issue",
+                blob(row.get("sign_image")), str(row.get("sign_meta")), row));
+        model.addAttribute("returnSeal", seals.verify(db.jdbc(), id, "return",
+                blob(row.get("return_sign_image")), str(row.get("return_sign_meta")), row));
         return "issuance/view";
     }
 
@@ -239,6 +247,8 @@ public class IssuanceController {
                 operator(req), id);
 
         IssuanceOps.syncTravelDates(db.jdbc(), longOrNull(str(row.get("travel_id"))));
+        sealQuietly(req, id, "return", sig.bytes(),
+                Signature.cleanMeta(req.getParameter("sign_meta")));
         Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
                 "update", "cert_issuance", id,
                 "证件归还登记：" + str(row.get("holder_name")) + "，归还日期 " + returnDate,
@@ -396,6 +406,27 @@ public class IssuanceController {
     private String today() {
         return LocalDate.ofInstant(java.time.Instant.now(),
                 ZoneOffset.ofHours(cfg.tzOffsetHours)).format(YMD);
+    }
+
+    /**
+     * 签章失败不阻断业务：领用登记本身已经成功，凭证仍在。
+     * 详情页会把「未签章」如实显示出来，不会让人误以为已加固。
+     */
+    private void sealQuietly(HttpServletRequest req, long id, String kind,
+                             byte[] signImage, String signMeta) {
+        var rows = db.jdbc().queryForList("SELECT * FROM cert_issuance WHERE id = ?", id);
+        if (rows.isEmpty()) {
+            return;
+        }
+        try {
+            seals.seal(db.jdbc(), id, kind, signImage, signMeta, rows.get(0));
+        } catch (RuntimeException e) {
+            Flash.warning(req, "国密签章未能生成（" + e.getMessage() + "），凭证已保存但未加固。");
+        }
+    }
+
+    private static byte[] blob(Object o) {
+        return o instanceof byte[] b ? b : null;
     }
 
     private static Long longOrNull(String s) {
