@@ -12,7 +12,7 @@
 @template.layout(ctx = ctx, title = "证照登记表", content = @`
     <h4 class="mb-3 mt-3"><i class="bi bi-card-checklist"></i> ${editing ? "编辑" : "新增"}因私出国（境）备案人员证照登记表</h4>
 
-    @* data-draft 分两支写：JTE 禁止属性名位置出现表达式，且空值属性会误触发草稿逻辑 *@
+    <%-- data-draft 分两支写：JTE 禁止属性名位置出现表达式，且空值属性会误触发草稿逻辑 --%>
     @if(editing)
     <form method="POST" action="${action}" class="needs-validation" novalidate>
     @else

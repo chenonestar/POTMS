@@ -1,4 +1,4 @@
-@# 通用确认删除对话框；CSRF 令牌由 main.js 在提交前注入
+<%-- 通用确认删除对话框；CSRF 令牌由 main.js 在提交前注入 --%>
 <div class="modal fade" id="confirmModal" tabindex="-1">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">

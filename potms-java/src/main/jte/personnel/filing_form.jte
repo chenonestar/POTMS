@@ -36,8 +36,8 @@
         </div>
     @endif
 
-    @* data-draft 必须整个属性出现或整个不出现：main.js 用 form[data-draft] 选择器，
-       留一个空值属性会误触发草稿逻辑。JTE 又禁止在属性名位置放表达式，故分两支写。 *@
+    <%-- data-draft 必须整个属性出现或整个不出现：main.js 用 form[data-draft] 选择器，
+       留一个空值属性会误触发草稿逻辑。JTE 又禁止在属性名位置放表达式，故分两支写。 --%>
     @if(editing)
     <form method="POST" action="${action}" class="needs-validation" novalidate>
     @else
@@ -118,7 +118,7 @@
                         <option value="">请选择</option>
                         @for(var o : supervisorOpts)<option value="${o.value()}" selected="${Fmt.is(supervisor, o.value())}">${o.value()}</option>@endfor
                         @if(!supervisorKnown)
-                            @* 字典里已删除但历史记录仍在用的值，保留为一项，避免编辑时被静默清空 *@
+                            <%-- 字典里已删除但历史记录仍在用的值，保留为一项，避免编辑时被静默清空 --%>
                             <option value="${supervisor}" selected>${supervisor}（历史值）</option>
                         @endif
                     </select>

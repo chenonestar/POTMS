@@ -31,7 +31,7 @@
         </div>
     @endif
 
-    @* 同 filing_form：data-draft 分两支写，避免空值属性误触发草稿逻辑 *@
+    <%-- 同 filing_form：data-draft 分两支写，避免空值属性误触发草稿逻辑 --%>
     @if(editing)
     <form method="POST" action="/personnel/info/${infoId}/edit" class="needs-validation" novalidate>
     @else
@@ -65,7 +65,7 @@
                         @endfor
                         @for(var o : orgOpts)
                             @if(o.depth() == 0)
-                                @* 无下级部门的单位：回退为可选「单位本身」 *@
+                                <%-- 无下级部门的单位：回退为可选「单位本身」 --%>
                                 <option value="${o.name()}" data-root="${o.id()}" data-oid="${o.id()}" data-depth="0" style="display:none" selected="${Fmt.is(Fmt.v(data, "department"), o.name())}">${o.name()}</option>
                             @endif
                         @endfor

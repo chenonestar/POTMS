@@ -14,7 +14,7 @@
 @template.layout(ctx = ctx, title = "因私出国（境）人员明细表", content = @`
     <h4 class="mb-3 mt-3"><i class="bi bi-airplane"></i> ${editing ? "编辑" : "新增"}因私出国（境）人员明细表</h4>
 
-    @* data-draft 分两支写：JTE 禁止属性名位置出现表达式 *@
+    <%-- data-draft 分两支写：JTE 禁止属性名位置出现表达式 --%>
     @if(editing)
     <form method="POST" action="${action}" enctype="multipart/form-data" class="needs-validation" novalidate>
     @else
