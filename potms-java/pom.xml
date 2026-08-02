@@ -103,6 +103,7 @@
         <version>${jte.version}</version>
         <configuration>
           <sourceDirectory>${project.basedir}/src/main/jte</sourceDirectory>
+          <targetDirectory>${project.build.outputDirectory}</targetDirectory>
           <contentType>Html</contentType>
           <binaryStaticContent>true</binaryStaticContent>
         </configuration>
