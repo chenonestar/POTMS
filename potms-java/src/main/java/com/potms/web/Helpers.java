@@ -171,6 +171,72 @@ public final class Helpers {
                         rs.getString("contact"), rs.getString("phone")));
     }
 
+    // ---- 备案人员下拉（含证件号，供下游自动带入）----
+
+    /**
+     * @param certNos    该人已登记的全部证件号（扁平，供 datalist）
+     * @param certByType 按证件种类代码索引（01 护照 / 02 港澳 / 03 台湾），供领用登记自动带入
+     */
+    public record PersonOption(long id, String name, String fullName, String unit, String department,
+                               String idNumber, String position, String title,
+                               List<String> certNos, Map<String, String> certByType) {}
+
+    public static List<PersonOption> personnelOptions(JdbcTemplate jdbc) {
+        var rows = jdbc.queryForList(
+                "SELECT pf.id, pf.surname, pf.given_name, pf.work_unit, pf.id_number, "
+                + "       pf.position_or_title, COALESCE(pi.department, '') AS department, "
+                + "       (SELECT value FROM sys_dict WHERE category = 'title' AND code = pi.title) AS title_val "
+                + "FROM personnel_filing pf "
+                + "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
+                + "WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name");
+
+        // 每人已登记的证件号，一次查询建映射
+        Map<Long, List<String>> certList = new LinkedHashMap<>();
+        Map<Long, Map<String, String>> certByType = new LinkedHashMap<>();
+        for (var c : jdbc.queryForList(
+                "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates")) {
+            Object pidObj = c.get("personnel_filing_id");
+            if (pidObj == null) {
+                continue;
+            }
+            long pid = ((Number) pidObj).longValue();
+            var list = certList.computeIfAbsent(pid, k -> new ArrayList<>());
+            var byType = certByType.computeIfAbsent(pid, k -> new LinkedHashMap<>());
+            String[][] pairs = {
+                {"01", str(c.get("passport_no"))},
+                {"02", str(c.get("hm_pass_no"))},
+                {"03", str(c.get("tw_pass_no"))},
+            };
+            for (String[] p : pairs) {
+                String v = p[1].trim();
+                if (v.isEmpty()) {
+                    continue;
+                }
+                if (!list.contains(v)) {
+                    list.add(v);
+                }
+                byType.putIfAbsent(p[0], v);
+            }
+        }
+
+        List<PersonOption> out = new ArrayList<>();
+        for (var r : rows) {
+            long id = ((Number) r.get("id")).longValue();
+            String name = str(r.get("surname")) + str(r.get("given_name"));
+            out.add(new PersonOption(id, name,
+                    name + " (" + str(r.get("work_unit")) + ")",
+                    str(r.get("work_unit")), str(r.get("department")), str(r.get("id_number")),
+                    str(r.get("position_or_title")), str(r.get("title_val")),
+                    certList.getOrDefault(id, List.of()),
+                    certByType.getOrDefault(id, Map.of())));
+        }
+        return out;
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : o.toString();
+    }
+
     // ---- 分页 ----
 
     /** 分页结果 — 对应 Python 版 PageResult。 */
