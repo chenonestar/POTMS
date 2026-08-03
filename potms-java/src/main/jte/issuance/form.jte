@@ -109,7 +109,6 @@
         </div>
     </form>
 `, scripts = @`
-    <script src="/static/js/signature.js"></script>
     <script>
     function filterPersons(searchId, selectId) {
         var q = document.getElementById(searchId).value.trim().toLowerCase();

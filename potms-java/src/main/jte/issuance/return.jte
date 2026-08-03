@@ -38,6 +38,4 @@
             <a href="/issuance/${id}" class="btn btn-secondary">取消</a>
         </div>
     </form>
-`, scripts = @`
-    <script src="/static/js/signature.js"></script>
 `)

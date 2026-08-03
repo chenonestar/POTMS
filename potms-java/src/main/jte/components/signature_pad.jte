@@ -20,3 +20,21 @@
     <input type="hidden" name="sign_png" id="signPng">
     <input type="hidden" name="sign_meta" id="signMeta">
 </div>
+<%-- 采集脚本与初始化就放在组件里，不外包给引用页的 scripts 块。
+   Python 版是分开写的，Java 版照抄时把 attach 漏在了外面：画布照常渲染、
+   页面照常 200，只是没人绑事件，鼠标画不出任何东西。放在一起就不存在
+   「包含了组件却忘了初始化」这种半拉子状态。 --%>
+<script src="/static/js/signature.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    POTMSSignature.attach({
+        canvas: document.getElementById('signCanvas'),
+        clearBtn: document.getElementById('signClear'),
+        undoBtn: document.getElementById('signUndo'),
+        pngInput: document.getElementById('signPng'),
+        metaInput: document.getElementById('signMeta'),
+        hintEl: document.getElementById('signHint'),
+        form: document.getElementById('signForm')
+    });
+});
+</script>

@@ -28,6 +28,15 @@ jobs:
       - name: 校验 schema 与 database.py 同步
         run: python3 potms-java/tools/gen-schema-java.py --check
 
+      # 签名板那类「渲染出来才算数」的东西只有真开浏览器才测得到。runner 自带
+      # Chrome，这里显式确认一下：缺了浏览器测试会自动跳过，不查就会在毫不知情
+      # 的情况下丢掉唯一一层浏览器级验证。
+      - name: 确认 CI 上有浏览器
+        run: |
+          test -x /usr/bin/google-chrome || {
+            echo '::error::runner 上找不到 google-chrome，浏览器级签名测试会被静默跳过'; exit 1; }
+          /usr/bin/google-chrome --version
+
       - name: 构建
         run: mvn -B -f potms-java/pom.xml package -DskipTests
 
