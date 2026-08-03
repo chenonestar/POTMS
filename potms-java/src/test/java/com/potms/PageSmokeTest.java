@@ -112,6 +112,41 @@ class PageSmokeTest {
         assertEquals(200, empty.get("/").statusCode());
     }
 
+    /**
+     * 页面里引用的每个静态资源都必须真能取到。
+     *
+     * <p>这条是补出来的窟窿：原先只断言 HTML 页面不是 5xx，而 CSS/JS 全 404
+     * 时页面照样返回 200，只是退化成没有样式的裸 HTML——测试全绿，用户一开
+     * 浏览器就发现界面是散的。断言里连 Content-Type 一起查，是因为还有另一种
+     * 坏法：静态路径没进鉴权白名单，被 302 到登录页，浏览器拿到一篇 HTML 当
+     * 样式表用，同样是 200。
+     */
+    @ParameterizedTest(name = "静态资源 {0}")
+    @MethodSource("staticAssets")
+    @DisplayName("模板引用的 CSS / JS / 字体全部可取")
+    void staticAssetsResolve(String url) throws Exception {
+        var res = seeded.get(url);
+        assertEquals(200, res.statusCode(), "GET " + url + " 取不到，页面会退化成裸 HTML");
+        String type = res.headers().firstValue("content-type").orElse("");
+        assertTrue(!type.startsWith("text/html"),
+                "GET " + url + " 返回的是 HTML（" + type + "），多半是被重定向到了登录页");
+        assertTrue(res.body().length() > 100, "GET " + url + " 内容为空");
+    }
+
+    /** 从真实渲染出的页面里扒引用，而不是手写清单——手写的清单会跟着模板一起过时。 */
+    static List<String> staticAssets() throws Exception {
+        var found = new java.util.TreeSet<String>();
+        Pattern ref = Pattern.compile("(?:href|src)=\"(/static/[^\"]+)\"");
+        for (String page : List.of("/login", "/", "/issuance/new", "/personnel/info/new")) {
+            Matcher m = ref.matcher(seeded.get(page).body());
+            while (m.find()) {
+                found.add(m.group(1));
+            }
+        }
+        assertTrue(found.size() >= 6, "只扒到 " + found.size() + " 个静态引用，抓取正则可能失配了");
+        return List.copyOf(found);
+    }
+
     private static void assertNo5xx(AppUnderTest app, String url) throws Exception {
         var res = app.get(url);
         assertTrue(res.statusCode() < 500,

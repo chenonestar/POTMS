@@ -61,7 +61,23 @@ jobs:
             --strip-debug --no-header-files --no-man-pages --compress=zip-6 \
             --output runtime
 
-      # 目录版而非 exe 安装包：政务终端常无管理员权限，解压即用最稳妥
+      # --description 会写进 exe 的版本资源 FileDescription，也就是任务管理器里
+      # 显示的那个程序名。它**不能直接写在命令行上**：JDK 启动器是按系统 ANSI
+      # 代码页解码 argv 的，GitHub 的 windows runner 是 en-US（ACP=1252），
+      # 中文到不了 jpackage 手里，全变成问号。实测对照：
+      #   直接传参  --name 名称探针  →  jpackage 收到 ������������
+      #   @参数文件 --name 名称探针  →  jpackage 收到 名称探针
+      # 参数文件是 jpackage 自己用默认字符集（JDK 18+ 恒为 UTF-8）读的，
+      # 绕开了 argv 那道解码，所以中文写进文件里传。
+      - name: 准备 jpackage 参数文件（UTF-8）
+        shell: bash
+        run: |
+          printf -- '--description\n"因私出国（境）人员审批管理系统"\n' > jpackage-args.txt
+
+      # 目录版而非 exe 安装包：政务终端常无管理员权限，解压即用最稳妥。
+      # --win-console 让启动器带控制台窗口，与 Go / Rust / .NET 三版一致：
+      # 默认的窗口子系统启动器双击后毫无反应（Web 服务在后台起来了但看不见），
+      # 用户会以为没启动而反复双击。
       - name: 生成免装 JRE 的目录版（jpackage）
         shell: bash
         run: |
@@ -69,13 +85,25 @@ jobs:
             --name POTMS \
             --app-version 1.0.0 \
             --vendor POTMS \
-            --description "因私出国（境）人员审批管理系统" \
+            @jpackage-args.txt \
             --input potms-java/target \
             --main-jar potms.jar \
             --main-class org.springframework.boot.loader.launch.JarLauncher \
             --runtime-image runtime \
+            --win-console \
             --java-options "-Dfile.encoding=UTF-8" \
             --dest dist
+
+      # 从成品 exe 里把版本资源读回来核对。参数文件只保证中文安全抵达 jpackage，
+      # 至于它写进 Windows 版本资源时会不会再掉一次，只有在 Windows 上读回来才知道。
+      - name: 核对任务管理器里显示的程序名
+        shell: pwsh
+        run: |
+          $info = (Get-Item dist\POTMS\POTMS.exe).VersionInfo
+          Write-Host "FileDescription = $($info.FileDescription)"
+          if ($info.FileDescription -notlike '*因私出国*') {
+            throw "exe 版本资源里的中文没写对（任务管理器会显示成问号）：$($info.FileDescription)"
+          }
 
       - name: 附带说明与备用胖 jar
         shell: bash

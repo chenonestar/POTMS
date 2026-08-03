@@ -120,7 +120,7 @@ CI 产出 **jpackage 目录版**，目标机无需安装 JRE：
 
 ```
 dist/POTMS/
-  POTMS.exe            ← 双击启动
+  POTMS.exe            ← 双击启动（带控制台窗口，与 Go / Rust / .NET 三版一致）
   runtime/             ← jlink 裁剪后的运行时（约 50 MB）
   app/potms.jar
   potms-fatjar.jar     ← 备用：任何装了 JRE 的机器都能 java -jar 跑
@@ -148,6 +148,40 @@ $ java -Dsun.jnu.encoding=UTF-8 EncProbe
 故只能在代码层兜底：落盘前检查文件系统编码能否表示该名字，不能就退回
 `export_<时间戳>.xlsx`；下载名（HTTP `Content-Disposition`，按 RFC 5987 编码）
 始终保持中文，用户看到的仍是「因私出国境证件领用登记表_20260802.xlsx」。
+
+### 任务管理器里的程序名
+
+`--description` 会写进 exe 版本资源的 `FileDescription`，也就是任务管理器
+显示的那个程序名。它**不能直接写在命令行上**——JDK 启动器按系统 ANSI 代码页
+解码 argv，而打包机（GitHub windows runner）是 en-US、ACP=1252，中文到不了
+jpackage 手里。实测对照：
+
+```
+直接传参   --name 名称探针  →  jpackage 收到 ������������
+@参数文件  --name 名称探针  →  jpackage 收到 名称探针
+```
+
+参数文件是 jpackage 自己用默认字符集读的（JDK 18+ 恒为 UTF-8），绕开了 argv
+那道解码。故中文元数据一律走 `@jpackage-args.txt`，并在打包后从成品 exe 把
+`FileDescription` 读回来核对，读不到中文就让流水线红——参数文件只保证中文安全
+抵达 jpackage，写进 Windows 版本资源时会不会再掉一次，只有在 Windows 上读回来
+才算数。
+
+## 静态资源挂载路径
+
+```properties
+spring.mvc.static-path-pattern=/static/**
+```
+
+这一行不能省。Spring Boot 默认把 `classpath:/static/` 映射到 `/**`，
+即 `/css/style.css`；而五版共用同一套模板，模板里写的是 Flask 约定的
+`/static/css/style.css`。少了这行，CSS/JS 全部 404，页面 HTTP 状态照样 200，
+只是退化成没有样式的裸 HTML。
+
+冒烟测试因此增加了一条：从真实渲染出的页面里扒出所有 `/static/...` 引用逐个请求，
+断言 200 且 Content-Type 不是 `text/html`。查 Content-Type 是为了另一种坏法——
+静态路径没进鉴权白名单时会被 302 到登录页，浏览器把一篇 HTML 当样式表用，
+状态码同样是 200。引用清单从页面里扒而不是手写，手写的清单会跟着模板一起过时。
 
 ## 功能范围
 
