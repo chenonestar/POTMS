@@ -199,7 +199,7 @@ public final class Helpers {
      * @param indent 展示用缩进前缀
      */
     public record OrgFlatOption(long id, String name, long parentId, long rootId,
-                                int depth, String indent) {}
+                                int depth, String indent, long sortOrder) {}
 
     public static List<OrgFlatOption> orgFlatOptions(JdbcTemplate jdbc) {
         List<OrgNode> all = orgFlat(jdbc);
@@ -216,7 +216,7 @@ public final class Helpers {
             }
             long root = depth == 0 ? n.id() : rootId;
             out.add(new OrgFlatOption(n.id(), n.name(), n.parentId(), root, depth,
-                    "　".repeat(depth)));
+                    "　".repeat(depth), n.sortOrder()));
             flatWalk(all, out, n.id(), root, depth + 1);
         }
     }

@@ -91,8 +91,30 @@ public class LogsController {
         }
     }
 
-    /** 一处字段变更。 */
+    /** 一处字段变更。新建时 before 为空，删除时 after 为空。 */
     public record Change(String field, String before, String after) {}
+
+    /**
+     * 一条日志的变更详情。
+     *
+     * <p>分三型，与 Python 版 {@code _compute_changes} 一致：{@code update} 列
+     * 「字段 / 变更前 / 变更后」三列；{@code create} 与 {@code delete} 没有对照面，
+     * 列的是当时那条记录的全量内容，只显示两列。
+     */
+    public record ChangeSet(String type, List<Change> items) {
+        public boolean isEmpty() {
+            return items.isEmpty();
+        }
+
+        public boolean isUpdate() {
+            return "update".equals(type);
+        }
+
+        /** 展开面板的表头文案。 */
+        public String heading() {
+            return "create".equals(type) ? "新建内容" : "删除前内容";
+        }
+    }
 
     private final Db db;
     private final Config cfg;
@@ -122,7 +144,7 @@ public class LogsController {
                 f.params(), page, Config.PAGE_SIZE_LOGS);
 
         // 解析变更快照，逐行附上「字段：旧值 → 新值」
-        Map<Long, List<Change>> changes = new LinkedHashMap<>();
+        Map<Long, ChangeSet> changes = new LinkedHashMap<>();
         for (var r : pg.rows()) {
             changes.put(Fmt.n(r, "id"), computeChanges(str(r.get("snapshot"))));
         }
@@ -155,19 +177,35 @@ public class LogsController {
      * <p>只列真正变了的字段：新建时 before 为空、删除时 after 为空，
      * 两种情况都只展示有值的一侧，避免整行字段刷屏。
      */
-    static List<Change> computeChanges(String snapshot) {
+    public static ChangeSet computeChanges(String snapshot) {
         List<Change> out = new ArrayList<>();
         if (snapshot == null || snapshot.isBlank()) {
-            return out;
+            return new ChangeSet("update", out);
         }
         JsonNode root;
         try {
             root = JSON.readTree(snapshot);
         } catch (RuntimeException e) {
-            return out;   // 快照损坏不应让日志页打不开
+            return new ChangeSet("update", out);   // 快照损坏不应让日志页打不开
         }
         JsonNode before = root.path("before");
         JsonNode after = root.path("after");
+        boolean hasBefore = !before.isMissingNode() && !before.isNull() && !before.isEmpty();
+        boolean hasAfter = !after.isMissingNode() && !after.isNull() && !after.isEmpty();
+
+        // 只有一侧有内容 = 新建或删除：没有可对照的另一面，列全量而不是列 diff
+        if (hasBefore != hasAfter) {
+            JsonNode side = hasAfter ? after : before;
+            for (String k : side.propertyNames()) {
+                String v = text(side, k);
+                if (v.isEmpty()) {
+                    continue;          // 空字段不占版面
+                }
+                out.add(new Change(FIELD_LABELS.getOrDefault(k, k),
+                        hasAfter ? "" : v, hasAfter ? v : ""));
+            }
+            return new ChangeSet(hasAfter ? "create" : "delete", out);
+        }
 
         var keys = new java.util.LinkedHashSet<String>();
         keys.addAll(before.propertyNames());
@@ -181,7 +219,7 @@ public class LogsController {
             }
             out.add(new Change(FIELD_LABELS.getOrDefault(k, k), b, a));
         }
-        return out;
+        return new ChangeSet("update", out);
     }
 
     private static String text(JsonNode node, String key) {

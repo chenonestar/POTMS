@@ -76,6 +76,19 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link ${ctx.active("/account") ? "active" : ""}" href="/account">
+                                <i class="bi bi-person-gear"></i> 账户设置
+                            </a>
+                        </li>
+                    </ul>
+                    <h6 class="sidebar-heading px-3 mt-4 mb-1 text-muted"><small>数据管理</small></h6>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link ${ctx.active("/import") ? "active" : ""}" href="/import">
+                                <i class="bi bi-upload"></i> 批量导入
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link ${ctx.active("/logs") ? "active" : ""}" href="/logs">
                                 <i class="bi bi-journal-text"></i> 操作日志
                             </a>

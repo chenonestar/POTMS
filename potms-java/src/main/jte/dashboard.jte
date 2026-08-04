@@ -5,9 +5,6 @@
 @param long totalDecontrolled
 @param long totalCertificates
 @param long totalTravel
-@param List<Bucket> byUnit
-@param List<Bucket> byPolitical
-@param List<Bucket> byRank
 @param long certInStorage
 @param long certInUse
 @param long certOverdue
@@ -67,7 +64,7 @@
     </div>
 
     <div class="row g-3 mt-1">
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card h-100">
                 <div class="card-header">证件状态</div>
                 <ul class="list-group list-group-flush">
@@ -84,7 +81,7 @@
                 </ul>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card h-100">
                 <div class="card-header">证件领用</div>
                 <ul class="list-group list-group-flush">
@@ -100,22 +97,6 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-header">按单位分布（前 8）</div>
-                <ul class="list-group list-group-flush">
-                    @if(byUnit.isEmpty())
-                        <li class="list-group-item text-muted small">暂无数据</li>
-                    @endif
-                    @for(var b : byUnit)
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>${b.label()}</span><span class="badge bg-light text-dark">${b.count()}</span>
-                        </li>
-                    @endfor
-                </ul>
-            </div>
-        </div>
-    </div>
 
     <div class="row g-3 mt-1">
         <div class="col-md-6">
@@ -165,33 +146,7 @@
     </div>
 
     <div class="row g-3 mt-1 mb-4">
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-header">按政治面貌</div>
-                <ul class="list-group list-group-flush">
-                    @if(byPolitical.isEmpty())<li class="list-group-item text-muted small">暂无数据</li>@endif
-                    @for(var b : byPolitical)
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>${b.label()}</span><span class="badge bg-light text-dark">${b.count()}</span>
-                        </li>
-                    @endfor
-                </ul>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-header">按职级</div>
-                <ul class="list-group list-group-flush">
-                    @if(byRank.isEmpty())<li class="list-group-item text-muted small">暂无数据</li>@endif
-                    @for(var b : byRank)
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>${b.label()}</span><span class="badge bg-light text-dark">${b.count()}</span>
-                        </li>
-                    @endfor
-                </ul>
-            </div>
-        </div>
-        <div class="col-md-4">
+        <div class="col-12">
             <div class="card h-100">
                 <div class="card-header">近期出行</div>
                 <ul class="list-group list-group-flush">

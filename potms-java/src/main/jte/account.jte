@@ -1,32 +1,46 @@
 @param com.potms.web.Ctx ctx
 @param String username
+<%-- 分段与文案对齐 Python 版 templates/account.html：三段（登录账户 / 修改密码 /
+   安全验证），字段名与提交契约完全一致。这里不是自由发挥的地方——五版界面要一致。 --%>
 @template.layout(ctx = ctx, title = "账户设置", content = @`
     <h4 class="mb-3 mt-3"><i class="bi bi-person-gear"></i> 账户设置</h4>
-    <div class="card" style="max-width:560px;">
-        <div class="card-body">
+
+    <div class="row">
+        <div class="col-lg-6">
             <form method="POST" action="/account" class="needs-validation" novalidate>
                 <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
-                <div class="mb-3">
+
+                <div class="form-section">
+                    <h5>登录账户</h5>
+                    <label class="form-label required">用户名</label>
+                    <input type="text" class="form-control" name="new_username" value="${username}" minlength="3" required autocomplete="username">
+                    <div class="form-text">修改后需使用新用户名登录。</div>
+                </div>
+
+                <div class="form-section">
+                    <h5>修改密码 <small class="text-muted fw-normal">（不修改请留空）</small></h5>
+                    <div class="mb-2">
+                        <label class="form-label">新密码</label>
+                        <input type="password" class="form-control" name="new_password" minlength="6" placeholder="至少 6 位；留空表示不修改" autocomplete="new-password">
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label">确认新密码</label>
+                        <input type="password" class="form-control" name="confirm_password" autocomplete="new-password">
+                    </div>
+                    <div class="form-text">修改密码后需使用新密码重新登录。</div>
+                </div>
+
+                <div class="form-section">
+                    <h5>安全验证</h5>
                     <label class="form-label required">当前密码</label>
-                    <input type="password" class="form-control" name="current_password" required autocomplete="current-password">
-                    <div class="form-text">修改用户名或密码都需要先验证当前密码。</div>
+                    <input type="password" class="form-control" name="current_password" required placeholder="请输入当前密码以确认身份" autocomplete="current-password">
+                    <div class="form-text">任何修改都需要先验证当前密码。</div>
                 </div>
-                <hr>
-                <div class="mb-3">
-                    <label class="form-label">用户名</label>
-                    <input type="text" class="form-control" name="new_username" value="${username}" minlength="3">
+
+                <div class="mt-3 mb-4">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+                    <a href="/" class="btn btn-secondary">取消</a>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">新密码</label>
-                    <input type="password" class="form-control" name="new_password" minlength="6" autocomplete="new-password">
-                    <div class="form-text">留空表示不修改密码；至少 6 个字符。修改密码后需重新登录。</div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">确认新密码</label>
-                    <input type="password" class="form-control" name="confirm_password" autocomplete="new-password">
-                </div>
-                <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
-                <a href="/" class="btn btn-secondary">返回</a>
             </form>
         </div>
     </div>

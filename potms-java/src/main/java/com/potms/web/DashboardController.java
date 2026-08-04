@@ -64,16 +64,11 @@ public class DashboardController {
         model.addAttribute("totalCertificates", count("SELECT COUNT(*) FROM certificates"));
         model.addAttribute("totalTravel", count("SELECT COUNT(*) FROM travel_details"));
 
-        model.addAttribute("byUnit", buckets(
-                "SELECT work_unit AS label, COUNT(*) AS cnt FROM personnel_filing "
-                + "WHERE status = 'active' GROUP BY work_unit ORDER BY cnt DESC LIMIT 8"));
-        model.addAttribute("byPolitical", buckets(
-                "SELECT political_status AS label, COUNT(*) AS cnt FROM personnel_filing "
-                + "WHERE status = 'active' GROUP BY political_status ORDER BY cnt DESC"));
-        model.addAttribute("byRank", buckets(
-                "SELECT pi.rank AS label, COUNT(*) AS cnt FROM personnel_filing pf "
-                + "JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
-                + "WHERE pf.status = 'active' GROUP BY pi.rank ORDER BY cnt DESC"));
+        // 这里刻意没有「按单位 / 按政治面貌 / 按职级」三项分布统计。
+        // Python 版的 dashboard.py 确实算了 by_unit / by_political / by_rank，
+        // 但 dashboard.html 从头到尾没有用过——那是留在源头的死查询。Java 版当初
+        // 照着 controller 抄，把三张卡渲染了出来，成了五版里唯一多这一块的版本。
+        // 现与 Python / Go / Rust / .NET 对齐：不查也不显示。
 
         // 证照状态分类
         model.addAttribute("certInStorage", count(

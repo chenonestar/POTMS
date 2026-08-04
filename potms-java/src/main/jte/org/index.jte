@@ -46,12 +46,12 @@
                                     @endif
                                 @endfor
                             </select>
-                            <input type="number" class="form-control form-control-sm" name="sort_order" value="0" style="width:80px">
+                            <input type="number" class="form-control form-control-sm" name="sort_order" value="${n.sortOrder()}" style="width:80px">
                             <button class="btn btn-sm btn-outline-warning" title="保存"><i class="bi bi-check-lg"></i></button>
                         </form>
                     </td>
                     <td class="text-muted small">${n.depth() == 0 ? "（顶级）" : "层级 " + n.depth()}</td>
-                    <td>${n.id()}</td>
+                    <td>${n.sortOrder()}</td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
                                 data-action="/org/${n.id()}/delete"

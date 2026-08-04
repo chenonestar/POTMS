@@ -112,6 +112,83 @@ class PageSmokeTest {
         assertEquals(200, empty.get("/").statusCode());
     }
 
+    // ==================================================================
+    // 与 Python 版的界面一致性
+    //
+    // 这几条是回归用的。五版共用同一套界面约定，Java 版当初出现过三处漂移：
+    // 仪表盘多渲染了三张 Python 从没显示过的统计卡、侧边栏漏掉两个菜单、
+    // 组织架构的「排序」列错显成主键 ID。都不报错，只是跟别的版本长得不一样，
+    // 靠人眼比对根本比不出来。
+    // ==================================================================
+
+    @Test
+    @DisplayName("侧边栏菜单与 Python 版一致，账户设置与批量导入都在")
+    void sidebarMatchesPython() throws Exception {
+        String html = seeded.get("/").body();
+        for (String href : List.of("/org", "/dict", "/submit-unit", "/account",
+                "/import", "/logs", "/personnel", "/certificate", "/travel",
+                "/issuance", "/travel/attachments", "/decontrol")) {
+            assertTrue(html.contains("href=\"" + href + "\""), "侧边栏缺少菜单项 " + href);
+        }
+    }
+
+    @Test
+    @DisplayName("仪表盘不含 Python 版没有的统计卡")
+    void dashboardHasNoExtraCards() throws Exception {
+        String html = seeded.get("/").body();
+        // Python 的 dashboard.py 算了 by_unit / by_political / by_rank，但模板从没用过，
+        // 是留在源头的死查询。Java 照着 controller 抄，就成了唯一显示它们的版本。
+        for (String card : List.of("按单位分布", "按政治面貌", "按职级")) {
+            assertTrue(!html.contains(card), "仪表盘多出 Python 版没有的「" + card + "」卡片");
+        }
+    }
+
+    @Test
+    @DisplayName("组织架构的排序列显示 sort_order 而不是主键 ID")
+    void orgShowsSortOrderNotId() throws Exception {
+        // 造两个 id 与 sort_order 明显对不上的节点：错拿 ID 当排序时一眼可辨。
+        // 只加不删——别的用例要靠既有组织节点渲染单位下拉。
+        seeded.sql("INSERT OR REPLACE INTO sys_org (id, name, parent_id, sort_order) "
+                + "VALUES (41, '甲单位', 0, 7), (42, '乙单位', 0, 3)");
+
+        String html = seeded.get("/org").body();
+        Matcher m = Pattern.compile(
+                "name=\"name\" value=\"([^\"]*)\"[\\s\\S]*?"
+                + "name=\"sort_order\" value=\"(\\d+)\"[\\s\\S]*?<td>(\\d+)</td>").matcher(html);
+        var seen = new java.util.LinkedHashMap<String, String>();
+        while (m.find()) {
+            assertEquals(m.group(2), m.group(3),
+                    m.group(1) + " 的排序输入框与排序列对不上（列里多半印的是主键 ID）");
+            seen.put(m.group(1), m.group(2));
+        }
+        assertEquals("7", seen.get("甲单位"), "排序输入框没回填真实 sort_order：" + seen);
+        assertEquals("3", seen.get("乙单位"), "排序输入框没回填真实 sort_order：" + seen);
+        // 行序按 sort_order，不是按 ID
+        assertTrue(html.indexOf("乙单位") < html.indexOf("甲单位"), "组织节点没有按 sort_order 排列");
+    }
+
+    @Test
+    @DisplayName("操作日志的变更详情是折叠的，改动列三列表、删除列全量")
+    void logChangesAreCollapsed() throws Exception {
+        // 直接造两条带快照的日志：走业务操作凑齐必填项对本用例没有额外价值
+        seeded.sql("INSERT INTO operation_logs (operator, action, target_type, target_id, "
+                + "detail, ip_address, snapshot) VALUES ('admin','update','sys_org',41,"
+                + "'甲单位','127.0.0.1','{\"before\":{\"name\":\"旧名\"},"
+                + "\"after\":{\"name\":\"新名\"}}')");
+        seeded.sql("INSERT INTO operation_logs (operator, action, target_type, target_id, "
+                + "detail, ip_address, snapshot) VALUES ('admin','delete','sys_org',42,"
+                + "'乙单位','127.0.0.1','{\"before\":{\"name\":\"乙单位\"}}')");
+
+        String html = seeded.get("/logs").body();
+        assertTrue(html.contains("变更详情"), "日志页应有「变更详情」展开入口");
+        assertTrue(html.contains("data-bs-toggle=\"collapse\""),
+                "变更详情应折叠展示，与 Python 版一致——全量摊开会把整页撑满");
+        assertTrue(html.contains("<th>变更前</th>") && html.contains("<th>变更后</th>"),
+                "改动应展开成「字段 / 变更前 / 变更后」三列表格");
+        assertTrue(html.contains("删除前内容"),
+                "删除没有可对照的另一面，应列删除前的全量内容而不是空 diff");
+    }
+
     /**
      * 页面里引用的每个静态资源都必须真能取到。
      *
@@ -279,7 +356,7 @@ class PageSmokeTest {
                     + "&issue_date=20260802&sign_png=" + e(pngDataUrl()));
         }
 
-        private void sql(String statement) throws Exception {
+        void sql(String statement) throws Exception {
             try (var cn = java.sql.DriverManager.getConnection(
                     "jdbc:sqlite:" + dir.resolve("data.db"));
                  var st = cn.createStatement()) {

@@ -1,11 +1,11 @@
 @import com.potms.web.Fmt
 @import com.potms.web.Helpers
-@import com.potms.web.LogsController.Change
+@import com.potms.web.LogsController.ChangeSet
 @import java.util.List
 @import java.util.Map
 @param com.potms.web.Ctx ctx
 @param Helpers.Page<Map<String, Object>> items
-@param Map<Long, List<Change>> changes
+@param Map<Long, ChangeSet> changes
 @param Map<String, String> actionLabels
 @param Map<String, String> targetLabels
 @param String actionFilter
@@ -65,13 +65,38 @@
                     </td>
                     <td class="small">
                         ${Fmt.s(r, "detail", "")}
+                        <%-- 变更详情默认折起来。全量摊开的话，一条改了十几个字段的记录
+                           就能把整页撑满，翻日志变成翻墙纸——与 Python 版一致，点开再看。 --%>
                         @if(ch != null && !ch.isEmpty())
-                            <ul class="mb-0 ps-3 text-muted">
-                                @for(var c : ch)
-                                    <li>${c.field()}：<del>${c.before().isEmpty() ? "（空）" : c.before()}</del>
-                                        → <strong>${c.after().isEmpty() ? "（空）" : c.after()}</strong></li>
-                                @endfor
-                            </ul>
+                            <a class="small ms-1" data-bs-toggle="collapse" href="#snap${id}" role="button">变更详情 ▾</a>
+                            <div class="collapse mt-1" id="snap${id}">
+                                @if(ch.isUpdate())
+                                    <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                                        <thead><tr><th>字段</th><th>变更前</th><th>变更后</th></tr></thead>
+                                        <tbody>
+                                        @for(var c : ch.items())
+                                            <tr>
+                                                <td>${c.field()}</td>
+                                                <td class="text-muted">${c.before().isEmpty() ? "—" : c.before()}</td>
+                                                <td class="text-success">${c.after().isEmpty() ? "—" : c.after()}</td>
+                                            </tr>
+                                        @endfor
+                                        </tbody>
+                                    </table>
+                                @else
+                                    <table class="table table-sm table-bordered mb-0" style="font-size:12px;">
+                                        <thead><tr><th colspan="2">${ch.heading()}</th></tr></thead>
+                                        <tbody>
+                                        @for(var c : ch.items())
+                                            <tr>
+                                                <td style="width:35%">${c.field()}</td>
+                                                <td>${c.before().isEmpty() ? c.after() : c.before()}</td>
+                                            </tr>
+                                        @endfor
+                                        </tbody>
+                                    </table>
+                                @endif
+                            </div>
                         @endif
                     </td>
                     <td class="small text-muted">${Fmt.s(r, "ip_address", "-")}</td>

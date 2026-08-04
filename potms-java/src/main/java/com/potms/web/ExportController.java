@@ -240,7 +240,7 @@ public class ExportController {
             return "";
         }
         List<String> parts = new ArrayList<>();
-        for (var c : changes) {
+        for (var c : changes.items()) {
             parts.add(c.field() + "：" + (c.before().isEmpty() ? "（空）" : c.before())
                     + " → " + (c.after().isEmpty() ? "（空）" : c.after()));
         }
