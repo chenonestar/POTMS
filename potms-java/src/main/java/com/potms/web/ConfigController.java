@@ -184,7 +184,6 @@ public class ConfigController {
     public String orgIndex(HttpServletRequest req, Model model) {
         model.addAttribute("ctx", Ctx.of(req));
         model.addAttribute("nodes", Helpers.orgFlatOptions(db.jdbc()));
-        model.addAttribute("options", Helpers.orgTreeOptions(db.jdbc()));
         return "org/index";
     }
 
@@ -223,8 +222,16 @@ public class ConfigController {
             return "redirect:/org";
         }
         var before = Helpers.rowSnapshot(db.jdbc(), "sys_org", id);
-        db.jdbc().update("UPDATE sys_org SET name = ?, parent_id = ?, sort_order = ? WHERE id = ?",
-                name, parentId, intOr(req, "sort_order", 0), id);
+        // 界面上已不再提供排序输入（与 Python / Go / Rust 一致），表单里没有这个字段。
+        // 此时必须原样保留库里的值：一律写 0 会把老库里已有的排序悄悄抹平。
+        if (req.getParameter("sort_order") != null) {
+            db.jdbc().update(
+                    "UPDATE sys_org SET name = ?, parent_id = ?, sort_order = ? WHERE id = ?",
+                    name, parentId, intOr(req, "sort_order", 0), id);
+        } else {
+            db.jdbc().update("UPDATE sys_org SET name = ?, parent_id = ? WHERE id = ?",
+                    name, parentId, id);
+        }
         Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
                 "update", "sys_org", id, name, before,
                 Helpers.rowSnapshot(db.jdbc(), "sys_org", id));

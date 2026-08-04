@@ -27,7 +27,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 手写签名的浏览器级验证：真的用鼠标在画布上画，真的画出墨迹。
+ * 需要浏览器才成立的交互：手写签名画得出墨迹、组织架构的模态框弹得出来。
  *
  * <p>为什么非要开浏览器：签名板坏过一次——模板引了 signature.js 却没调
  * {@code POTMSSignature.attach()}，画布一片空白、鼠标点了没反应。而页面 HTTP
@@ -39,7 +39,7 @@ import tools.jackson.databind.ObjectMapper;
  * 个依赖是一个，二是 java.net.http 自带 WebSocket，够用。找不到浏览器时整类
  * 跳过，不拖累没有图形环境的机器。
  */
-class BrowserSignatureTest {
+class BrowserUiTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int PORT = 5793;
@@ -126,6 +126,23 @@ class BrowserSignatureTest {
                 "采样点数不足，笔迹会被当成误触");
         assertEquals("mouse", meta.get("meta").get("pointerType").asString(),
                 "设备类型该记成鼠标");
+    }
+
+    @Test
+    @DisplayName("组织架构：点「加部门」弹出模态框，上级与提示语都填对")
+    void orgAddDialogOpens() throws Exception {
+        login();
+        open("/org");
+        waitFor("!!document.querySelector('.js-org-add')", "组织架构树没渲染出来");
+
+        eval("document.querySelector('.js-org-add').click();");
+        waitFor("document.getElementById('addModal').classList.contains('show')",
+                "点了「加部门」但模态框没弹出来——脚本多半没绑上");
+        assertEquals("添加部门", evalString("document.getElementById('addTitle').textContent"));
+        assertTrue(evalString("document.getElementById('addHint').textContent").contains("下新增"),
+                "提示语没按父节点名填好");
+        assertTrue(!"0".equals(evalString("document.getElementById('addParentId').value")),
+                "隐藏的 parent_id 没带上父节点，新建出来会挂到顶级");
     }
 
     @Test

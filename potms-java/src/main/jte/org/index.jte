@@ -2,67 +2,113 @@
 @import java.util.List
 @param com.potms.web.Ctx ctx
 @param List<Helpers.OrgFlatOption> nodes
-@param List<Helpers.OrgOption> options
+<%-- 树形界面，与 Python / Go / Rust 三版一致。
+   原先是扁平表格 + 行内「排序」编辑框，那是照 .NET 版做的：Python 建节点时把
+   sort_order 写死成 0、页面上从不暴露，排序等于按添加先后。既然四版里三版都
+   没有这个字段，留着只会让人猜「这个数字是干什么的」，索性去掉。
+   注意只是不再从界面上改它——查询仍按 parent_id, sort_order, id 排序，
+   老库里已有的非零排序值照样生效，与 Python 版对同一个库的表现完全一致。 --%>
 @template.layout(ctx = ctx, title = "组织架构", content = @`
-    <h4 class="mb-3 mt-3"><i class="bi bi-diagram-3"></i> 组织架构</h4>
-    <div class="alert alert-light border small text-muted py-2">
-        顶级节点即「单位」，其下为部门 / 子部门，层级不限。有子节点或已被业务记录引用时不能删除。<br>
-        <strong>排序</strong>只在<strong>同一个上级之下</strong>比较：数字小的排前面，数字相同则按添加先后。
-        它决定的是各处「单位 / 部门」下拉框里的先后次序。改动顶级单位的排序，其下部门会跟着整体移动。
+    <div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+        <h4><i class="bi bi-diagram-3"></i> 单位 / 部门维护</h4>
+        <button class="btn btn-primary btn-sm" id="orgAddRoot">
+            <i class="bi bi-building-add"></i> 添加单位
+        </button>
     </div>
 
-    <div class="card mb-3"><div class="card-body py-2">
-        <form method="POST" action="/org/add" class="row g-2 align-items-end">
-            <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
-            <div class="col-md-4"><label class="form-label small">名称</label><input type="text" class="form-control form-control-sm" name="name" required></div>
-            <div class="col-md-4"><label class="form-label small">上级</label>
-                <select class="form-select form-select-sm" name="parent_id">
-                    <option value="0">（顶级单位）</option>
-                    @for(var o : options)<option value="${o.id()}">${o.label()}</option>@endfor
-                </select>
-            </div>
-            <div class="col-md-2"><label class="form-label small">排序</label><input type="number" class="form-control form-control-sm" name="sort_order" value="0"></div>
-            <div class="col-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-plus-lg"></i> 添加</button></div>
-        </form>
-    </div></div>
+    <div class="alert alert-info d-flex align-items-center py-2">
+        <i class="bi bi-info-circle me-2"></i>
+        <div class="small">
+            本系统采用<strong>两级组织</strong>：<span class="badge bg-primary">单位</span>为顶级组织，<span class="badge bg-info">部门</span>为其下级。
+            在「备案人员信息登记表」中，<strong>单位</strong>下拉只列顶级单位，选中后<strong>部门</strong>联动出其下级部门。
+        </div>
+    </div>
 
-    <div class="table-card"><div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead class="table-light"><tr><th>名称 / 上级 / 排序（改完点 ✓ 保存）</th><th style="width:260px">层级</th><th style="width:110px" title="同级内升序，相同则按添加先后">当前排序值</th><th style="width:120px">操作</th></tr></thead>
-            <tbody>
+    <div class="card mb-4">
+        <div class="card-body">
             @if(nodes.isEmpty())
-                <tr><td colspan="4" class="text-center text-muted py-4">暂无组织节点</td></tr>
+                <p class="text-muted text-center py-4">暂无组织，请点击右上角「添加单位」。</p>
+            @else
+                @template.org.node(nodes = nodes, parentId = 0L, level = 0)
             @endif
-            @for(var n : nodes)
-                <tr>
-                    <td>
-                        <form method="POST" action="/org/${n.id()}/edit" class="d-flex gap-1 align-items-center">
-                            <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
-                            <span class="text-muted">${n.indent()}</span>
-                            <input type="text" class="form-control form-control-sm" name="name" value="${n.name()}" required style="max-width:260px">
-                            <select class="form-select form-select-sm" name="parent_id" style="max-width:220px">
-                                <option value="0">（顶级单位）</option>
-                                @for(var o : options)
-                                    @if(o.id() != n.id())
-                                        <option value="${o.id()}" selected="${o.id() == n.parentId()}">${o.label()}</option>
-                                    @endif
-                                @endfor
-                            </select>
-                            <input type="number" class="form-control form-control-sm" name="sort_order" value="${n.sortOrder()}" style="width:80px">
-                            <button class="btn btn-sm btn-outline-warning" title="保存"><i class="bi bi-check-lg"></i></button>
-                        </form>
-                    </td>
-                    <td class="text-muted small">${n.depth() == 0 ? "（顶级）" : "层级 " + n.depth()}</td>
-                    <td>${n.sortOrder()}</td>
-                    <td>
-                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
-                                data-action="/org/${n.id()}/delete"
-                                data-message="确定要删除「${n.name()}」吗？"><i class="bi bi-trash"></i></button>
-                    </td>
-                </tr>
-            @endfor
-            </tbody>
-        </table>
-    </div></div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <form method="POST" action="/org/add">
+                    <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addTitle">添加单位</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="parent_id" id="addParentId" value="0">
+                        <label class="form-label" id="addHint">新增一个顶级<strong>单位</strong>。</label>
+                        <input type="text" class="form-control mt-2" name="name" id="addName" placeholder="请输入名称" required>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-primary">添加</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <form method="POST" id="editForm">
+                    <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
+                    <div class="modal-header">
+                        <h5 class="modal-title">重命名</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="form-label">名称</label>
+                        <input type="text" class="form-control" name="name" id="editName" required>
+                        <input type="hidden" name="parent_id" id="editParentId" value="0">
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     @template.components.confirm_modal()
+`, scripts = @`
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var addModal = new bootstrap.Modal(document.getElementById('addModal'));
+        var editModal = new bootstrap.Modal(document.getElementById('editModal'));
+
+        document.getElementById('orgAddRoot').addEventListener('click', function () {
+            document.getElementById('addParentId').value = 0;
+            document.getElementById('addTitle').textContent = '添加单位';
+            document.getElementById('addHint').innerHTML = '新增一个顶级<strong>单位</strong>。';
+            document.getElementById('addName').value = '';
+            addModal.show();
+        });
+
+        document.querySelectorAll('.js-org-add').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var isUnit = btn.dataset.level === '0';
+                document.getElementById('addParentId').value = btn.dataset.pid;
+                document.getElementById('addTitle').textContent = isUnit ? '添加部门' : '添加子部门';
+                document.getElementById('addHint').innerHTML =
+                    '在「' + btn.dataset.pname + '」下新增' + (isUnit ? '<strong>部门</strong>' : '<strong>子部门</strong>') + '。';
+                document.getElementById('addName').value = '';
+                addModal.show();
+            });
+        });
+
+        document.querySelectorAll('.js-org-edit').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.getElementById('editName').value = btn.dataset.name;
+                document.getElementById('editParentId').value = btn.dataset.pid;
+                document.getElementById('editForm').action = '/org/' + btn.dataset.id + '/edit';
+                editModal.show();
+            });
+        });
+    });
+    </script>
 `)

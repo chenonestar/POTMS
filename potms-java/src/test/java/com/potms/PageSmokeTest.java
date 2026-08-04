@@ -144,63 +144,56 @@ class PageSmokeTest {
     }
 
     @Test
-    @DisplayName("组织架构的排序列显示 sort_order 而不是主键 ID")
-    void orgShowsSortOrderNotId() throws Exception {
-        // 造两个 id 与 sort_order 明显对不上的节点：错拿 ID 当排序时一眼可辨。
-        // 只加不删——别的用例要靠既有组织节点渲染单位下拉。
-        seeded.sql("INSERT OR REPLACE INTO sys_org (id, name, parent_id, sort_order) "
-                + "VALUES (41, '甲单位', 0, 7), (42, '乙单位', 0, 3)");
+    @DisplayName("组织架构是树形界面，层级与徽章都对，且不再暴露排序字段")
+    void orgRendersTree() throws Exception {
+        seeded.sql("INSERT OR REPLACE INTO sys_org (id, name, parent_id, sort_order) VALUES "
+                + "(41, '甲单位', 0, 1), (42, '乙部门', 41, 2), (43, '丙部门', 41, 1), "
+                + "(44, '丁科室', 43, 1)");
 
         String html = seeded.get("/org").body();
-        Matcher m = Pattern.compile(
-                "name=\"name\" value=\"([^\"]*)\"[\\s\\S]*?"
-                + "name=\"sort_order\" value=\"(\\d+)\"[\\s\\S]*?<td>(\\d+)</td>").matcher(html);
-        var seen = new java.util.LinkedHashMap<String, String>();
-        while (m.find()) {
-            assertEquals(m.group(2), m.group(3),
-                    m.group(1) + " 的排序输入框与排序列对不上（列里多半印的是主键 ID）");
-            seen.put(m.group(1), m.group(2));
-        }
-        assertEquals("7", seen.get("甲单位"), "排序输入框没回填真实 sort_order：" + seen);
-        assertEquals("3", seen.get("乙单位"), "排序输入框没回填真实 sort_order：" + seen);
-        // 行序按 sort_order，不是按 ID
-        var names = orgRowNames(html);
-        assertTrue(names.indexOf("乙单位") < names.indexOf("甲单位"),
-                "组织节点没有按 sort_order 排列：" + names);
+        assertTrue(html.contains("badge bg-primary\">单位"), "顶级节点应标「单位」徽章");
+        assertTrue(html.contains("badge bg-info\">部门"), "第二级应标「部门」徽章");
+        assertTrue(html.contains("badge bg-secondary\">子部门"), "第三级应标「子部门」徽章");
+        assertTrue(html.contains("（下辖 2 个部门）"), "顶级单位应显示下辖部门数");
+
+        var names = orgTreeOrder(html);
+        int i = names.indexOf("甲单位");
+        assertTrue(i >= 0, "树里找不到甲单位：" + names);
+        assertEquals(List.of("甲单位", "丙部门", "丁科室", "乙部门"), names.subList(i, i + 4),
+                "树的展开次序不对：子节点应紧跟父节点，同级按 sort_order（丙=1 在 乙=2 前）");
+
+        // 排序字段不再出现在界面上——与 Python / Go / Rust 一致
+        assertTrue(!html.contains("name=\"sort_order\""), "组织架构页不该再有排序输入框");
     }
 
     @Test
-    @DisplayName("改排序值后，同级节点的先后真的跟着变")
-    void orgSortOrderActuallyReorders() throws Exception {
+    @DisplayName("重命名不会把老库里已有的排序值抹平")
+    void renameKeepsExistingSortOrder() throws Exception {
         seeded.sql("INSERT OR REPLACE INTO sys_org (id, name, parent_id, sort_order) "
-                + "VALUES (51, '丙单位', 0, 1), (52, '丁单位', 0, 2)");
-        var before = orgRowNames(seeded.get("/org").body());
-        assertTrue(before.indexOf("丙单位") < before.indexOf("丁单位"),
-                "初始应是 丙(1) 在 丁(2) 前：" + before);
+                + "VALUES (61, '戊单位', 0, 6)");
+        // 树形界面的重命名表单只提交 name 与 parent_id，没有 sort_order
+        seeded.post("/org/61/edit", "csrf_token=" + seeded.token("/org")
+                + "&name=" + java.net.URLEncoder.encode("戊单位改名", StandardCharsets.UTF_8)
+                + "&parent_id=0");
 
-        // 把丙调到 5：应落到丁后面
-        seeded.post("/org/51/edit", "csrf_token=" + seeded.token("/org")
-                + "&name=" + java.net.URLEncoder.encode("丙单位", StandardCharsets.UTF_8)
-                + "&parent_id=0&sort_order=5");
-
-        var after = orgRowNames(seeded.get("/org").body());
-        assertTrue(after.indexOf("丁单位") < after.indexOf("丙单位"),
-                "把丙单位的排序从 1 改成 5 之后，它应排到丁单位后面，"
-                + "排序值没有真正参与排序：" + after);
+        assertEquals("6", seeded.queryOne("SELECT sort_order FROM sys_org WHERE id = 61"),
+                "表单里没有 sort_order 时应原样保留，不能一律写 0");
+        assertEquals("戊单位改名", seeded.queryOne("SELECT name FROM sys_org WHERE id = 61"));
     }
 
     /**
-     * 按行序取出组织节点名。
+     * 按树的展开次序取出节点名。
      *
-     * <p>不能拿整页 {@code indexOf(名称)} 当行序用：每一行的「上级」下拉里都列着
-     * 全部节点，先出现的往往是某个下拉选项而不是那一行本身；更坑的是下拉会排除
-     * 节点自己，于是它在自己那行里根本不出现，比出来的先后是反的。
+     * <p>抓的是「节点名 + 紧随其后的层级徽章」这个组合。不能拿整页
+     * {@code indexOf(名称)} 当次序用——名称在别处（比如确认删除的提示文案里）
+     * 也会出现，比出来的先后未必是树上的先后。
      */
-    private static List<String> orgRowNames(String html) {
+    private static List<String> orgTreeOrder(String html) {
         var out = new java.util.ArrayList<String>();
-        Matcher m = Pattern.compile("name=\"name\" value=\"([^\"]*)\"").matcher(html);
+        Matcher m = Pattern.compile(
+                "<span class=\"(?:fw-bold)?\">([^<]+)</span>\\s*<span class=\"badge").matcher(html);
         while (m.find()) {
-            out.add(m.group(1));
+            out.add(m.group(1).trim());
         }
         return out;
     }
@@ -405,6 +398,16 @@ class PageSmokeTest {
                     + "&travel_id=1&personnel_filing_id=1&holder_name=" + e("史迪威")
                     + "&id_number=" + id + "&cert_types=01&cert_nos=E1234567"
                     + "&issue_date=20260802&sign_png=" + e(pngDataUrl()));
+        }
+
+        /** 直读一个标量，用于验证「页面看不见但库里必须对」的字段。 */
+        String queryOne(String query) throws Exception {
+            try (var cn = java.sql.DriverManager.getConnection(
+                    "jdbc:sqlite:" + dir.resolve("data.db"));
+                 var st = cn.createStatement();
+                 var rs = st.executeQuery(query)) {
+                return rs.next() ? rs.getString(1) : null;
+            }
         }
 
         void sql(String statement) throws Exception {
