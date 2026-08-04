@@ -6,7 +6,9 @@
 @template.layout(ctx = ctx, title = "组织架构", content = @`
     <h4 class="mb-3 mt-3"><i class="bi bi-diagram-3"></i> 组织架构</h4>
     <div class="alert alert-light border small text-muted py-2">
-        顶级节点即「单位」，其下为部门 / 子部门，层级不限。有子节点或已被业务记录引用时不能删除。
+        顶级节点即「单位」，其下为部门 / 子部门，层级不限。有子节点或已被业务记录引用时不能删除。<br>
+        <strong>排序</strong>只在<strong>同一个上级之下</strong>比较：数字小的排前面，数字相同则按添加先后。
+        它决定的是各处「单位 / 部门」下拉框里的先后次序。改动顶级单位的排序，其下部门会跟着整体移动。
     </div>
 
     <div class="card mb-3"><div class="card-body py-2">
@@ -26,7 +28,7 @@
 
     <div class="table-card"><div class="table-responsive">
         <table class="table table-hover mb-0">
-            <thead class="table-light"><tr><th>名称</th><th style="width:260px">上级</th><th style="width:100px">排序</th><th style="width:120px">操作</th></tr></thead>
+            <thead class="table-light"><tr><th>名称 / 上级 / 排序（改完点 ✓ 保存）</th><th style="width:260px">层级</th><th style="width:110px" title="同级内升序，相同则按添加先后">当前排序值</th><th style="width:120px">操作</th></tr></thead>
             <tbody>
             @if(nodes.isEmpty())
                 <tr><td colspan="4" class="text-center text-muted py-4">暂无组织节点</td></tr>

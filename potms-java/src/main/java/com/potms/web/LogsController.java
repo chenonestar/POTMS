@@ -28,6 +28,8 @@ public class LogsController {
 
     /** 动作 / 目标类型的中文名。 */
     static final Map<String, String> ACTION_LABELS = new LinkedHashMap<>();
+    /** 动作对应的徽章配色，规则照搬 Python 版 templates/logs/view.html。 */
+    static final Map<String, String> ACTION_COLORS = new LinkedHashMap<>();
     static final Map<String, String> TARGET_LABELS = new LinkedHashMap<>();
 
     static {
@@ -76,6 +78,16 @@ public class LogsController {
         };
         for (String[] a : actions) {
             ACTION_LABELS.put(a[0], a[1]);
+        }
+
+        // 新建绿、修改黄、删除红、备份灰，其余一律蓝——与 Python 版同一套口径。
+        // 一屏日志靠颜色一眼分出「谁动了数据」，全灰的话得逐行读文字。
+        String[][] colors = {
+            {"create", "success"}, {"update", "warning"}, {"delete", "danger"},
+            {"void", "danger"}, {"backup", "secondary"},
+        };
+        for (String[] c : colors) {
+            ACTION_COLORS.put(c[0], c[1]);
         }
 
         String[][] targets = {
@@ -153,6 +165,7 @@ public class LogsController {
         model.addAttribute("items", pg);
         model.addAttribute("changes", changes);
         model.addAttribute("actionLabels", ACTION_LABELS);
+        model.addAttribute("actionColors", ACTION_COLORS);
         model.addAttribute("targetLabels", TARGET_LABELS);
         model.addAttribute("actionFilter", param(req, "action", ""));
         model.addAttribute("targetFilter", param(req, "target_type", ""));

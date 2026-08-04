@@ -7,6 +7,7 @@
 @param Helpers.Page<Map<String, Object>> items
 @param Map<Long, ChangeSet> changes
 @param Map<String, String> actionLabels
+@param Map<String, String> actionColors
 @param Map<String, String> targetLabels
 @param String actionFilter
 @param String targetFilter
@@ -59,7 +60,7 @@
                 <tr>
                     <td class="small">${ctx.localTime(r.get("created_at"))}</td>
                     <td>${Fmt.s(r, "operator")}</td>
-                    <td><span class="badge bg-light text-dark">${actionLabels.getOrDefault(Fmt.s(r, "action"), Fmt.s(r, "action"))}</span></td>
+                    <td><span class="badge bg-${actionColors.getOrDefault(Fmt.s(r, "action"), "info")}">${actionLabels.getOrDefault(Fmt.s(r, "action"), Fmt.s(r, "action"))}</span></td>
                     <td class="small">${targetLabels.getOrDefault(Fmt.s(r, "target_type"), Fmt.s(r, "target_type"))}
                         @if(Fmt.n(r, "target_id") > 0)<span class="text-muted">#${Fmt.n(r, "target_id")}</span>@endif
                     </td>

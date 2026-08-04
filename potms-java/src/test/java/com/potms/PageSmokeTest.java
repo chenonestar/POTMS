@@ -164,7 +164,58 @@ class PageSmokeTest {
         assertEquals("7", seen.get("甲单位"), "排序输入框没回填真实 sort_order：" + seen);
         assertEquals("3", seen.get("乙单位"), "排序输入框没回填真实 sort_order：" + seen);
         // 行序按 sort_order，不是按 ID
-        assertTrue(html.indexOf("乙单位") < html.indexOf("甲单位"), "组织节点没有按 sort_order 排列");
+        var names = orgRowNames(html);
+        assertTrue(names.indexOf("乙单位") < names.indexOf("甲单位"),
+                "组织节点没有按 sort_order 排列：" + names);
+    }
+
+    @Test
+    @DisplayName("改排序值后，同级节点的先后真的跟着变")
+    void orgSortOrderActuallyReorders() throws Exception {
+        seeded.sql("INSERT OR REPLACE INTO sys_org (id, name, parent_id, sort_order) "
+                + "VALUES (51, '丙单位', 0, 1), (52, '丁单位', 0, 2)");
+        var before = orgRowNames(seeded.get("/org").body());
+        assertTrue(before.indexOf("丙单位") < before.indexOf("丁单位"),
+                "初始应是 丙(1) 在 丁(2) 前：" + before);
+
+        // 把丙调到 5：应落到丁后面
+        seeded.post("/org/51/edit", "csrf_token=" + seeded.token("/org")
+                + "&name=" + java.net.URLEncoder.encode("丙单位", StandardCharsets.UTF_8)
+                + "&parent_id=0&sort_order=5");
+
+        var after = orgRowNames(seeded.get("/org").body());
+        assertTrue(after.indexOf("丁单位") < after.indexOf("丙单位"),
+                "把丙单位的排序从 1 改成 5 之后，它应排到丁单位后面，"
+                + "排序值没有真正参与排序：" + after);
+    }
+
+    /**
+     * 按行序取出组织节点名。
+     *
+     * <p>不能拿整页 {@code indexOf(名称)} 当行序用：每一行的「上级」下拉里都列着
+     * 全部节点，先出现的往往是某个下拉选项而不是那一行本身；更坑的是下拉会排除
+     * 节点自己，于是它在自己那行里根本不出现，比出来的先后是反的。
+     */
+    private static List<String> orgRowNames(String html) {
+        var out = new java.util.ArrayList<String>();
+        Matcher m = Pattern.compile("name=\"name\" value=\"([^\"]*)\"").matcher(html);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
+        return out;
+    }
+
+    @Test
+    @DisplayName("操作日志的动作按类型着色，与 Python 版同一套配色")
+    void logActionBadgesAreColoured() throws Exception {
+        seeded.sql("INSERT INTO operation_logs (operator, action, target_type, target_id, "
+                + "detail, ip_address) VALUES ('admin','delete','sys_org',52,'丁单位','127.0.0.1')");
+        String html = seeded.get("/logs").body();
+        // 新建绿 / 修改黄 / 删除红：一屏日志靠颜色分辨「谁动了数据」
+        assertTrue(html.contains("badge bg-success"), "新建应是绿色徽章");
+        assertTrue(html.contains("badge bg-warning"), "修改应是黄色徽章");
+        assertTrue(html.contains("badge bg-danger"), "删除应是红色徽章");
+        assertTrue(!html.contains("badge bg-light text-dark\">新建"), "动作徽章不该是清一色的灰");
     }
 
     @Test
@@ -312,7 +363,7 @@ class PageSmokeTest {
             res.headers().firstValue("set-cookie").ifPresent(v -> cookie = v.split(";")[0]);
         }
 
-        private String token(String path) throws IOException, InterruptedException {
+        String token(String path) throws IOException, InterruptedException {
             Matcher m = CSRF.matcher(get(path).body());
             return m.find() ? m.group(1) : "";
         }
