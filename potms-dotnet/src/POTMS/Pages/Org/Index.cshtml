@@ -1,76 +1,167 @@
 @page "/Org"
 @model POTMS.Pages.Org.IndexModel
 @{ ViewData["Title"] = "组织架构"; }
-<h4 class="mb-3 mt-3"><i class="bi bi-diagram-3"></i> 组织架构</h4>
+@*
+    树形界面，与 Python / Go / Rust / Java 四版一致。
 
-<div class="row">
-<div class="col-md-7">
-<div class="table-card"><div class="table-responsive">
-<table class="table table-hover mb-0">
-    <thead class="table-light"><tr><th>层级名称</th><th>上级</th><th>排序</th><th>引用</th><th>操作</th></tr></thead>
-    <tbody>
-    @foreach (var o in Model.Tree)
+    原先是扁平表格 + 行内「排序」编辑框。那个字段实际没人说得清是干什么的：
+    Python 建节点时把 sort_order 写死成 0、页面上从不暴露，五版里只有 .NET 与
+    Java 露出来过。留着只会让人猜，去掉。排序**只是不再从界面上改**——查询仍按
+    parent_id, sort_order, id 排，老库里已有的非零值照样生效。
+*@
+
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-diagram-3"></i> 单位 / 部门维护</h4>
+    <button class="btn btn-primary btn-sm" id="orgAddRoot">
+        <i class="bi bi-building-add"></i> 添加单位
+    </button>
+</div>
+
+<div class="alert alert-info d-flex align-items-center py-2">
+    <i class="bi bi-info-circle me-2"></i>
+    <div class="small">
+        本系统采用<strong>两级组织</strong>：<span class="badge bg-primary">单位</span>为顶级组织，<span class="badge bg-info">部门</span>为其下级。
+        在「备案人员信息登记表」中，<strong>单位</strong>下拉只列顶级单位，选中后<strong>部门</strong>联动出其下级部门。
+    </div>
+</div>
+
+@{
+    // 递归渲染一层。Razor 的局部函数可以直接吐标签，正好对应 Python 版的
+    // render_tree 宏；逐层 margin-left 使缩进效果与那边一致。
+    void RenderNodes(long parentId, int level)
     {
-        var node = Model.Flat.First(x => x.Id == o.Id);
-        var parent = Model.Flat.FirstOrDefault(x => x.Id == node.ParentId);
-        var usage = Model.UsageCount.TryGetValue(o.Id, out var u) ? u : 0;
-        <tr>
-            <td>@o.Label</td>
-            <td class="text-muted small">@(parent?.Name ?? "（顶级）")</td>
-            <td>@node.SortOrder</td>
-            <td>@(usage == 0 ? Html.Raw("<span class=\"text-muted\">0</span>") : Html.Raw($"<span class=\"badge bg-secondary\">{usage}</span>"))</td>
-            <td><div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-warning" title="编辑"
-                        onclick="orgEdit(@o.Id, '@node.Name', @node.ParentId, @node.SortOrder)"><i class="bi bi-pencil"></i></button>
-                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
-                        data-action="/Org?handler=Delete&amp;id=@o.Id" data-message="确定要删除组织节点「@node.Name」吗？"><i class="bi bi-trash"></i></button>
-            </div></td>
-        </tr>
+        foreach (var n in Model.Flat.Where(x => x.ParentId == parentId))
+        {
+            var childCount = Model.Flat.Count(x => x.ParentId == n.Id);
+            var icon = level == 0 ? "building" : level == 1 ? "diagram-2" : "folder";
+            var iconColor = level == 0 ? "text-primary" : level == 1 ? "text-info" : "text-muted";
+            <div class="tree-node" style="margin-left: @(level * 26)px;">
+                <div class="d-flex align-items-center py-2 px-2 border-bottom @(level == 0 ? "bg-light rounded mt-2" : "")">
+                    <i class="bi bi-@icon @iconColor me-2"></i>
+                    <span class="flex-grow-1">
+                        <span class="@(level == 0 ? "fw-bold" : "")">@n.Name</span>
+                        @if (level == 0)
+                        {
+                            <span class="badge bg-primary">单位</span>
+                            <small class="text-muted ms-1">（下辖 @childCount 个部门）</small>
+                        }
+                        else if (level == 1)
+                        {
+                            <span class="badge bg-info">部门</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">子部门</span>
+                        }
+                    </span>
+                    <div class="btn-group btn-group-sm">
+                        @* 节点数据走 data-*，不在 onclick 里拼字符串：名称含引号时拼出来的 JS 会当场语法错误 *@
+                        <button type="button" class="btn btn-outline-secondary btn-sm js-org-add"
+                                data-pid="@n.Id" data-pname="@n.Name" data-level="@level"
+                                title="@(level == 0 ? "为该单位添加部门" : "添加子部门")">
+                            <i class="bi bi-plus-lg"></i> @(level == 0 ? "加部门" : "加子部门")
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-sm js-org-edit"
+                                data-id="@n.Id" data-name="@n.Name" data-pid="@n.ParentId"
+                                title="重命名"><i class="bi bi-pencil"></i></button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" title="删除"
+                                data-bs-toggle="modal" data-bs-target="#confirmModal"
+                                data-action="/Org?handler=Delete&amp;id=@n.Id"
+                                data-message="确定删除「@n.Name」吗？@(childCount > 0 ? "注意：需先删除其下级。" : "")">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                @{ RenderNodes(n.Id, level + 1); }
+            </div>
+        }
     }
-    @if (Model.Tree.Count == 0)
-    { <tr><td colspan="5" class="text-center text-muted py-4">暂无组织节点</td></tr> }
-    </tbody>
-</table>
-</div></div>
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        @if (Model.Flat.Count == 0)
+        {
+            <p class="text-muted text-center py-4">暂无组织，请点击右上角「添加单位」。</p>
+        }
+        else
+        {
+            RenderNodes(0, 0);
+        }
+    </div>
 </div>
 
-<div class="col-md-5">
-<div class="form-section">
-    <h5 id="orgFormTitle">新增组织节点</h5>
-    <form method="post" asp-page-handler="Save">
-        <input type="hidden" name="id" id="orgId">
-        <div class="mb-3"><label class="form-label required">名称</label>
-            <input type="text" class="form-control" name="name" id="orgName" required></div>
-        <div class="mb-3"><label class="form-label">上级</label>
-            <select class="form-select" name="parentId" id="orgParent">
-                <option value="0">（顶级）</option>
-                @foreach (var o in Model.Tree) { <option value="@o.Id">@o.Label</option> }
-            </select></div>
-        <div class="mb-3"><label class="form-label">排序</label>
-            <input type="number" class="form-control" name="sortOrder" id="orgSort" value="0"></div>
-        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
-        <button type="button" class="btn btn-secondary" onclick="orgReset()">清空</button>
-    </form>
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content">
+        <form method="post" asp-page-handler="Save">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTitle">添加单位</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="parentId" id="addParentId" value="0">
+                <label class="form-label" id="addHint">新增一个顶级<strong>单位</strong>。</label>
+                <input type="text" class="form-control mt-2" name="name" id="addName" placeholder="请输入名称" required>
+            </div>
+            <div class="modal-footer"><button type="submit" class="btn btn-primary">添加</button></div>
+        </form>
+    </div></div>
 </div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content">
+        <form method="post" asp-page-handler="Save">
+            <div class="modal-header">
+                <h5 class="modal-title">重命名</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="id" id="editId">
+                <label class="form-label">名称</label>
+                <input type="text" class="form-control" name="name" id="editName" required>
+                <input type="hidden" name="parentId" id="editParentId" value="0">
+            </div>
+            <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
+        </form>
+    </div></div>
 </div>
-</div>
+
 <partial name="_ConfirmModal" />
 
 @section Scripts {
 <script>
-function orgEdit(id, name, parentId, sort) {
-    document.getElementById('orgId').value = id;
-    document.getElementById('orgName').value = name;
-    document.getElementById('orgParent').value = parentId;
-    document.getElementById('orgSort').value = sort;
-    document.getElementById('orgFormTitle').textContent = '编辑组织节点 #' + id;
-}
-function orgReset() {
-    document.getElementById('orgId').value = '';
-    document.getElementById('orgName').value = '';
-    document.getElementById('orgParent').value = '0';
-    document.getElementById('orgSort').value = '0';
-    document.getElementById('orgFormTitle').textContent = '新增组织节点';
-}
+document.addEventListener('DOMContentLoaded', function () {
+    var addModal = new bootstrap.Modal(document.getElementById('addModal'));
+    var editModal = new bootstrap.Modal(document.getElementById('editModal'));
+
+    document.getElementById('orgAddRoot').addEventListener('click', function () {
+        document.getElementById('addParentId').value = 0;
+        document.getElementById('addTitle').textContent = '添加单位';
+        document.getElementById('addHint').innerHTML = '新增一个顶级<strong>单位</strong>。';
+        document.getElementById('addName').value = '';
+        addModal.show();
+    });
+
+    document.querySelectorAll('.js-org-add').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var isUnit = btn.dataset.level === '0';
+            document.getElementById('addParentId').value = btn.dataset.pid;
+            document.getElementById('addTitle').textContent = isUnit ? '添加部门' : '添加子部门';
+            document.getElementById('addHint').innerHTML =
+                '在「' + btn.dataset.pname + '」下新增' + (isUnit ? '<strong>部门</strong>' : '<strong>子部门</strong>') + '。';
+            document.getElementById('addName').value = '';
+            addModal.show();
+        });
+    });
+
+    document.querySelectorAll('.js-org-edit').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('editId').value = btn.dataset.id;
+            document.getElementById('editName').value = btn.dataset.name;
+            document.getElementById('editParentId').value = btn.dataset.pid;
+            editModal.show();
+        });
+    });
+});
 </script>
 }
