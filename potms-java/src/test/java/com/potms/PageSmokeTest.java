@@ -198,6 +198,73 @@ class PageSmokeTest {
         return out;
     }
 
+    // ==================================================================
+    // 打印
+    // ==================================================================
+
+    @Test
+    @DisplayName("批量打印是一张宽表、一条记录一行，不是 N 份单据")
+    void batchPrintIsOneWideTable() throws Exception {
+        String html = seeded.get("/print/batch/filing?ids=1").body();
+
+        assertTrue(html.contains("A4 landscape"), "批量打印应是 A4 横向");
+        assertEquals(1, count(html, "<table>"), "应只有一张表，而不是每条一份单据");
+        assertTrue(html.contains("打印全部（1 条）"), "按钮应写明条数");
+        assertTrue(html.contains("（共 1 条）"), "标题应带记录数");
+        assertTrue(html.contains("<th>中文姓</th>"), "应是清单式表头");
+        // 单据式的签章栏不该出现在清单上
+        assertTrue(!html.contains("填表人："), "清单不需要逐份签章栏");
+    }
+
+    @Test
+    @DisplayName("领用凭证不做批量打印，与 Python 版一致")
+    void batchPrintRejectsIssuance() throws Exception {
+        // 逐份签字的单据摊成清单没有意义，签名图也放不进去
+        assertEquals(302, seeded.get("/print/batch/issuance?ids=1").statusCode());
+    }
+
+    @Test
+    @DisplayName("单据打印带签章栏与页脚，且不加载 Bootstrap")
+    void singlePrintHasSignatureBlock() throws Exception {
+        String html = seeded.get("/print/filing/1").body();
+
+        for (String needle : List.of("填表人：", "审核人：", "批准人：", "打印日期")) {
+            assertTrue(html.contains(needle), "单据打印缺少「" + needle + "」");
+        }
+        // 打印页是独立文档：Bootstrap 的 reset 会改掉边框与字号，纸面就跟别的版本对不上
+        assertTrue(!html.contains("bootstrap"), "打印页不该引入 Bootstrap");
+        assertTrue(html.contains("SimSun"), "打印页应固定宋体");
+    }
+
+    @Test
+    @DisplayName("备案表打印附带关联的信息登记表")
+    void filingPrintIncludesLinkedInfo() throws Exception {
+        String html = seeded.get("/print/filing/1").body();
+        assertTrue(html.contains("关联：备案人员信息登记表"),
+                "备案表有 personnel_info_id 时应附上信息登记表");
+        assertEquals(2, count(html, "<table>"), "应是两张表：备案表 + 关联信息表");
+    }
+
+    @Test
+    @DisplayName("出行明细打印含职称、行程状态与取消日期")
+    void travelPrintHasAllFields() throws Exception {
+        seeded.sql("UPDATE travel_details SET title = '高级经济师', "
+                + "trip_status = 'cancelled', cancel_date = '20261015' WHERE id = 1");
+        String html = seeded.get("/print/travel/1").body();
+        for (String needle : List.of("职称", "高级经济师", "行程状态", "取消行程", "取消日期", "20261015")) {
+            assertTrue(html.contains(needle), "出行明细打印缺少「" + needle + "」");
+        }
+        seeded.sql("UPDATE travel_details SET trip_status = 'normal', cancel_date = '' WHERE id = 1");
+    }
+
+    private static int count(String haystack, String needle) {
+        int n = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {
+            n++;
+        }
+        return n;
+    }
+
     @Test
     @DisplayName("操作日志的动作按类型着色，与 Python 版同一套配色")
     void logActionBadgesAreColoured() throws Exception {

@@ -44,6 +44,15 @@ public class PrintController {
         KINDS.put("issuance", new Kind("因私出国（境）证件领用登记表", "cert_issuance"));
     }
 
+    /**
+     * 支持批量打印的类型。
+     *
+     * <p>不含 issuance，与 Python 版一致：领用凭证是逐份签字的单据，
+     * 摊成一行行的清单没有意义，签名图也放不进去。
+     */
+    private static final java.util.Set<String> BATCH_KINDS =
+            java.util.Set.of("info", "filing", "certificate", "travel", "decontrol");
+
     private final Db db;
     private final com.potms.Config cfg;
 
@@ -77,7 +86,7 @@ public class PrintController {
     @GetMapping("/print/batch/{type}")
     public String batch(@PathVariable String type, HttpServletRequest req, Model model,
                         @RequestParam(required = false) String ids) {
-        Kind kind = KINDS.get(type);
+        Kind kind = BATCH_KINDS.contains(type) ? KINDS.get(type) : null;
         if (kind == null) {
             Flash.danger(req, "不支持的打印类型。");
             return "redirect:/";
@@ -102,7 +111,7 @@ public class PrintController {
         model.addAttribute("mode", type);
         model.addAttribute("title", kind.title());
         model.addAttribute("docs", docs);
-        return "print/view";
+        return "print/batch";
     }
 
     /**
@@ -143,7 +152,20 @@ public class PrintController {
                 }
             }
         }
+        // 打印页只排版、不做判断，凡是要「代码 → 中文」的都在这里备好
+        if ("travel".equals(type)) {
+            doc.put("trip_status_label",
+                    "cancelled".equals(doc.getOrDefault("trip_status", "")) ? "取消行程" : "正常");
+        }
+        if ("filing".equals(type)) {
+            doc.put("status_label",
+                    "active".equals(doc.getOrDefault("status", "")) ? "有效" : "已撤控");
+        }
         if ("issuance".equals(type)) {
+            // 签名图有没有，决定打印时是贴图还是留一条手签横线
+            doc.put("has_sign", doc.getOrDefault("sign_image", "").isEmpty() ? "" : "1");
+            doc.put("has_return_sign",
+                    doc.getOrDefault("return_sign_image", "").isEmpty() ? "" : "1");
             doc.put("cert_types_label",
                     IssuanceOps.typesLabel(db.jdbc(), doc.getOrDefault("cert_types", "")));
             doc.put("status_label", switch (doc.getOrDefault("status", "")) {
