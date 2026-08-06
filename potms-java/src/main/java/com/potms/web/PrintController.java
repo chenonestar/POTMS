@@ -149,6 +149,14 @@ public class PrintController {
                 if (!info.isEmpty()) {
                     info.get(0).forEach((k, v) -> doc.putIfAbsent("info_" + k,
                             v == null ? "" : v.toString()));
+                    // 关联信息表的字典字段同样要转中文。漏了这步打出来的是 04 这种
+                    // 裸代码——Python 与 Rust 版当年就漏在这里，Go 与 .NET 是对的。
+                    for (String cat : new String[] {"education", "degree", "title", "rank"}) {
+                        String code = doc.getOrDefault("info_" + cat, "");
+                        if (!code.isEmpty()) {
+                            doc.put("info_" + cat, Helpers.dictValue(db.jdbc(), cat, code));
+                        }
+                    }
                 }
             }
         }

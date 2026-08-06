@@ -246,6 +246,26 @@ class PageSmokeTest {
     }
 
     @Test
+    @DisplayName("关联信息登记表的字典字段打成中文，不是裸代码")
+    void filingPrintResolvesDictCodesInLinkedInfo() throws Exception {
+        // 学历 01 = 博士研究生（种子字典），打印上必须是中文
+        seeded.sql("UPDATE personnel_info SET education = '01', degree = '01', "
+                + "title = '01', rank = '01' WHERE id = 1");
+        String html = seeded.get("/print/filing/1").body();
+
+        int at = html.indexOf("关联：备案人员信息登记表");
+        assertTrue(at >= 0, "备案表打印应附关联信息登记表");
+        String linked = html.substring(at);
+        assertTrue(linked.contains("博士研究生"), "关联信息表的学历应转成中文：" + snippet(linked));
+        assertTrue(!linked.contains("<td>01</td>"),
+                "关联信息表里不该出现裸字典代码：" + snippet(linked));
+    }
+
+    private static String snippet(String s) {
+        return s.substring(0, Math.min(400, s.length()));
+    }
+
+    @Test
     @DisplayName("出行明细打印含职称、行程状态与取消日期")
     void travelPrintHasAllFields() throws Exception {
         seeded.sql("UPDATE travel_details SET title = '高级经济师', "
