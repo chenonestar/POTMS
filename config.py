@@ -62,5 +62,16 @@ class Config:
     # 中国大陆固定 UTC+8 且无夏令时；如需其它时区，设环境变量 POTMS_TZ_OFFSET（单位：小时）。
     DISPLAY_TZ_OFFSET_HOURS = int(os.environ.get("POTMS_TZ_OFFSET", "8"))
 
+    # 证件领用 / 归还是否强制手写签名。
+    #
+    # 默认强制：签名就是「本人确实领了/还了」的凭证，一旦允许留空，这条记录就只剩
+    # 经办人的一面之词。放宽必须是明确的选择，不能是默认值。
+    #
+    # 单位尚未配备手写板、或存在代领代还与历史回填记录时，设 POTMS_REQUIRE_SIGNATURE=0
+    # 暂时放宽。放宽后签名板仍然显示（能签就签），只是留空也能提交；未签名的记录在
+    # 详情页与打印件上都会明确标注「无签名」，不会与已签名的混为一谈。
+    REQUIRE_SIGNATURE = os.environ.get(
+        "POTMS_REQUIRE_SIGNATURE", "1").strip().lower() not in ("0", "false", "no", "off")
+
     # 证照到期预警（天）
     CERT_EXPIRY_WARN_DAYS = 30

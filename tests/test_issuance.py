@@ -216,3 +216,77 @@ def test_travel_delete_blocked_when_issued(c):
     db = sqlite3.connect(Config.DATABASE)
     assert db.execute("SELECT COUNT(*) FROM travel_details WHERE id=1").fetchone()[0] == 1
     db.close()
+
+
+# ---------------------------------------------------------------------------
+# 手写签名是否强制（POTMS_REQUIRE_SIGNATURE 开关）
+#
+# 默认强制。单位尚未配备手写板、或存在代领代还与历史回填记录时可临时放宽。
+# 放宽只影响「留空」这一种情况——签了名照常入库，格式非法照常拒绝，
+# 未签名的记录仍会在详情页与打印件上被标注「无签名」。
+# ---------------------------------------------------------------------------
+def test_signature_required_by_default(monkeypatch):
+    """默认必须强制。放宽是明确的选择，不能是默认值。"""
+    assert Config.REQUIRE_SIGNATURE is True
+    blob, err = _decode_signature("")
+    assert blob is None and "请手写签名" in err
+
+
+def test_signature_optional_when_switched_off(monkeypatch):
+    monkeypatch.setattr(Config, "REQUIRE_SIGNATURE", False)
+    blob, err = _decode_signature("")
+    assert blob is None and err == ""          # 留空放行，如实存 NULL
+
+
+@pytest.mark.parametrize("raw,frag", [
+    ("notadataurl", "格式不正确"),
+    ("data:image/png;base64," + base64.b64encode(b"plain text").decode(), "不是有效的 PNG"),
+])
+def test_bad_signature_still_rejected_when_optional(monkeypatch, raw, frag):
+    """放宽的是「可以不签」，不是「可以乱签」——格式校验一步不能少。"""
+    monkeypatch.setattr(Config, "REQUIRE_SIGNATURE", False)
+    blob, err = _decode_signature(raw)
+    assert blob is None and frag in err
+
+
+def test_return_blocked_without_signature(c):
+    _issue(c)
+    html = c.post("/issuance/1/return",
+                  data={"csrf_token": _tok(c), "return_date": "20260810", "sign_png": ""},
+                  follow_redirects=True).get_data(as_text=True)
+    assert "请手写签名后再提交" in html
+    db = sqlite3.connect(Config.DATABASE)
+    assert db.execute("SELECT status FROM cert_issuance WHERE id=1").fetchone()[0] == "issued"
+    db.close()
+    assert _travel_dates() == ("20260720", None)   # 派生字段也不能被写脏
+
+
+def test_return_allowed_without_signature_when_switched_off(c, monkeypatch):
+    _issue(c)
+    monkeypatch.setattr(Config, "REQUIRE_SIGNATURE", False)
+    html = c.post("/issuance/1/return",
+                  data={"csrf_token": _tok(c), "return_date": "20260810", "sign_png": ""},
+                  follow_redirects=True).get_data(as_text=True)
+    assert "归还登记已保存" in html
+
+    db = sqlite3.connect(Config.DATABASE)
+    status, rdate, sig = db.execute(
+        "SELECT status, return_date, return_sign_image FROM cert_issuance WHERE id=1").fetchone()
+    db.close()
+    assert (status, rdate, sig) == ("returned", "20260810", None)
+    assert _travel_dates() == ("20260720", "20260810")
+    # 无签名必须看得出来，不能与已签名的混为一谈
+    assert "无签名" in c.get("/issuance/1").get_data(as_text=True)
+
+
+def test_signature_still_stored_when_switched_off(c, monkeypatch):
+    """开关关掉只是不强制，签了就得存。"""
+    _issue(c)
+    monkeypatch.setattr(Config, "REQUIRE_SIGNATURE", False)
+    c.post("/issuance/1/return",
+           data={"csrf_token": _tok(c), "return_date": "20260810", "sign_png": _PNG_DATA_URL},
+           follow_redirects=True)
+    db = sqlite3.connect(Config.DATABASE)
+    sig = db.execute("SELECT return_sign_image FROM cert_issuance WHERE id=1").fetchone()[0]
+    db.close()
+    assert sig and sig.startswith(b"\x89PNG")

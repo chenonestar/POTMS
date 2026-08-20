@@ -21,6 +21,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from flask.typing import ResponseReturnValue
 
 from auth import login_required
+from config import Config
 from database import get_db
 from utils.helpers import log_action, list_all, row_snapshot, get_dict_value
 from utils.validators import parse_date_input, check_required, check_dates
@@ -45,9 +46,19 @@ MAX_META_CHARS = 400_000
 # 签名解析
 # ---------------------------------------------------------------------------
 def _decode_signature(png_data_url: str) -> tuple[bytes | None, str]:
-    """dataURL → PNG bytes。返回 (bytes, 错误信息)；失败时 bytes 为 None。"""
+    """dataURL → PNG bytes。返回 (bytes, 错误信息)；失败时 bytes 为 None。
+
+    留空是否算错，取决于 Config.REQUIRE_SIGNATURE（环境变量
+    POTMS_REQUIRE_SIGNATURE，默认强制）。注意这里是**唯一**真正的守门人：
+    前端那两道拦截（提交前校验、少于 8 点算误触）都在浏览器里，伪造 POST 绕得过。
+
+    格式校验不受开关影响——签了就必须是合法 PNG，不能因为「不强制」就把
+    坏数据放进库里。
+    """
     raw = (png_data_url or "").strip()
     if not raw:
+        if not Config.REQUIRE_SIGNATURE:
+            return None, ""      # 放宽模式：留空即无签名，记录里如实存 NULL
         return None, "请手写签名后再提交。"
     prefix = "data:image/png;base64,"
     if not raw.startswith(prefix):
