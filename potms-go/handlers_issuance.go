@@ -70,6 +70,22 @@ func handleIssuanceList(w http.ResponseWriter, r *http.Request) {
 	q := queryArgs(r)
 	where, params := buildIssuanceFilters(q, nil)
 	pg := listAll(issuanceBaseSelect+where+" ORDER BY i.issue_date DESC, i.id DESC", params...)
+	// 证件种类代码 → 中文标签，在这里算好再下发。模板里 split 字符串在三种
+	// Jinja 实现（Jinja2 / gonja / minijinja）上写法不一，而五版模板要逐字一致。
+	for _, row := range pg.Rows {
+		var labels []string
+		for _, c := range strings.Split(rowStr(row, "cert_types"), ",") {
+			if c = strings.TrimSpace(c); c == "" {
+				continue
+			}
+			if v := getDictValue("cert_type", c); v != "" {
+				labels = append(labels, v)
+			} else {
+				labels = append(labels, c)
+			}
+		}
+		row["cert_type_labels"] = labels
+	}
 	render(w, r, "issuance/list.html", Row{
 		"items":            pg.pageMap(),
 		"search":           strings.TrimSpace(q["search"]),
@@ -365,7 +381,7 @@ func validateIssuanceForm(data map[string]string) []string {
 	return errs
 }
 
-// nullIfEmpty 空串写入数据库时应为 NULL，而不是 ''——
+// nullIfEmpty 空串写入数据库时应为 NULL，而不是 ”——
 // 派生日期字段的「无值」要能被 IS NULL 命中。
 func nullIfEmpty(s string) interface{} {
 	if strings.TrimSpace(s) == "" {

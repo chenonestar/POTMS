@@ -75,12 +75,22 @@ pub async fn index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respon
         }
 
         let recent_travel = db::query_maps(&conn, "SELECT name, destination_passport, travel_dates, created_at FROM travel_details ORDER BY CASE WHEN travel_start IS NULL OR travel_start = '' THEN 1 ELSE 0 END, travel_start DESC, created_at DESC LIMIT 5", &[]);
+        // 证件领用
+        let iss_pending: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cert_issuance WHERE status = 'issued'", [], |r| r.get(0))
+            .unwrap_or(0);
+        let ym = today[..6].to_string();
+        let iss_this_month: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cert_issuance WHERE status != 'voided' AND issue_date LIKE ?",
+                       [format!("{ym}%")], |r| r.get(0))
+            .unwrap_or(0);
 
         json!({
             "total_active": total_active, "total_decontrolled": total_decontrolled,
             "total_certificates": total_certificates, "total_travel": total_travel,
             "by_unit": by_unit, "by_political": by_political, "by_rank": by_rank,
             "cert_in_storage": cert_in_storage, "cert_in_use": cert_in_use, "cert_overdue": overdue.len(),
+            "iss_pending": iss_pending, "iss_this_month": iss_this_month,
             "expiring": expiring, "overdue": overdue,
             "recent_travel": recent_travel, "backup_date": backup_date,
         })

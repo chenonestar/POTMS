@@ -116,14 +116,46 @@
     <tr><td class="label">撤控日期</td><td>{{ row.decontrol_date or '' }}</td><td class="label">证件移交日期</td><td>{{ row.cert_handover_date or '' }}</td></tr>
     <tr><td class="label">撤控原因</td><td colspan="3">{{ row.reason }}</td></tr>
 </table>
+
+{% elif mode == 'issuance' %}
+<table>
+    <tr><td class="label">单位</td><td colspan="3">{{ row.work_unit }}</td></tr>
+    <tr><td class="label">领用人</td><td>{{ row.holder_name }}</td><td class="label">身份证号</td><td>{{ row.id_number or '' }}</td></tr>
+    <tr><td class="label">领用证件种类</td><td colspan="3">{{ type_labels }}</td></tr>
+    <tr><td class="label">证件号码</td><td colspan="3">{{ row.cert_nos or '' }}</td></tr>
+    <tr><td class="label">领用日期</td><td>{{ row.issue_date }}</td><td class="label">经办人（发放）</td><td>{{ row.issuer }}</td></tr>
+    <tr><td class="label">归还日期</td><td>{{ row.return_date or '' }}</td><td class="label">经办人（接收）</td><td>{{ row.return_operator or '' }}</td></tr>
+    <tr><td class="label">备注</td><td colspan="3">{{ row.remarks or '' }}</td></tr>
+    {% if row.status == 'voided' %}
+    <tr><td class="label">作废原因</td><td colspan="3">{{ row.void_reason }}</td></tr>
+    {% endif %}
+</table>
 {% endif %}
 
 <!-- 签章栏：标签在前、下划线在后、三者均匀分布，为签字留足空间 -->
+{% if mode == 'issuance' %}
+<!-- 领用/归还手写签名：直接呈现采集到的签名图 -->
+<div class="sig-block">
+    <div class="sig-item" style="text-align:center;">
+        <div class="sig-label">领用人签名</div>
+        {% if row.sign_image %}
+        <img src="{{ url_for('issuance.signature', iss_id=row.id) }}" alt="领用人签名" style="height:60px;">
+        {% else %}<span class="sig-line"></span>{% endif %}
+    </div>
+    <div class="sig-item" style="text-align:center;">
+        <div class="sig-label">归还人签名</div>
+        {% if row.return_sign_image %}
+        <img src="{{ url_for('issuance.signature', iss_id=row.id, kind='return') }}" alt="归还人签名" style="height:60px;">
+        {% else %}<span class="sig-line"></span>{% endif %}
+    </div>
+</div>
+{% else %}
 <div class="sig-block">
     <div class="sig-item"><span class="sig-label">填表人：</span><span class="sig-line"></span></div>
     <div class="sig-item"><span class="sig-label">审核人：</span><span class="sig-line"></span></div>
     <div class="sig-item"><span class="sig-label">批准人：</span><span class="sig-line"></span></div>
 </div>
+{% endif %}
 
 <p class="meta">打印日期：<span id="printDate"></span>　｜　操作人：{{ session.full_name or session.username }}</p>
 

@@ -56,6 +56,12 @@ pub fn endpoint_path(endpoint: &str) -> Option<&'static str> {
         "dict_admin.edit" => "/dict/{dict_id}/edit", "dict_admin.delete" => "/dict/{dict_id}/delete",
         "submit_unit.index" => "/submit-unit/", "submit_unit.add" => "/submit-unit/add",
         "submit_unit.edit" => "/submit-unit/{uid}/edit", "submit_unit.delete" => "/submit-unit/{uid}/delete",
+        "issuance.list" => "/issuance/", "issuance.new" => "/issuance/new",
+        "issuance.view" => "/issuance/{iss_id}",
+        "issuance.do_return" => "/issuance/{iss_id}/return",
+        "issuance.void" => "/issuance/{iss_id}/void",
+        "issuance.signature" => "/issuance/{iss_id}/signature.png",
+        "export.issuance_export" => "/export/issuance",
         "search.index" => "/search",
         _ => return None,
     })
@@ -255,6 +261,10 @@ pub fn render(env: &Environment, mut ctx: Ctx, sess: &crate::session::Session, c
 }
 
 pub fn render_status(env: &Environment, ctx: &mut Ctx, sess: &crate::session::Session, cfg: &Config, name: &str, data: serde_json::Value, status: axum::http::StatusCode) -> Response {
+    // 模板里读 config.REQUIRE_SIGNATURE 决定签名板是否标必填、以及前端提交时
+    // 留空要不要拦下（后端仍会独立再判一次）。base_context 拿不到 cfg，放在这里注入。
+    ctx.base.insert("config".into(),
+                    json!({"REQUIRE_SIGNATURE": cfg.require_signature}));
     if let serde_json::Value::Object(m) = data {
         for (k, v) in m {
             ctx.base.insert(k, v);

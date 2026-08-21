@@ -67,12 +67,12 @@
         <td title="{{ row.work_unit }}">{{ row.work_unit }}</td>
         <td>{{ row.holder_name }}</td>
         <td>
-            {# 先 set 再 split：gonja 解析 (a or '').split(',') 时不认括号，
-               会当成 a or (''.split(',')) 而炸。三版模板要逐字一致。 #}
-            {% set codes = row.cert_types | default('', true) %}
-            {% for c in codes.split(',') %}{% if c %}
-            <span class="badge bg-light text-dark border">{{ dict_value('cert_type', c) }}</span>
-            {% endif %}{% endfor %}
+            {# 标签由后端算好再下发，模板只负责摆：字符串 split 在 Jinja2 / gonja /
+               minijinja 三家的写法与可用性各不相同（minijinja 干脆没有），
+               而三版模板要逐字一致。字典查询本来也不该留在视图层。 #}
+            {% for label in row.cert_type_labels %}
+            <span class="badge bg-light text-dark border">{{ label }}</span>
+            {% endfor %}
         </td>
         <td><small>{{ row.cert_nos or '-' }}</small></td>
         <td>{{ row.issue_date }}</td>

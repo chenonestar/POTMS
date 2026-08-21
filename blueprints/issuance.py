@@ -136,6 +136,17 @@ def list() -> ResponseReturnValue:
     where, params = build_filters(request.args)
     base = BASE_SELECT + where + " ORDER BY i.issue_date DESC, i.id DESC"
     pg = list_all(base, params)
+    # 证件种类代码 → 中文标签，在这里算好再下发。模板里 split 字符串在三种
+    # Jinja 实现（Jinja2 / gonja / minijinja）上写法不一，而五版模板要逐字一致。
+    rows = []
+    for r in pg["rows"]:
+        d = dict(r)
+        d["cert_type_labels"] = [
+            get_dict_value("cert_type", c) or c
+            for c in (d.get("cert_types") or "").split(",") if c.strip()
+        ]
+        rows.append(d)
+    pg = {**pg, "rows": rows}
     return render_template(
         "issuance/list.html",
         items=pg,

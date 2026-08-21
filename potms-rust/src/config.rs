@@ -18,6 +18,11 @@ pub struct Config {
     pub backup_folder: PathBuf,
     pub secret_key: Vec<u8>,
     pub tz_offset_hours: i64,
+    /// 证件领用 / 归还是否强制手写签名（POTMS_REQUIRE_SIGNATURE，默认强制）。
+    ///
+    /// 默认强制：签名就是「本人确实领了/还了」的凭证，一旦允许留空，这条记录就只剩
+    /// 经办人的一面之词。放宽必须是明确的选择，不能是默认值。
+    pub require_signature: bool,
 }
 
 impl Config {
@@ -39,6 +44,14 @@ impl Config {
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
                 .unwrap_or(8),
+            require_signature: !matches!(
+                std::env::var("POTMS_REQUIRE_SIGNATURE")
+                    .unwrap_or_else(|_| "1".into())
+                    .trim()
+                    .to_ascii_lowercase()
+                    .as_str(),
+                "0" | "false" | "no" | "off"
+            ),
             base_dir,
         };
         for d in [&cfg.upload_folder, &cfg.export_folder, &cfg.backup_folder] {

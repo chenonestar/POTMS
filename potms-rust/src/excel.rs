@@ -276,3 +276,167 @@ fn validate_import_row(conn: &Connection, d: &std::collections::HashMap<String, 
     }
     errs
 }
+
+// ---------------------------------------------------------------------------
+// 7. 证件领用登记表（签名以图片嵌入对应单元格）
+// ---------------------------------------------------------------------------
+
+/// 签名图在表格中的展示高度（像素）与对应行高（磅），与另外四版取值一致
+const SIGN_IMG_HEIGHT_PX: f64 = 48.0;
+const SIGN_ROW_HEIGHT: f64 = 40.0;
+
+fn issuance_status_label(code: &str) -> &str {
+    match code {
+        "issued" => "已领用",
+        "returned" => "已归还",
+        "voided" => "已作废",
+        other => other,
+    }
+}
+
+/// 导出证件领用记录。
+///
+/// JOIN personnel_filing 以排除孤儿行（延续既有数据完整性口径）。
+/// 第 8 列＝领用签名、第 11 列＝归还签名（1 起算），两列不写文本，改嵌 PNG。
+pub fn export_issuance(conn: &Connection, cfg: &Config, operator: &str, where_sql: &str,
+                       params: &[SqlValue]) -> (Option<PathBuf>, String) {
+    let rows = db::query_maps(conn, &format!(
+        "SELECT i.*, pf.work_unit FROM cert_issuance i \
+         JOIN personnel_filing pf ON i.personnel_filing_id = pf.id \
+         WHERE 1=1 {where_sql} ORDER BY i.issue_date DESC, i.id DESC"), params);
+
+    let headers = ["单位", "领用人", "身份证号", "证件种类", "证件号码", "领用日期",
+                   "发放人", "领用签名", "归还日期", "接收人", "归还签名", "状态", "备注"];
+    let data: Vec<Vec<String>> = rows.iter().map(|r| vec![
+        s(r, "work_unit"), s(r, "holder_name"), s(r, "id_number"),
+        crate::handlers_issuance::types_label(conn, &s(r, "cert_types")),
+        s(r, "cert_nos"), s(r, "issue_date"), s(r, "issuer"),
+        String::new(),                                   // 领用签名：嵌图，不写文本
+        s(r, "return_date"), s(r, "return_operator"),
+        String::new(),                                   // 归还签名：同上
+        issuance_status_label(&s(r, "status")).to_string(), s(r, "remarks"),
+    ]).collect();
+
+    // 签名 BLOB 单独取一份：query_maps 只产出 JSON，拿不到二进制
+    let ids: Vec<i64> = rows.iter().map(|r| helpers::row_i64(r, "id")).collect();
+    let mut signs: Vec<(Option<Vec<u8>>, Option<Vec<u8>>)> = vec![];
+    for id in &ids {
+        let pair = conn.query_row(
+            "SELECT sign_image, return_sign_image FROM cert_issuance WHERE id = ?",
+            [id],
+            |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?, r.get::<_, Option<Vec<u8>>>(1)?)),
+        ).unwrap_or((None, None));
+        signs.push(pair);
+    }
+
+    build_export_with_signatures(
+        cfg, "证件领用登记表", "因私出国（境）证件领用登记表", &headers, &data,
+        "证件领用登记表", operator,
+        &["1. 签名为领用/归还时现场手写采集，保存后不可修改；登记有误须作废后重新登记。",
+          "2. 证件号码为领用当时的快照，后续修改证照信息不影响本次领用凭证。",
+          "3. 状态：已领用（未归还）/ 已归还 / 已作废。"],
+        &signs, &[7, 10])
+}
+
+/// 与 build_export 相同，额外把签名 PNG 嵌到指定列。
+///
+/// 单张渲染失败只把该格降级成文字，不中断整表导出——一张签名读不出来，
+/// 不该让整份归档表都出不来。
+#[allow(clippy::too_many_arguments)]
+fn build_export_with_signatures(
+    cfg: &Config, sheet: &str, title: &str, headers: &[&str], rows: &[Vec<String>],
+    prefix: &str, operator: &str, notes: &[&str],
+    signs: &[(Option<Vec<u8>>, Option<Vec<u8>>)], sign_cols: &[u16],
+) -> (Option<PathBuf>, String) {
+    use rust_xlsxwriter::Image;
+
+    let mut wb = Workbook::new();
+    let title_fmt = Format::new().set_bold().set_font_size(16)
+        .set_align(FormatAlign::Center).set_align(FormatAlign::VerticalCenter);
+    let header_fmt = Format::new().set_bold().set_font_color(Color::White)
+        .set_background_color(Color::RGB(0x1A5276))
+        .set_align(FormatAlign::Center).set_align(FormatAlign::VerticalCenter)
+        .set_text_wrap().set_border(FormatBorder::Thin);
+    let data_fmt = Format::new().set_align(FormatAlign::VerticalCenter)
+        .set_text_wrap().set_border(FormatBorder::Thin);
+
+    {
+        let ws = wb.add_worksheet();
+        let _ = ws.set_name(sheet);
+        let ncol = headers.len() as u16;
+        let _ = ws.merge_range(0, 0, 0, ncol - 1, title, &title_fmt);
+        let _ = ws.set_row_height(0, 30);
+        for (i, h) in headers.iter().enumerate() {
+            let _ = ws.write_string_with_format(1, i as u16, *h, &header_fmt);
+        }
+        for (r, vals) in rows.iter().enumerate() {
+            for (c, val) in vals.iter().enumerate() {
+                let _ = ws.write_string_with_format(r as u32 + 2, c as u16, val, &data_fmt);
+            }
+        }
+
+        for (r, (issue_png, return_png)) in signs.iter().enumerate() {
+            let row_no = r as u32 + 2;
+            let mut embedded = false;
+            for (blob, col) in [(issue_png, sign_cols[0]), (return_png, sign_cols[1])] {
+                let Some(bytes) = blob else { continue };
+                if bytes.is_empty() {
+                    continue;
+                }
+                match Image::new_from_buffer(bytes) {
+                    Ok(img) => {
+                        let h = img.height();
+                        let scale = if h > 0.0 { SIGN_IMG_HEIGHT_PX / h } else { 1.0 };
+                        let img = img.set_scale_height(scale).set_scale_width(scale);
+                        if ws.insert_image(row_no, col, &img).is_ok() {
+                            embedded = true;
+                        } else {
+                            let _ = ws.write_string_with_format(row_no, col, "[签名图无法读取]", &data_fmt);
+                        }
+                    }
+                    Err(_) => {
+                        let _ = ws.write_string_with_format(row_no, col, "[签名图无法读取]", &data_fmt);
+                    }
+                }
+            }
+            if embedded {
+                let _ = ws.set_row_height(row_no, SIGN_ROW_HEIGHT);
+            }
+        }
+
+        let _ = ws.set_freeze_panes(2, 0);
+        for c in 0..headers.len() {
+            // 签名列按图片宽度留白：自动列宽只看文本，会把空单元格压窄
+            if sign_cols.contains(&(c as u16)) {
+                let _ = ws.set_column_width(c as u16, 22.0);
+                continue;
+            }
+            let mut maxlen = headers[c].chars().count();
+            for row in rows {
+                if let Some(cell) = row.get(c) {
+                    maxlen = maxlen.max(cell.chars().count());
+                }
+            }
+            let _ = ws.set_column_width(c as u16, ((maxlen + 4) as f64).min(40.0));
+        }
+    }
+    if !notes.is_empty() {
+        let ws2 = wb.add_worksheet();
+        let _ = ws2.set_name("填表说明");
+        for (i, n) in notes.iter().enumerate() {
+            let _ = ws2.write_string(i as u32, 0, *n);
+        }
+    }
+
+    let now = time::OffsetDateTime::now_utc() + time::Duration::hours(cfg.tz_offset_hours);
+    let ts = format!("{:04}{:02}{:02}_{:02}{:02}{:02}",
+                     now.year(), now.month() as u8, now.day(), now.hour(), now.minute(), now.second());
+    let filename = format!("{prefix}_{ts}_{operator}.xlsx");
+    let _ = std::fs::create_dir_all(&cfg.export_folder);
+    prune_old_exports(cfg);
+    let path = cfg.export_folder.join(&filename);
+    match wb.save(&path) {
+        Ok(_) => (Some(path), filename),
+        Err(_) => (None, filename),
+    }
+}
