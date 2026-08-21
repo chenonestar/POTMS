@@ -56,7 +56,7 @@ func extractDecontrolForm(r *http.Request) map[string]string {
 		"submit_phone": f("submit_phone"), "batch_no": f("batch_no"), "reason": f("reason"),
 		"decontrol_date":     decDate,
 		"cert_handover_date": parseDateInput(f("cert_handover_date")),
-		"operator":           sessionUser(r),
+		"operator":           operatorName(r),
 	}
 }
 

@@ -42,13 +42,35 @@ impl Session {
     pub fn logged_in(&self) -> bool {
         self.map.get("logged_in").and_then(|v| v.as_bool()).unwrap_or(false)
     }
+    /// 登录**账号**。操作日志记的就是它——账号是身份标识，姓名可以随时改；
+    /// 日志只记「张三」的话，改名之后历史记录就对不上人了。
     pub fn username(&self) -> String {
         self.map.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string()
     }
-    pub fn login(&mut self, username: &str) {
+    /// 业务单据上的**经办人**：真实姓名，没填则回退到登录账号。
+    ///
+    /// 单据、打印件、导出表上的「经办人」必须是真人名字——打印出来的领用凭证上
+    /// 一个 admin，没法拿去归档。姓名在「账户设置」里维护，登录时放进会话。
+    pub fn operator_name(&self) -> String {
+        match self.map.get("full_name").and_then(|v| v.as_str()) {
+            Some(n) if !n.trim().is_empty() => n.to_string(),
+            _ => self.username(),
+        }
+    }
+    pub fn login(&mut self, username: &str, full_name: &str) {
         self.map.insert("logged_in".into(), json!(true));
         self.map.insert("username".into(), json!(username));
+        // 没填姓名时回退到账号，保证单据上的经办人永不为空
+        let fname = if full_name.trim().is_empty() { username } else { full_name.trim() };
+        self.map.insert("full_name".into(), json!(fname));
         self.map.insert("ts".into(), json!(crate::helpers::now_unix()));
+        self.dirty = true;
+    }
+    /// 账户设置里改了用户名或姓名之后同步会话，免得当前这次登录还带着旧值。
+    pub fn set_identity(&mut self, username: &str, full_name: &str) {
+        self.map.insert("username".into(), json!(username));
+        let fname = if full_name.trim().is_empty() { username } else { full_name.trim() };
+        self.map.insert("full_name".into(), json!(fname));
         self.dirty = true;
     }
     pub fn logout(&mut self) {
@@ -178,3 +200,42 @@ impl Lockout {
 }
 
 pub fn _touch(_: &Config) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 经办人与操作日志用的是两个不同的身份：单据要真人姓名，日志要登录账号。
+    /// 混成一个字段，打印出来的领用凭证上就会是「经办人：admin」。
+    #[test]
+    fn operator_name_prefers_full_name() {
+        let mut s = Session::default();
+        s.login("admin", "张建国");
+        assert_eq!(s.username(), "admin", "日志身份必须是账号");
+        assert_eq!(s.operator_name(), "张建国", "单据身份必须是姓名");
+    }
+
+    #[test]
+    fn operator_name_falls_back_to_account() {
+        let mut s = Session::default();
+        s.login("admin", "");
+        // 没填姓名时回退到账号，保证单据上的经办人字段永不为空
+        assert_eq!(s.operator_name(), "admin");
+
+        let mut blank = Session::default();
+        blank.login("admin", "   ");
+        assert_eq!(blank.operator_name(), "admin", "只有空白的姓名同样要回退");
+    }
+
+    #[test]
+    fn set_identity_updates_both() {
+        let mut s = Session::default();
+        s.login("admin", "张建国");
+        s.set_identity("zhangjg", "张建国");
+        assert_eq!(s.username(), "zhangjg");
+        assert_eq!(s.operator_name(), "张建国");
+        // 姓名清空后，经办人跟着回到新账号，而不是留着旧姓名
+        s.set_identity("zhangjg", "");
+        assert_eq!(s.operator_name(), "zhangjg");
+    }
+}

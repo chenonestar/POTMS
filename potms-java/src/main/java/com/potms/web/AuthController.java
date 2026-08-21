@@ -56,7 +56,7 @@ public class AuthController {
         }
 
         Map<String, Object> row = db.jdbc().queryForList(
-                "SELECT id, username, password_hash FROM users WHERE username = ?", user)
+                "SELECT id, username, password_hash, full_name FROM users WHERE username = ?", user)
                 .stream().findFirst().orElse(null);
 
         Security.Result result = row == null
@@ -76,6 +76,9 @@ public class AuthController {
             }
             HttpSession s = req.getSession(true);
             s.setAttribute(SecurityFilters.SESSION_USER, user);
+            // 单据上的经办人取这个；没填姓名时回退到账号，保证字段永不为空
+            String fullName = row.get("full_name") == null ? "" : row.get("full_name").toString().trim();
+            s.setAttribute(SecurityFilters.SESSION_FULL_NAME, fullName.isEmpty() ? user : fullName);
             s.setMaxInactiveInterval(Config.SESSION_TIMEOUT_SECONDS);
 
             Flash.success(req, "登录成功。");

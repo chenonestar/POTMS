@@ -14,6 +14,14 @@
         <div class="mb-3"><label class="form-label">新用户名</label>
             <input type="text" class="form-control" name="newUsername" value="@Model.Username" autocomplete="username">
             <div class="form-text">至少 3 个字符；不修改请保持原值</div></div>
+        <div class="mb-3"><label class="form-label">姓名</label>
+            <input type="text" class="form-control" name="newFullName" value="@Model.FullName"
+                   maxlength="30" placeholder="例如：张建国" autocomplete="name">
+            <div class="form-text">
+                <strong>单据与打印件上的「经办人」显示这个名字</strong>，不是登录账号。
+                留空则退回显示登录账号。<br>
+                操作日志仍按登录账号记录——账号是身份标识，姓名可以改，日志只记姓名的话改名后就对不上人了。
+            </div></div>
         <div class="mb-3"><label class="form-label">新密码</label>
             <input type="password" class="form-control" name="newPassword" autocomplete="new-password">
             <div class="form-text">至少 6 个字符；不修改请留空</div></div>
@@ -23,4 +31,36 @@
         <a href="/" class="btn btn-secondary">返回</a>
     </form>
 </div>
+
+@if (Model.LegacyTotal > 0)
+{
+<div class="form-section border-warning mt-4">
+    <h5><i class="bi bi-clock-history"></i> 历史经办人回填</h5>
+    <p class="mb-2">
+        业务记录里还有 <strong class="text-danger">@Model.LegacyTotal</strong> 条
+        把登录账号「@Model.Username」当作经办人。
+        @if (Model.FullName.Length > 0 && Model.FullName != Model.Username)
+        {
+            <text>可一次性改成「<strong>@Model.FullName</strong>」。</text>
+        }
+        else
+        {
+            <span class="text-muted">请先填写并保存姓名，再执行回填。</span>
+        }
+    </p>
+    <ul class="small text-muted">
+        <li>只改业务表（信息表 / 备案表 / 证照 / 出行 / 撤控 / 证件领用）的经办人字段。</li>
+        <li><strong>操作日志不动</strong>——审计需要登录账号。</li>
+        <li>执行前会自动备份一次 data.db 到 backup 目录，整件事也会记进操作日志。</li>
+        <li><strong>此操作不可撤销</strong>，请确认姓名填写正确后再点。</li>
+    </ul>
+    <form method="post" asp-page-handler="Backfill"
+          onsubmit="return confirm('确定把 @Model.LegacyTotal 条历史记录的经办人改为「@Model.FullName」吗？此操作不可撤销。');">
+        <button type="submit" class="btn btn-warning"
+                disabled="@(Model.FullName.Length == 0 || Model.FullName == Model.Username)">
+            <i class="bi bi-arrow-repeat"></i> 回填这 @Model.LegacyTotal 条记录
+        </button>
+    </form>
+</div>
+}
 </div></div>

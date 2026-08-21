@@ -401,7 +401,7 @@ public class PersonnelController {
         d.put("party_join_date", Validators.parseDateInput(req.getParameter("party_join_date")));
         d.put("position", trim(req, "position"));
         // 操作人一律取自会话，不接受前端提交
-        d.put("operator", operator(req));
+        d.put("operator", operatorName(req));
         return d;
     }
 
@@ -449,7 +449,7 @@ public class PersonnelController {
         String informed = trim(req, "informed");
         d.put("informed", informed.isEmpty() ? "否" : informed);
         d.put("remarks", trim(req, "remarks"));
-        d.put("operator", operator(req));
+        d.put("operator", operatorName(req));
         return d;
     }
 
@@ -530,9 +530,26 @@ public class PersonnelController {
                 action, target, id, detail, before, after);
     }
 
+    /**
+     * 操作日志里的**操作人**：登录账号。
+     *
+     * <p>账号是身份标识，姓名可以随时改。日志只记「张三」的话，改名之后历史记录
+     * 就对不上人了；展示时再按账号查出姓名，渲染成「张三（admin）」。
+     */
     static String operator(HttpServletRequest req) {
         String u = SecurityFilters.currentUser(req);
         return u == null ? "admin" : u;
+    }
+
+    /**
+     * 业务单据上的**经办人**：真实姓名，没填则回退到登录账号。
+     *
+     * <p>单据、打印件、导出表上的「经办人」必须是真人名字——打印出来的领用凭证上
+     * 一个 admin，没法拿去归档。
+     */
+    static String operatorName(HttpServletRequest req) {
+        String n = SecurityFilters.operatorName(req);
+        return n == null ? "admin" : n;
     }
 
     static String trim(HttpServletRequest req, String name) {

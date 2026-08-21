@@ -116,9 +116,19 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 		row["changes"] = computeChanges(rowStr(row, "snapshot"))
 	}
 
+	// 日志里存的是登录账号；显示时补上姓名，渲染成「张三（admin）」。
+	// 姓名从 users 表现查，查不到（比如账号已改名或删除）就只显示账号。
+	operatorNames := map[string]string{}
+	if rows, err := queryMaps("SELECT username, full_name FROM users"); err == nil {
+		for _, u := range rows {
+			operatorNames[rowStr(u, "username")] = strings.TrimSpace(rowStr(u, "full_name"))
+		}
+	}
+
 	render(w, r, "logs/view.html", Row{
-		"items":         pg.pageMap(),
-		"action_filter": q["action"], "target_filter": q["target_type"],
+		"items":          pg.pageMap(),
+		"operator_names": operatorNames,
+		"action_filter":  q["action"], "target_filter": q["target_type"],
 		"date_from": q["date_from"], "date_to": q["date_to"],
 		"action_types": optList("create", "新建", "update", "修改", "delete", "删除",
 			"cancel", "取消行程", "restore", "恢复行程", "lock", "登录锁定",
@@ -158,7 +168,7 @@ func handleLogsExport(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "logs.index", nil)
 		return
 	}
-	filepath_, filename, err := exportLogs(sessionUser(r), year)
+	filepath_, filename, err := exportLogs(operatorName(r), year)
 	if err != nil {
 		flashMsg(w, r, "日志归档导出失败: "+err.Error(), "danger")
 		redirect(w, r, "logs.index", nil)

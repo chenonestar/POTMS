@@ -38,7 +38,7 @@ type exportSpec struct {
 func doExport(w http.ResponseWriter, r *http.Request, spec exportSpec) {
 	ids := selectedIDs(r)
 	where, params := spec.filters(queryArgs(r), ids)
-	path, filename, err := spec.export(sessionUser(r), where, params)
+	path, filename, err := spec.export(operatorName(r), where, params)
 	if err != nil {
 		flashMsg(w, r, "导出失败: "+err.Error(), "danger")
 		redirect(w, r, spec.backEP, nil)
@@ -51,7 +51,7 @@ func doExport(w http.ResponseWriter, r *http.Request, spec exportSpec) {
 func handleExportInfo(w http.ResponseWriter, r *http.Request) {
 	ids := selectedIDs(r)
 	where, params := personnelFilters(queryArgs(r), ids)
-	path, filename, err := exportPersonnelInfo(sessionUser(r), where, params, where != "")
+	path, filename, err := exportPersonnelInfo(operatorName(r), where, params, where != "")
 	if err != nil {
 		flashMsg(w, r, "导出失败: "+err.Error(), "danger")
 		redirect(w, r, "personnel.list", nil)
@@ -161,7 +161,7 @@ func handleImport(w http.ResponseWriter, r *http.Request) {
 			render(w, r, "import/form.html", Row{"result": nil})
 			return
 		}
-		res, err := parseImportFile(file, sessionUser(r))
+		res, err := parseImportFile(file, operatorName(r))
 		if err != nil {
 			flashMsg(w, r, "导入失败: "+err.Error(), "danger")
 			render(w, r, "import/form.html", Row{"result": nil})

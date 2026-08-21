@@ -53,7 +53,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
                 sun = Data["submit_unit_name"], sut = Data["submit_unit_type"],
                 sc = Data["submit_contact"], sp = Data["submit_phone"],
                 batch = Data["batch_no"], reason = Data["reason"],
-                ddate = Data["decontrol_date"], hdate = Data["cert_handover_date"], op = CurrentUser,
+                ddate = Data["decontrol_date"], hdate = Data["cert_handover_date"], op = OperatorName,
             });
         var decId = cn.ExecuteScalar<long>("SELECT last_insert_rowid()");
 

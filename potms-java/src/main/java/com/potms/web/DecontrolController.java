@@ -1,6 +1,7 @@
 package com.potms.web;
 
 import static com.potms.web.PersonnelController.operator;
+import static com.potms.web.PersonnelController.operatorName;
 import static com.potms.web.PersonnelController.param;
 import static com.potms.web.PersonnelController.str;
 import static com.potms.web.PersonnelController.trim;
@@ -161,7 +162,7 @@ public class DecontrolController {
         String dd = Validators.parseDateInput(req.getParameter("decontrol_date"));
         d.put("decontrol_date", dd.isEmpty() ? today() : dd);
         d.put("cert_handover_date", Validators.parseDateInput(req.getParameter("cert_handover_date")));
-        d.put("operator", operator(req));
+        d.put("operator", operatorName(req));
         return d;
     }
 

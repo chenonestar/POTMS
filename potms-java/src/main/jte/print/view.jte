@@ -160,7 +160,7 @@
 </div>
 @endif
 
-<p class="meta">打印日期：<span class="print-date"></span>　｜　操作人：${ctx.user()}</p>
+<p class="meta">打印日期：<span class="print-date"></span>　｜　操作人：${ctx.operatorName()}</p>
 </div>
 @endfor
 

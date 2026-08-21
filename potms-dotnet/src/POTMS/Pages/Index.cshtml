@@ -17,6 +17,22 @@
     </div>
 </div>
 
+@* 姓名没填时提示一次。不强制、不挡流程——只是提醒单据上会显示登录账号。 *@
+@{
+    var _acct = User.Identity?.Name ?? "";
+    var _name = User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value ?? "";
+}
+@if (_name.Length == 0 || _name == _acct)
+{
+<div class="alert alert-warning alert-dismissible fade show py-2 small" role="alert">
+    <i class="bi bi-person-exclamation"></i>
+    尚未填写<strong>姓名</strong>，证件领用等单据与打印件上的「经办人」会显示登录账号
+    「@_acct」。
+    <a href="/Account" class="alert-link">去账户设置补全</a>。
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+}
+
 <div class="row mb-4">
     <div class="col-md-3">
         <a href="/Personnel" class="text-decoration-none"><div class="card text-center"><div class="card-body py-3">

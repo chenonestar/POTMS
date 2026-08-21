@@ -1,6 +1,7 @@
 package com.potms.web;
 
 import static com.potms.web.PersonnelController.operator;
+import static com.potms.web.PersonnelController.operatorName;
 import static com.potms.web.PersonnelController.param;
 import static com.potms.web.PersonnelController.str;
 import static com.potms.web.PersonnelController.trim;
@@ -244,7 +245,7 @@ public class IssuanceController {
                 "UPDATE cert_issuance SET return_date=?, return_sign_image=?, return_sign_meta=?, "
                 + "return_operator=?, status='returned', updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 returnDate, sig.bytes(), Signature.cleanMeta(req.getParameter("sign_meta")),
-                operator(req), id);
+                operatorName(req), id);
 
         IssuanceOps.syncTravelDates(db.jdbc(), longOrNull(str(row.get("travel_id"))));
         sealQuietly(req, id, "return", sig.bytes(),
@@ -331,9 +332,9 @@ public class IssuanceController {
         d.put("cert_nos", trim(req, "cert_nos"));
         d.put("issue_date", Validators.parseDateInput(req.getParameter("issue_date")));
         String issuer = trim(req, "issuer");
-        d.put("issuer", issuer.isEmpty() ? operator(req) : issuer);
+        d.put("issuer", issuer.isEmpty() ? operatorName(req) : issuer);
         d.put("remarks", trim(req, "remarks"));
-        d.put("operator", operator(req));
+        d.put("operator", operatorName(req));
         return d;
     }
 

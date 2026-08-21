@@ -28,6 +28,17 @@
         </form>
     </div>
 
+    <%-- 姓名没填时提示一次。不强制、不挡流程——只是提醒单据上会显示登录账号。 --%>
+    @if(ctx.operatorName() == null || ctx.operatorName().equals(ctx.user()))
+    <div class="alert alert-warning alert-dismissible fade show py-2 small" role="alert">
+        <i class="bi bi-person-exclamation"></i>
+        尚未填写<strong>姓名</strong>，证件领用等单据与打印件上的「经办人」会显示登录账号
+        「${ctx.user()}」。
+        <a href="/account" class="alert-link">去账户设置补全</a>。
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
+
     <div class="row g-3">
         <div class="col-6 col-md-3">
             <a class="card text-decoration-none h-100" href="/personnel">

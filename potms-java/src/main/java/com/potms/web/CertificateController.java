@@ -1,6 +1,7 @@
 package com.potms.web;
 
 import static com.potms.web.PersonnelController.operator;
+import static com.potms.web.PersonnelController.operatorName;
 import static com.potms.web.PersonnelController.param;
 import static com.potms.web.PersonnelController.str;
 import static com.potms.web.PersonnelController.toStringMap;
@@ -217,7 +218,7 @@ public class CertificateController {
             d.put(k[1], Validators.parseDateInput(req.getParameter(k[1])));
             d.put(k[2], Validators.parseDateInput(req.getParameter(k[2])));
         }
-        d.put("operator", operator(req));
+        d.put("operator", operatorName(req));
         return d;
     }
 

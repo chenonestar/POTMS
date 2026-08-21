@@ -6,6 +6,7 @@
 @param com.potms.web.Ctx ctx
 @param Helpers.Page<Map<String, Object>> items
 @param Map<Long, ChangeSet> changes
+@param Map<String, String> operatorNames
 @param Map<String, String> actionLabels
 @param Map<String, String> actionColors
 @param Map<String, String> targetLabels
@@ -59,7 +60,16 @@
                 !{long id = Fmt.n(r, "id"); var ch = changes.get(id);}
                 <tr>
                     <td class="small">${ctx.localTime(r.get("created_at"))}</td>
-                    <td>${Fmt.s(r, "operator")}</td>
+                    <td>
+                        <%-- 日志存的是登录账号，显示时补上姓名，渲染成「张三（admin）」 --%>
+                        !{String op = Fmt.s(r, "operator");}
+                        !{String nm = operatorNames.get(op);}
+                        @if(nm != null)
+                            ${nm}<small class="text-muted">（${op}）</small>
+                        @else
+                            ${op}
+                        @endif
+                    </td>
                     <td><span class="badge bg-${actionColors.getOrDefault(Fmt.s(r, "action"), "info")}">${actionLabels.getOrDefault(Fmt.s(r, "action"), Fmt.s(r, "action"))}</span></td>
                     <td class="small">${targetLabels.getOrDefault(Fmt.s(r, "target_type"), Fmt.s(r, "target_type"))}
                         @if(Fmt.n(r, "target_id") > 0)<span class="text-muted">#${Fmt.n(r, "target_id")}</span>@endif

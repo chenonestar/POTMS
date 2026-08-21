@@ -111,11 +111,24 @@ func isLoggedIn(r *http.Request) bool {
 	return v
 }
 
+// sessionUser 返回登录**账号**。操作日志记的就是它——账号是身份标识，姓名
+// 可以随时改；日志只记「张三」的话，改名之后历史记录就对不上人了。
 func sessionUser(r *http.Request) string {
 	if u, ok := getSession(r)["username"].(string); ok {
 		return u
 	}
 	return "admin"
+}
+
+// operatorName 返回业务单据上的**经办人**：真实姓名，没填则回退到登录账号。
+//
+// 单据、打印件、导出表上的「经办人」必须是真人名字——打印出来的领用凭证上
+// 一个 admin，没法拿去归档。姓名在「账户设置」里维护，登录时放进会话。
+func operatorName(r *http.Request) string {
+	if n, ok := getSession(r)["full_name"].(string); ok && strings.TrimSpace(n) != "" {
+		return n
+	}
+	return sessionUser(r)
 }
 
 // ---------------------------------------------------------------------------

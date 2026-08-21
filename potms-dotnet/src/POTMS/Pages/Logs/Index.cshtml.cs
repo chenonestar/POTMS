@@ -79,7 +79,18 @@ public class IndexModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             var ch = ComputeChanges(log.Snapshot);
             if (ch.Count > 0) Changes[log.Id] = ch;
         }
+
+        // 日志里存的是登录账号；显示时补上姓名，渲染成「张三（admin）」。
+        // 姓名从 users 表现查，查不到（比如账号已改名或删除）就只显示账号。
+        foreach (var u in cn.Query("SELECT username, full_name FROM users"))
+        {
+            var name = ((string?)u.full_name ?? "").Trim();
+            if (name.Length > 0) OperatorNames[(string)u.username] = name;
+        }
     }
+
+    /// <summary>登录账号 → 真实姓名，只收录填了姓名的。</summary>
+    public Dictionary<string, string> OperatorNames { get; } = [];
 
     /// <summary>对比 snapshot 的 before/after，列出发生变化的字段。</summary>
     public static List<Change> ComputeChanges(string? snapshotJson)

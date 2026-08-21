@@ -62,7 +62,7 @@ public class FilingFormModel(Db db, Flash flash) : AppPageModel(flash)
             birth_date = Data["birth_date"], id_number = Data["id_number"], residence = Data["residence"],
             political_status = Data["political_status"], work_unit = Data["work_unit"],
             position_or_title = Data["position_or_title"], supervisor_unit = Data["supervisor_unit"],
-            tag = Data["tag"], informed = Data["informed"], remarks = Data["remarks"], op = CurrentUser,
+            tag = Data["tag"], informed = Data["informed"], remarks = Data["remarks"], op = OperatorName,
         });
 
         if (Editing)

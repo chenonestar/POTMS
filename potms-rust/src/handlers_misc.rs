@@ -82,13 +82,20 @@ pub async fn logs_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> R
     if let Some(d) = q.get("date_to").map(|x| x.trim()).filter(|x| !x.is_empty()) { base.push_str(" AND date(created_at) <= ?"); p.push(T(d.to_string())); }
     base.push_str(" ORDER BY created_at DESC");
 
-    let (mut items, log_years) = {
+    let (mut items, log_years, operator_names) = {
         let conn = st.db.lock().unwrap();
         let items = helpers::paginate(&conn, &base, &p, page_n, crate::config::LOGS_PAGE_SIZE as i64);
         let tz = format!("+{} hours", st.cfg.tz_offset_hours);
         let yrows = db::query_maps(&conn, "SELECT DISTINCT strftime('%Y', datetime(created_at, ?)) AS y FROM operation_logs WHERE created_at IS NOT NULL ORDER BY y DESC", &[T(tz)]);
         let years: Vec<Value> = yrows.iter().map(|r| json!(helpers::row_str(r, "y"))).filter(|v| !v.as_str().unwrap_or("").is_empty()).collect();
-        (items, years)
+        // 日志里存的是登录账号；显示时补上姓名，渲染成「张三（admin）」。
+        // 姓名从 users 表现查，查不到（比如账号已改名或删除）就只显示账号。
+        let mut names = serde_json::Map::new();
+        for u in db::query_maps(&conn, "SELECT username, full_name FROM users", &[]) {
+            names.insert(helpers::row_str(&u, "username"),
+                         json!(helpers::row_str(&u, "full_name").trim()));
+        }
+        (items, years, Value::Object(names))
     };
     // 注入 changes
     if let Some(rows) = items.get_mut("rows").and_then(|v| v.as_array_mut()) {
@@ -98,7 +105,8 @@ pub async fn logs_index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> R
         }
     }
     let data = json!({
-        "items": items, "action_filter": q.get("action").cloned().unwrap_or_default(),
+        "items": items, "operator_names": operator_names,
+        "action_filter": q.get("action").cloned().unwrap_or_default(),
         "target_filter": q.get("target_type").cloned().unwrap_or_default(),
         "date_from": q.get("date_from").cloned().unwrap_or_default(), "date_to": q.get("date_to").cloned().unwrap_or_default(),
         "action_types": opt_list(&[("create","新建"),("update","修改"),("delete","删除"),("cancel","取消行程"),("restore","恢复行程"),("lock","登录锁定"),("export","导出"),("import","导入"),("backup","备份")]),
@@ -119,7 +127,7 @@ pub async fn logs_export(State(st): State<St>, headers: HeaderMap, uri: Uri) -> 
         flash(&mut req, "请选择要归档导出的年份。", "warning");
         return redirect(&st, &req, "logs.index", &[]);
     }
-    let (path, filename) = { let conn = st.db.lock().unwrap(); crate::excel::export_logs(&conn, &st.cfg, &req.sess.username(), &year) };
+    let (path, filename) = { let conn = st.db.lock().unwrap(); crate::excel::export_logs(&conn, &st.cfg, &req.sess.operator_name(), &year) };
     match path {
         Some(p) => {
             { let conn = st.db.lock().unwrap(); helpers::log_action(&conn, &req.sess.username(), &req.ip, "export", "operation_logs", None, &format!("归档导出 {year} 年操作日志：{filename}"), None, None); }

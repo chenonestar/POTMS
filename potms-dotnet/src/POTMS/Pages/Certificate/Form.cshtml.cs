@@ -63,7 +63,7 @@ public class FormModel(Db db, Flash flash) : AppPageModel(flash)
         if (Editing)
         {
             var before = Helpers.RowSnapshot(cn, "certificates", id!.Value);
-            p.Add("id", id); p.Add("op", CurrentUser);
+            p.Add("id", id); p.Add("op", OperatorName);
             cn.Execute("UPDATE certificates SET personnel_filing_id=@personnel_filing_id, unit=@unit, " +
                        "department=@department, name=@name, passport_no=@passport_no, " +
                        "passport_expiry=@passport_expiry, passport_submit_date=@passport_submit_date, " +
@@ -76,7 +76,7 @@ public class FormModel(Db db, Flash flash) : AppPageModel(flash)
         }
         else
         {
-            p.Add("op", CurrentUser);
+            p.Add("op", OperatorName);
             cn.Execute("INSERT INTO certificates (personnel_filing_id, unit, department, name, " +
                        "passport_no, passport_expiry, passport_submit_date, hm_pass_no, hm_pass_expiry, " +
                        "hm_pass_submit_date, tw_pass_no, tw_pass_expiry, tw_pass_submit_date, operator) " +

@@ -97,7 +97,11 @@
                         </div>
                         {% endif %}
                     </td>
-                    <td>{{ log.operator }}</td>
+                    <td>
+                        {%- set nm = operator_names[log.operator] | default('') -%}
+                        {%- if nm %}{{ nm }}<small class="text-muted">（{{ log.operator }}）</small>
+                        {%- else %}{{ log.operator }}{% endif -%}
+                    </td>
                     <td><small class="text-muted">{{ log.ip_address | default('—', true) }}</small></td>
                 </tr>
                 {% else %}

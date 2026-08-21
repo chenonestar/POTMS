@@ -214,7 +214,7 @@ public class PrintController {
                 Flash.danger(req, "仅支持 .xlsx 格式的 Excel 文件。");
             } else {
                 try (InputStream in = file.getInputStream()) {
-                    result = ExcelImport.parse(in, db.jdbc(), PersonnelController.operator(req));
+                    result = ExcelImport.parse(in, db.jdbc(), PersonnelController.operatorName(req));
                     Helpers.logAction(db.jdbc(), PersonnelController.operator(req),
                             SecurityFilters.clientIp(req), "import", "personnel_info", null,
                             "批量导入：共 " + result.total() + " 条，成功 " + result.success()
@@ -245,7 +245,7 @@ public class PrintController {
     public Object template(HttpServletRequest req) {
         try {
             var result = Excel.write(cfg.exportFolder, ExcelImport.templateSpec(),
-                    "备案人员批量导入模板", PersonnelController.operator(req), null);
+                    "备案人员批量导入模板", PersonnelController.operatorName(req), null);
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))

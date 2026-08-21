@@ -50,7 +50,13 @@
     {
         <tr>
             <td><small>@POTMS.Services.Helpers.ToLocalTime(log.CreatedAt, Cfg)</small></td>
-            <td>@log.Operator</td>
+            <td>
+                @if (Model.OperatorNames.TryGetValue(log.Operator ?? "", out var opName))
+                {
+                    @opName<small class="text-muted">（@log.Operator）</small>
+                }
+                else { @log.Operator }
+            </td>
             <td><span class="badge bg-@Badge(log.Action)">@AL(log.Action)</span></td>
             <td><small>@TL(log.TargetType)</small></td>
             <td>

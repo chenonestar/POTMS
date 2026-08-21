@@ -1,6 +1,7 @@
 package com.potms.web;
 
 import static com.potms.web.PersonnelController.operator;
+import static com.potms.web.PersonnelController.operatorName;
 import static com.potms.web.PersonnelController.str;
 
 import com.potms.Config;
@@ -252,7 +253,7 @@ public class ExportController {
     private Object send(HttpServletRequest req, Excel.SheetSpec spec, String prefix,
                         List<Integer> signColumns, String targetType) {
         try {
-            var result = Excel.write(cfg.exportFolder, spec, prefix, operator(req), signColumns);
+            var result = Excel.write(cfg.exportFolder, spec, prefix, operatorName(req), signColumns);
             Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
                     "export", targetType, null,
                     "导出 " + result.fileName() + "（" + spec.rows().size() + " 条）", null, null);

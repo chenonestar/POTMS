@@ -14,6 +14,17 @@
     </div>
 </div>
 
+{# 姓名没填时提示一次。不强制、不挡流程——只是提醒单据上会显示登录账号。 #}
+{% if not session.full_name or session.full_name == session.username %}
+<div class="alert alert-warning alert-dismissible fade show py-2 small" role="alert">
+    <i class="bi bi-person-exclamation"></i>
+    尚未填写<strong>姓名</strong>，单据与打印件上的「经办人」会显示登录账号
+    「{{ session.username }}」。
+    <a href="{{ url_for('auth.account') }}" class="alert-link">去账户设置补全</a>。
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
 <!-- 统计卡片（可点击跳转） -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">

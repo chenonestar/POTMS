@@ -269,7 +269,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mp: Mu
     if let Some(r) = require_login(&st, &mut req) { return r; }
     let (form, files) = parse_multipart(mp).await;
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
-    let mut data = extract(&form, &req.sess.username());
+    let mut data = extract(&form, &req.sess.operator_name());
     let mut errs = validate(&data);
     errs.extend(missing_att_errors(&files, data.get("need_new_passport").map(|s| s.as_str()).unwrap_or("否")));
     if !errs.is_empty() {
@@ -313,7 +313,7 @@ pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM travel_details WHERE id = ?", &[I(travel_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
-    let mut data = extract(&form, &req.sess.username());
+    let mut data = extract(&form, &req.sess.operator_name());
     let errs = validate(&data);
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }

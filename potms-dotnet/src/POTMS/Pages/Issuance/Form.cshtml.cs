@@ -65,9 +65,9 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
                 pfid = long.Parse(Data["personnel_filing_id"]!),
                 name = Data["holder_name"], idn = Data["id_number"],
                 types = Data["cert_types"], nos = Data["cert_nos"],
-                date = Data["issue_date"], issuer = CurrentUser,
+                date = Data["issue_date"], issuer = OperatorName,
                 img = blob, meta = Signature.CleanMeta(Request.Form["sign_meta"]),
-                remarks = Data["remarks"], op = CurrentUser,
+                remarks = Data["remarks"], op = OperatorName,
             });
         var id = cn.ExecuteScalar<long>("SELECT last_insert_rowid()");
         IssuanceOps.SyncTravelDates(cn, Data["travel_id"]);

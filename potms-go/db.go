@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    full_name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS personnel_info (
@@ -191,6 +192,44 @@ func runMigrations() {
 		"CREATE INDEX IF NOT EXISTS idx_logs_created_at ON operation_logs(created_at)",
 	} {
 		db.Exec(idx)
+	}
+
+	// 登录账户的真实姓名。
+	//
+	// 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+	// 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+	// 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+	//
+	// 五版共用一个 data.db，库可能是任意一版建的，所以每一版都要能补这一列。
+	addColumn("users", "full_name", "TEXT")
+}
+
+// addColumn 幂等地补一列：列已存在就什么都不做。
+//
+// PRAGMA 对不存在的表返回空集，这时也直接返回——极旧的库可能连 users 表都
+// 没有，对着不存在的表 ALTER 会报错。
+func addColumn(table, column, typ string) {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	found, any := false, false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return
+		}
+		any = true
+		if name == column {
+			found = true
+		}
+	}
+	if any && !found {
+		db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + typ)
 	}
 }
 

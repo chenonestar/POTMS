@@ -208,6 +208,7 @@ async fn main() {
         .route("/login", get(handlers_auth::login_get).post(handlers_auth::login_post))
         .route("/logout", get(handlers_auth::logout))
         .route("/account", get(handlers_auth::account_get).post(handlers_auth::account_post))
+        .route("/account/backfill-operator", post(handlers_auth::backfill_operator))
         .route("/", get(handlers_dashboard::index))
         .route("/backup/now", post(handlers_dashboard::backup_now))
         // 人员备案

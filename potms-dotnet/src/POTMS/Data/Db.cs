@@ -89,6 +89,13 @@ public sealed class Db(Config cfg)
         // 操作日志：变更前后快照
         AddColumnIfMissing(cn, "operation_logs", "snapshot", "TEXT");
 
+        // 登录账户的真实姓名。
+        //
+        // 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+        // 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+        // 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+        AddColumnIfMissing(cn, "users", "full_name", "TEXT");
+
         // 撤控：证件移交日期 / 撤控日期
         AddColumnIfMissing(cn, "decontrol_filing", "cert_handover_date", "TEXT");
         if (AddColumnIfMissing(cn, "decontrol_filing", "decontrol_date", "TEXT"))
@@ -267,7 +274,9 @@ public sealed class Db(Config cfg)
     {
         var cols = cn.Query($"PRAGMA table_info({table})")
                      .Select(r => (string)r.name).ToHashSet(StringComparer.Ordinal);
-        if (cols.Contains(column)) return false;
+        // PRAGMA 对不存在的表返回空集，这时直接返回——极旧的库可能连表都没有，
+        // 对着不存在的表 ALTER 会抛异常，把启动整个搞挂。
+        if (cols.Count == 0 || cols.Contains(column)) return false;
         cn.Execute($"ALTER TABLE {table} ADD COLUMN {column} {type}");
         return true;
     }

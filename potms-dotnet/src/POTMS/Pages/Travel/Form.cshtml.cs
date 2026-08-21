@@ -59,7 +59,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             dest = Data["destination_passport"], category = Data["category"],
             dates = Data["travel_dates"], ts, te,
             approval = Data["approval_date"], need = Data["need_new_passport"],
-            pno = Data["passport_no"], actual = Data["actual_return_date"], op = CurrentUser,
+            pno = Data["passport_no"], actual = Data["actual_return_date"], op = OperatorName,
         });
 
         long travelId;

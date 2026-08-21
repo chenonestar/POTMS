@@ -40,7 +40,8 @@ public class LoginModel(Db db, Flash flash, Lockout lockout) : PageModel
         }
 
         using var cn = db.Open();
-        var user = cn.QueryFirstOrDefault("SELECT id, username, password_hash FROM users WHERE username = @u",
+        var user = cn.QueryFirstOrDefault(
+            "SELECT id, username, password_hash, full_name FROM users WHERE username = @u",
             new { u = username });
 
         var (matched, needsRehash) = user is null
@@ -54,8 +55,12 @@ public class LoginModel(Db db, Flash flash, Lockout lockout) : PageModel
                 cn.Execute("UPDATE users SET password_hash = @h WHERE id = @id",
                     new { h = Security.HashPassword(password), id = (long)user!.id });
 
+            // 单据上的经办人取 GivenName；没填姓名时回退到账号，保证字段永不为空
+            var fullName = ((string?)user!.full_name ?? "").Trim();
+            if (fullName.Length == 0) fullName = username;
             var identity = new ClaimsIdentity(
-                [new Claim(ClaimTypes.Name, username)], CookieAuthenticationDefaults.AuthenticationScheme);
+                [new Claim(ClaimTypes.Name, username), new Claim(ClaimTypes.GivenName, fullName)],
+                CookieAuthenticationDefaults.AuthenticationScheme);
             await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
                 new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = false });
 

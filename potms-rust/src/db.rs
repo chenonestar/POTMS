@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    full_name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS personnel_info (
@@ -125,6 +126,33 @@ pub fn run_migrations(conn: &Connection) {
         "CREATE INDEX IF NOT EXISTS idx_logs_created_at ON operation_logs(created_at)",
     ] {
         let _ = conn.execute(idx, []);
+    }
+
+    // 登录账户的真实姓名。
+    //
+    // 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+    // 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+    // 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+    //
+    // 五版共用一个 data.db，库可能是任意一版建的，所以每一版都要能补这一列。
+    add_column(conn, "users", "full_name", "TEXT");
+}
+
+/// 幂等地补一列：列已存在就什么都不做。
+///
+/// PRAGMA 对不存在的表返回空集，这时也直接返回——极旧的库可能连 users 表都
+/// 没有，对着不存在的表 ALTER 会报错。
+fn add_column(conn: &Connection, table: &str, column: &str, typ: &str) {
+    let mut stmt = match conn.prepare(&format!("PRAGMA table_info({table})")) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let names: Vec<String> = match stmt.query_map([], |r| r.get::<_, String>(1)) {
+        Ok(rows) => rows.filter_map(Result::ok).collect(),
+        Err(_) => return,
+    };
+    if !names.is_empty() && !names.iter().any(|n| n == column) {
+        let _ = conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column} {typ}"), []);
     }
 }
 
@@ -253,5 +281,60 @@ pub fn sv_opt(s: &str) -> SqlValue {
         SqlValue::Null
     } else {
         SqlValue::Text(s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        init_schema(&c);
+        c
+    }
+
+    fn columns(conn: &Connection, table: &str) -> Vec<String> {
+        let mut st = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        let rows = st.query_map([], |r| r.get::<_, String>(1)).unwrap();
+        rows.filter_map(Result::ok).collect()
+    }
+
+    /// 五版共用一个 data.db，users 的建表 DDL 必须逐版一致地带上 full_name。
+    #[test]
+    fn schema_has_full_name() {
+        let c = mem();
+        assert!(columns(&c, "users").contains(&"full_name".to_string()));
+    }
+
+    /// 迁移每次启动都会跑，重复执行不能报错、也不能把列加两遍。
+    #[test]
+    fn add_column_is_idempotent() {
+        let c = mem();
+        run_migrations(&c);
+        run_migrations(&c);
+        let n = columns(&c, "users").iter().filter(|n| *n == "full_name").count();
+        assert_eq!(n, 1, "full_name 列应恰好一列");
+    }
+
+    /// 老库补列：模拟一个没有 full_name 的 users 表，启动时应被自动补上。
+    #[test]
+    fn migration_adds_column_to_legacy_db() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT)",
+        )
+        .unwrap();
+        assert!(!columns(&c, "users").contains(&"full_name".to_string()));
+        run_migrations(&c);
+        assert!(columns(&c, "users").contains(&"full_name".to_string()));
+    }
+
+    /// 极旧的库可能连 users 表都没有：PRAGMA 返回空集，此时不能去 ALTER 一张不存在的表。
+    #[test]
+    fn migration_skips_missing_table() {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c); // 不 panic 即通过
+        assert!(columns(&c, "users").is_empty());
     }
 }

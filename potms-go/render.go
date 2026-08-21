@@ -23,6 +23,7 @@ var (
 // endpointRoutes Flask endpoint → 路径模板（{param} 占位；多余 kwargs 变查询串）
 var endpointRoutes = map[string]string{
 	"auth.login": "/login", "auth.logout": "/logout", "auth.account": "/account",
+	"auth.backfill_operator": "/account/backfill-operator",
 	"dashboard.index": "/", "dashboard.backup_now": "/backup/now",
 	"personnel.list": "/personnel/", "personnel.info_new": "/personnel/info/new",
 	"personnel.info_list":   "/personnel/info/",
@@ -137,6 +138,9 @@ func baseContext(w http.ResponseWriter, r *http.Request) map[string]interface{} 
 		"session": map[string]interface{}{
 			"logged_in": isLoggedIn(r),
 			"username":  sess["username"],
+			// 单据/打印件上的经办人显示这个；模板里统一写
+			// session.full_name or session.username
+			"full_name": sess["full_name"],
 		},
 		"request": map[string]interface{}{"args": args, "path": r.URL.Path},
 		"url_for": func(params *exec.VarArgs) *exec.Value {

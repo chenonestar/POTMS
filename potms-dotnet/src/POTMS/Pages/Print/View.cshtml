@@ -74,7 +74,8 @@
         </div>
     }
 
-    <p class="meta">打印日期：<span class="print-date"></span>　｜　操作人：@User.Identity?.Name</p>
+    @* 单据上的经办人用真实姓名；没填姓名时 GivenName 声明本身就是账号，直接回退 *@
+    <p class="meta">打印日期：<span class="print-date"></span>　｜　操作人：@(User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value ?? User.Identity?.Name)</p>
     @if (n < Model.Docs.Count - 1) { <div class="page-break"></div> }
 }
 

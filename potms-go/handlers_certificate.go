@@ -95,7 +95,7 @@ func extractCertForm(r *http.Request) map[string]string {
 		"hm_pass_submit_date": parseDateInput(f("hm_pass_submit_date")),
 		"tw_pass_no":          f("tw_pass_no"), "tw_pass_expiry": parseDateInput(f("tw_pass_expiry")),
 		"tw_pass_submit_date": parseDateInput(f("tw_pass_submit_date")),
-		"operator":            sessionUser(r),
+		"operator":            operatorName(r),
 	}
 }
 

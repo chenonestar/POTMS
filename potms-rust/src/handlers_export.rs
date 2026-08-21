@@ -22,7 +22,7 @@ macro_rules! export_handler {
             let ids = selected_ids(&req.query);
             let (path, filename, where_) = {
                 let conn = st.db.lock().unwrap();
-                let (path, filename, where_) = $build(&conn, &st.cfg, &req.sess.username(), &q, &ids);
+                let (path, filename, where_) = $build(&conn, &st.cfg, &req.sess.operator_name(), &q, &ids);
                 (path, filename, where_)
             };
             match path {

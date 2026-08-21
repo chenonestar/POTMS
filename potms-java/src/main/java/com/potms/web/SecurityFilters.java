@@ -25,6 +25,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SecurityFilters {
 
     public static final String SESSION_USER = "_user";
+    /** 登录者的真实姓名，登录时从 users.full_name 读入，供业务单据显示经办人。 */
+    public static final String SESSION_FULL_NAME = "_full_name";
 
     /** 免登录路径：登录页本身、静态资源、错误页。 */
     private static final Set<String> ANONYMOUS_PREFIXES = Set.of(
@@ -39,10 +41,27 @@ public class SecurityFilters {
         return false;
     }
 
-    /** 当前登录用户名；未登录返回 null。 */
+    /**
+     * 当前登录**账号**；未登录返回 null。
+     *
+     * <p>操作日志记的就是它——账号是身份标识，姓名可以随时改；日志只记「张三」
+     * 的话，改名之后历史记录就对不上人了。
+     */
     public static String currentUser(HttpServletRequest req) {
         HttpSession s = req.getSession(false);
         return s == null ? null : (String) s.getAttribute(SESSION_USER);
+    }
+
+    /**
+     * 业务单据上的**经办人**：真实姓名，没填则回退到登录账号。
+     *
+     * <p>单据、打印件、导出表上的「经办人」必须是真人名字——打印出来的领用凭证上
+     * 一个 admin，没法拿去归档。姓名在「账户设置」里维护，登录时放进会话。
+     */
+    public static String operatorName(HttpServletRequest req) {
+        HttpSession s = req.getSession(false);
+        String n = s == null ? null : (String) s.getAttribute(SESSION_FULL_NAME);
+        return n == null || n.isBlank() ? currentUser(req) : n;
     }
 
     public static String clientIp(HttpServletRequest req) {

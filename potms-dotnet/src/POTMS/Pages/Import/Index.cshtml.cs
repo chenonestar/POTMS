@@ -38,7 +38,7 @@ public class IndexModel(Db db, Flash flash) : AppPageModel(flash)
             using var ms = new MemoryStream();
             file.CopyTo(ms);
             ms.Position = 0;
-            Result = ExcelImport.Parse(cn, ms, CurrentUser, ClientIp);
+            Result = ExcelImport.Parse(cn, ms, OperatorName, ClientIp);
 
             if (Result.Success > 0)
                 Flash.Success($"成功导入 {Result.Success} 条记录（共 {Result.Total} 条）。");

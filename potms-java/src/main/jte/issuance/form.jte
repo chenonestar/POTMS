@@ -89,7 +89,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">经办人（发放人）</label>
-                    <input type="text" class="form-control" value="${ctx.user()}" readonly>
+                    <input type="text" class="form-control" value="${ctx.operatorName()}" readonly>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">备注</label>

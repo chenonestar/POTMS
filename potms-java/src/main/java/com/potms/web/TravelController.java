@@ -1,6 +1,7 @@
 package com.potms.web;
 
 import static com.potms.web.PersonnelController.operator;
+import static com.potms.web.PersonnelController.operatorName;
 import static com.potms.web.PersonnelController.param;
 import static com.potms.web.PersonnelController.str;
 import static com.potms.web.PersonnelController.toStringMap;
@@ -514,7 +515,7 @@ public class TravelController {
         d.put("need_new_passport", need.isEmpty() ? "否" : need);
         d.put("passport_no", trim(req, "passport_no"));
         d.put("actual_return_date", Validators.parseDateInput(req.getParameter("actual_return_date")));
-        d.put("operator", operator(req));
+        d.put("operator", operatorName(req));
         return d;
     }
 

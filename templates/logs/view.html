@@ -100,7 +100,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        {%- set nm = operator_names.get(log.operator) if operator_names else None -%}
+                        {%- set nm = operator_names[log.operator] | default('') -%}
                         {%- if nm %}{{ nm }}<small class="text-muted">（{{ log.operator }}）</small>
                         {%- else %}{{ log.operator }}{% endif -%}
                     </td>

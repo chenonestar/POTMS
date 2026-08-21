@@ -95,6 +95,7 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/login", handleLogin)
 	mux.HandleFunc("GET /logout", handleLogout)
 	mux.HandleFunc("/account", handleAccount)
+	mux.HandleFunc("POST /account/backfill-operator", handleBackfillOperator)
 
 	// 首页 / 备份
 	mux.HandleFunc("GET /{$}", handleDashboard)

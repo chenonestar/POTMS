@@ -10,14 +10,15 @@ import java.util.List;
  * <p>JTE 是编译期类型安全的，没有 Flask 那种隐式全局变量，故显式建模。
  * 控制器统一用 {@link #of} 构造，避免每页手工组装漏项。
  *
- * @param user      当前登录用户名；未登录为 null
+ * @param user      当前登录账号；未登录为 null
+ * @param operatorName 单据上的经办人（真实姓名，未填则为账号）；未登录为 null
  * @param csrfToken 当前会话的 CSRF 令牌
  * @param flashes   本次请求要展示的闪现消息（取出即清空）
  * @param path      当前请求路径，供侧边栏高亮
  * @param query     原始查询串，供分页拼接
  * @param tzOffset  展示时区偏移（数据库统一存 UTC），供模板格式化时间戳
  */
-public record Ctx(String user, String csrfToken, List<Flash.Message> flashes,
+public record Ctx(String user, String operatorName, String csrfToken, List<Flash.Message> flashes,
                   String path, String query, int tzOffset) {
 
     /** 由 CtxAdvice 在请求进入时注入，避免每个控制器都要拿一次 Config。 */
@@ -26,6 +27,7 @@ public record Ctx(String user, String csrfToken, List<Flash.Message> flashes,
     public static Ctx of(HttpServletRequest req) {
         return new Ctx(
                 SecurityFilters.currentUser(req),
+                SecurityFilters.operatorName(req),
                 Csrf.token(req),
                 Flash.pop(req),
                 req.getRequestURI(),

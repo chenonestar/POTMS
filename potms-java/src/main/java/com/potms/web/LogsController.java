@@ -164,6 +164,7 @@ public class LogsController {
         model.addAttribute("ctx", Ctx.of(req));
         model.addAttribute("items", pg);
         model.addAttribute("changes", changes);
+        model.addAttribute("operatorNames", operatorNames());
         model.addAttribute("actionLabels", ACTION_LABELS);
         model.addAttribute("actionColors", ACTION_COLORS);
         model.addAttribute("targetLabels", TARGET_LABELS);
@@ -176,6 +177,23 @@ public class LogsController {
     }
 
     /** 日志中出现过的年份（按展示时区换算），倒序。 */
+    /**
+     * 登录账号 → 真实姓名，只收录填了姓名的。
+     *
+     * <p>日志里存的是登录账号；显示时补上姓名，渲染成「张三（admin）」。姓名从
+     * users 表现查，查不到（比如账号已改名或删除）就只显示账号。
+     */
+    private Map<String, String> operatorNames() {
+        Map<String, String> names = new LinkedHashMap<>();
+        for (var r : db.jdbc().queryForList("SELECT username, full_name FROM users")) {
+            String n = r.get("full_name") == null ? "" : r.get("full_name").toString().trim();
+            if (!n.isEmpty()) {
+                names.put(String.valueOf(r.get("username")), n);
+            }
+        }
+        return names;
+    }
+
     private List<String> logYears() {
         String tz = (cfg.tzOffsetHours >= 0 ? "+" : "") + cfg.tzOffsetHours + " hours";
         return db.jdbc().queryForList(

@@ -1,5 +1,7 @@
 @param com.potms.web.Ctx ctx
 @param String username
+@param String fullName
+@param long legacyTotal
 <%-- 分段与文案对齐 Python 版 templates/account.html：三段（登录账户 / 修改密码 /
    安全验证），字段名与提交契约完全一致。这里不是自由发挥的地方——五版界面要一致。 --%>
 @template.layout(ctx = ctx, title = "账户设置", content = @`
@@ -15,6 +17,14 @@
                     <label class="form-label required">用户名</label>
                     <input type="text" class="form-control" name="new_username" value="${username}" minlength="3" required autocomplete="username">
                     <div class="form-text">修改后需使用新用户名登录。</div>
+
+                    <label class="form-label mt-3">姓名</label>
+                    <input type="text" class="form-control" name="new_full_name" value="${fullName}" maxlength="30" placeholder="例如：张建国" autocomplete="name">
+                    <div class="form-text">
+                        <strong>单据与打印件上的「经办人」显示这个名字</strong>，不是登录账号。
+                        留空则退回显示登录账号。<br>
+                        操作日志仍按登录账号记录——账号是身份标识，姓名可以改，日志只记姓名的话改名后就对不上人了。
+                    </div>
                 </div>
 
                 <div class="form-section">
@@ -42,6 +52,35 @@
                     <a href="/" class="btn btn-secondary">取消</a>
                 </div>
             </form>
+
+            @if(legacyTotal > 0)
+            <div class="form-section border-warning mt-4">
+                <h5><i class="bi bi-clock-history"></i> 历史经办人回填</h5>
+                <p class="mb-2">
+                    业务记录里还有 <strong class="text-danger">${legacyTotal}</strong> 条
+                    把登录账号「${username}」当作经办人。
+                    @if(!fullName.isEmpty() && !fullName.equals(username))
+                    可一次性改成「<strong>${fullName}</strong>」。
+                    @else
+                    <span class="text-muted">请先填写并保存姓名，再执行回填。</span>
+                    @endif
+                </p>
+                <ul class="small text-muted">
+                    <li>只改业务表（信息表 / 备案表 / 证照 / 出行 / 撤控 / 证件领用）的经办人字段。</li>
+                    <li><strong>操作日志不动</strong>——审计需要登录账号。</li>
+                    <li>执行前会自动备份一次 data.db 到 backup 目录，整件事也会记进操作日志。</li>
+                    <li><strong>此操作不可撤销</strong>，请确认姓名填写正确后再点。</li>
+                </ul>
+                <form method="POST" action="/account/backfill-operator"
+                      onsubmit="return confirm('确定把 ${legacyTotal} 条历史记录的经办人改为「${fullName}」吗？此操作不可撤销。');">
+                    <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
+                    <button type="submit" class="btn btn-warning"
+                            disabled="${fullName.isEmpty() || fullName.equals(username)}">
+                        <i class="bi bi-arrow-repeat"></i> 回填这 ${legacyTotal} 条记录
+                    </button>
+                </form>
+            </div>
+            @endif
         </div>
     </div>
 `)

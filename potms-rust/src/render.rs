@@ -22,6 +22,7 @@ pub struct StaticAssets;
 pub fn endpoint_path(endpoint: &str) -> Option<&'static str> {
     Some(match endpoint {
         "auth.login" => "/login", "auth.logout" => "/logout", "auth.account" => "/account",
+        "auth.backfill_operator" => "/account/backfill-operator",
         "dashboard.index" => "/", "dashboard.backup_now" => "/backup/now",
         "personnel.list" => "/personnel/", "personnel.info_new" => "/personnel/info/new",
         "personnel.info_list" => "/personnel/info/",
@@ -234,7 +235,13 @@ pub fn base_context(sess: &mut crate::session::Session, path: &str, query: &str)
         String::new()
     };
     let mut base = serde_json::Map::new();
-    base.insert("session".into(), json!({"logged_in": sess.logged_in(), "username": sess.username()}));
+    // full_name：单据/打印件上的经办人显示这个；模板里统一写
+    // session.full_name or session.username
+    base.insert("session".into(), json!({
+        "logged_in": sess.logged_in(),
+        "username": sess.username(),
+        "full_name": sess.operator_name(),
+    }));
     base.insert("request".into(), json!({"args": args, "path": path, "endpoint": ""}));
     base.insert("_csrf".into(), json!(csrf));
     base.insert("_flashes".into(), json!(flashes));

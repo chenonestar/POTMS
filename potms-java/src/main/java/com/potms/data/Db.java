@@ -173,6 +173,19 @@ public class Db {
             jdbc.execute("ALTER TABLE operation_logs ADD COLUMN snapshot TEXT");
         }
 
+        // 登录账户的真实姓名。
+        //
+        // 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+        // 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+        // 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+        //
+        // PRAGMA 对不存在的表返回空集，直接 ALTER 会炸——极旧的库可能连 users
+        // 表都没有，所以先确认表在不在。
+        Set<String> userCols = columns("users");
+        if (!userCols.isEmpty() && !userCols.contains("full_name")) {
+            jdbc.execute("ALTER TABLE users ADD COLUMN full_name TEXT");
+        }
+
         // 撤控：证件移交日期 / 撤控日期
         Set<String> decCols = columns("decontrol_filing");
         if (!decCols.contains("cert_handover_date")) {

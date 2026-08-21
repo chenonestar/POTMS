@@ -65,7 +65,7 @@ public class InfoFormModel(Db db, Flash flash) : AppPageModel(flash)
         }
         else
         {
-            p.Add("op", CurrentUser);
+            p.Add("op", OperatorName);
             cn.Execute("INSERT INTO personnel_info (unit, department, name, gender, birth_date, id_number, " +
                        "work_start_date, education, degree, title, rank, political_status, party_join_date, " +
                        "position, operator) VALUES (@unit, @department, @name, @gender, @birth_date, @id_number, " +

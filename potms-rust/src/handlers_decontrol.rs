@@ -104,7 +104,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(f
         flash(&mut req, "该人员已被撤控。", "warning");
         return redirect(&st, &req, "personnel.view", &[("filing_id".into(), filing_id.to_string())]);
     }
-    let data = extract(&form, &req.sess.username(), st.cfg.tz_offset_hours);
+    let data = extract(&form, &req.sess.operator_name(), st.cfg.tz_offset_hours);
     let errs = validate(&data);
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }
