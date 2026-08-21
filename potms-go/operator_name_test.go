@@ -184,3 +184,13 @@ func TestBackfillRefusedWithoutName(t *testing.T) {
 		t.Error("没填姓名就把历史数据改了")
 	}
 }
+
+// /favicon.ico：浏览器每开一个标签页都要问一次，明确应答 204，
+// 免得每次都撞进 404 兜底页并在日志里留一条。未登录也要能拿到。
+func TestFaviconReturnsNoContent(t *testing.T) {
+	c := newTestApp(t)
+	resp, _ := c.get("/favicon.ico") // 刻意不登录
+	if resp.StatusCode != 204 {
+		t.Errorf("GET /favicon.ico = %d，应为 204", resp.StatusCode)
+	}
+}

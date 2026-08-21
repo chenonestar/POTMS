@@ -65,7 +65,8 @@ func protect(next http.Handler) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, int64(MaxContentLength))
 
 		path := r.URL.Path
-		public := path == "/login" || strings.HasPrefix(path, "/static/")
+		public := path == "/login" || path == "/favicon.ico" ||
+			strings.HasPrefix(path, "/static/")
 
 		// CSRF：所有状态变更请求（含登录表单本身）
 		if !csrfOK(r) {
@@ -90,6 +91,11 @@ func protect(next http.Handler) http.Handler {
 func registerRoutes(mux *http.ServeMux) {
 	// 静态资源
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	// 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，明确应答 204，
+	// 浏览器会记住并停止追问，也免得每个标签页都在日志里留一条 404。
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	// 认证
 	mux.HandleFunc("/login", handleLogin)

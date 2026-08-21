@@ -86,7 +86,7 @@ def create_app() -> Flask:
     from jinja2 import TemplateNotFound
 
     def _error_page(template: str, fallback: str, code: int):
-        """错误页本身不能再成为错误源。
+        r"""错误页本身不能再成为错误源。
 
         打包成单文件 exe 时，PyInstaller 把资源解压到 %TEMP%\_MEIxxxx，程序退出时
         又把它删掉。一旦服务进程比那个目录活得久（关控制台窗口后 waitress 线程还在
@@ -99,6 +99,13 @@ def create_app() -> Flask:
             return render_template(template), code
         except TemplateNotFound:
             return fallback, code, {"Content-Type": "text/plain; charset=utf-8"}
+
+    # 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，但每开一个标签页
+    # 浏览器都要问一次；没有这条路由，每次都会走一遍 404 处理器并在日志里留一行。
+    # 明确应答 204，浏览器会记住并停止追问。
+    @app.route("/favicon.ico")
+    def _favicon():
+        return "", 204
 
     @app.errorhandler(404)
     def _not_found(err):

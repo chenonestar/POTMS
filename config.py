@@ -3,9 +3,15 @@ import os
 import sys
 import secrets
 
-# 数据目录：打包为单文件 exe 时，数据（data.db/uploads/exports/backup）
-# 需持久化到 exe 所在目录，而非临时解压目录。
-if getattr(sys, "frozen", False):
+# 数据目录：优先 POTMS_BASE 环境变量（与 Go / Rust / .NET / Java 四版一致，
+# 便于把数据放到程序目录之外，例如服务账户没有写权限、或要指向共享盘）；
+# 未设置时，打包为单文件 exe 的数据（data.db/uploads/exports/backup）需持久化到
+# exe 所在目录，而非临时解压目录（%TEMP%\_MEIxxxx 退出即删）。
+_base_env = os.environ.get("POTMS_BASE", "").strip()
+if _base_env:
+    BASE_DIR = os.path.abspath(_base_env)
+    os.makedirs(BASE_DIR, exist_ok=True)
+elif getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))

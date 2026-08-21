@@ -182,3 +182,35 @@ def test_account_page_shows_pending_count(c):
     _set_name(c, "张建国")
     html = c.get("/account").get_data(as_text=True)
     assert "历史经办人回填" in html and "回填这" in html
+
+
+# ---------------------------------------------------------------------------
+# 收尾一致性：POTMS_BASE 与 /favicon.ico
+# ---------------------------------------------------------------------------
+
+def test_favicon_returns_no_content(c):
+    """浏览器每开一个标签页都要 /favicon.ico；明确应答 204，未登录也要能拿到。"""
+    resp = c.get("/favicon.ico")
+    assert resp.status_code == 204
+    assert resp.data == b""
+
+
+def test_potms_base_overrides_data_dir(tmp_path, monkeypatch):
+    """POTMS_BASE 指定数据目录——另外四版早就支持，本版此前只认 exe 所在目录。
+
+    重新导入 config 才能看到新的环境变量：BASE_DIR 是模块级常量，导入即固化。
+    """
+    import importlib
+    import config as config_module
+
+    target = tmp_path / "潜在的共享盘"
+    monkeypatch.setenv("POTMS_BASE", str(target))
+    try:
+        reloaded = importlib.reload(config_module)
+        assert reloaded.BASE_DIR == str(target)
+        assert target.is_dir(), "POTMS_BASE 指向的目录应被自动建出来"
+        assert reloaded.Config.DATABASE == str(target / "data.db")
+    finally:
+        # 还原，免得污染同一进程里后面的用例
+        monkeypatch.delenv("POTMS_BASE", raising=False)
+        importlib.reload(config_module)

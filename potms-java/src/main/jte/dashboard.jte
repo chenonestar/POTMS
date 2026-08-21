@@ -9,7 +9,6 @@
 @param long certInUse
 @param long certOverdue
 @param List<OverdueItem> overdue
-@param List<ExpiringItem> expiring
 @param List<RecentTrip> recentTravel
 @param long issPending
 @param long issThisMonth
@@ -108,8 +107,9 @@
                 </div>
             </div>
         </div>
+    </div>
 
-    <div class="row g-3 mt-1">
+    <div class="row g-3 mt-1 mb-4">
         <div class="col-md-6">
             <div class="card h-100">
                 <div class="card-header text-danger">
@@ -134,32 +134,11 @@
                 </div>
             </div>
         </div>
+        <%-- 与 Python 版并排两张卡：证件逾期未还 | 近期出行计划。
+           这里原先还有一张「证照 30 天内到期」，另外四版都没有，去掉。 --%>
         <div class="col-md-6">
             <div class="card h-100">
-                <div class="card-header text-warning-emphasis">
-                    <i class="bi bi-hourglass-split"></i> 证照 30 天内到期
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0">
-                        <thead><tr><th>姓名</th><th>证件</th><th>有效期至</th></tr></thead>
-                        <tbody>
-                        @if(expiring.isEmpty())
-                            <tr><td colspan="3" class="text-muted small">无临期证照</td></tr>
-                        @endif
-                        @for(var e : expiring)
-                            <tr><td>${e.name()}</td><td>${e.type()}</td><td>${e.expiry()}</td></tr>
-                        @endfor
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 mt-1 mb-4">
-        <div class="col-12">
-            <div class="card h-100">
-                <div class="card-header">近期出行</div>
+                <div class="card-header">近期出行计划</div>
                 <ul class="list-group list-group-flush">
                     @if(recentTravel.isEmpty())<li class="list-group-item text-muted small">暂无数据</li>@endif
                     @for(var t : recentTravel)

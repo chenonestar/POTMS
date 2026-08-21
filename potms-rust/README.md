@@ -21,7 +21,8 @@
 双击 `POTMS.exe`，浏览器打开 http://127.0.0.1:5000 ，默认账户 `admin / admin123`（首次登录后请及时修改）。
 
 数据文件（`data.db`、`uploads/`、`exports/`、`backup/`、`.secret_key`）在 exe 同级目录自动创建。
-可用环境变量覆盖：`POTMS_BASE`（数据目录）、`POTMS_TZ`（时区偏移小时，默认 8）、`SECRET_KEY`。
+可用环境变量覆盖：`POTMS_BASE`（数据目录）、`POTMS_TZ_OFFSET`（时区偏移小时，默认 8，
+与另外四版同名；旧名 `POTMS_TZ` 仍然认）、`SECRET_KEY`。
 
 ## 构建
 

@@ -103,6 +103,7 @@ python app.py            # 浏览器打开 http://localhost:5000
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `POTMS_DEBUG` | 关闭 | 设为 `1` 启用 Flask 开发服务器（仅调试用，勿用于生产） |
+| `POTMS_BASE` | 程序所在目录 | 数据目录（`data.db` / `uploads` / `exports` / `backup`）；与 Go / Rust / .NET / Java 四版同名，用于把数据放到程序目录之外 |
 | `POTMS_HOST` | `127.0.0.1` | 监听地址；如需局域网访问设为 `0.0.0.0` |
 | `POTMS_PORT` | `5000` | 监听端口 |
 | `POTMS_TZ_OFFSET` | `8` | 展示时区偏移（数据库统一存 UTC，页面按此换算） |

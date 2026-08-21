@@ -275,6 +275,9 @@ async fn main() {
         .route("/import/", get(handlers_import::index_get).post(handlers_import::index_post))
         .route("/import/template", get(handlers_import::download_template))
         .route("/static/*path", get(static_handler))
+        // 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，明确应答 204，
+        // 浏览器会记住并停止追问，也免得每个标签页都撞进 404 兜底页。
+        .route("/favicon.ico", get(|| async { axum::http::StatusCode::NO_CONTENT }))
         .layer(axum::extract::DefaultBodyLimit::max(config::MAX_CONTENT_LENGTH))
         .fallback(not_found)
         .with_state(state);

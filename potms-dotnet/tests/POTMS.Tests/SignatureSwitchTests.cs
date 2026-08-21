@@ -127,3 +127,32 @@ public class ErrorPageTests(EmptyDbAppFactory factory)
         Assert.Contains("您访问的页面不存在或已被移除", await res.Content.ReadAsStringAsync());
     }
 }
+
+/// <summary>仪表盘与 favicon 的收尾一致性。</summary>
+[Collection(AppCollection.Name)]
+public class DashboardParityTests(SeededDbAppFactory factory)
+{
+    [Fact]
+    public async Task Dashboard_MatchesPythonCards()
+    {
+        var client = await factory.LoggedInClientAsync();
+        var html = await (await client.GetAsync("/")).Content.ReadAsStringAsync();
+
+        Assert.Contains("证件逾期未还", html);
+        Assert.Contains("近期出行计划", html);
+        // 这张卡另外四版都没有
+        Assert.DoesNotContain("证照即将到期", html);
+        Assert.DoesNotContain("无即将到期证照", html);
+    }
+
+    [Fact]
+    public async Task Favicon_ReturnsNoContent()
+    {
+        // 未登录也要能拿到，否则每个标签页都会被重定向去登录页
+        var client = factory.CreateClient(
+            new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+            { AllowAutoRedirect = false });
+        var res = await client.GetAsync("/favicon.ico");
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, res.StatusCode);
+    }
+}

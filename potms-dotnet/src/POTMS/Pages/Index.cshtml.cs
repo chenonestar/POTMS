@@ -19,7 +19,6 @@ public class IndexModel(Db db, Config cfg, Flash flash) : PageModel
     public int IssThisMonth { get; private set; }
     public string BackupDate { get; private set; } = "";
     public List<OverdueItem> Overdue { get; private set; } = [];
-    public List<ExpiringItem> Expiring { get; private set; } = [];
     public List<RecentTrip> RecentTravel { get; private set; } = [];
 
     public void OnGet()
@@ -30,8 +29,6 @@ public class IndexModel(Db db, Config cfg, Flash flash) : PageModel
 
         using var cn = db.Open();
         var today = Helpers.TodayLocal(cfg);
-        var warnDate = DateTime.UtcNow.AddHours(cfg.TzOffsetHours)
-            .AddDays(Config.CertExpiryWarnDays).ToString("yyyyMMdd");
 
         TotalActive = cn.ExecuteScalar<int>("SELECT COUNT(*) FROM personnel_filing WHERE status = 'active'");
         TotalDecontrolled = cn.ExecuteScalar<int>("SELECT COUNT(*) FROM personnel_filing WHERE status = 'decontrolled'");
@@ -63,24 +60,6 @@ public class IndexModel(Db db, Config cfg, Flash flash) : PageModel
         }
         Overdue = Overdue.OrderBy(o => o.Deadline, StringComparer.Ordinal).ToList();
         CertOverdue = Overdue.Count;
-
-        // 证照即将到期（30 天内）
-        foreach (var c in cn.Query(
-            "SELECT id, name, passport_expiry, hm_pass_expiry, tw_pass_expiry FROM certificates"))
-        {
-            foreach (var (label, exp) in new (string, string?)[]
-                     {
-                         ("普通护照", (string?)c.passport_expiry),
-                         ("往来港澳通行证", (string?)c.hm_pass_expiry),
-                         ("大陆居民往来台湾通行证", (string?)c.tw_pass_expiry),
-                     })
-            {
-                if (string.IsNullOrEmpty(exp)) continue;
-                if (string.CompareOrdinal(today, exp) <= 0 && string.CompareOrdinal(exp, warnDate) <= 0)
-                    Expiring.Add(new ExpiringItem((long)c.id, (string?)c.name ?? "", label, exp));
-            }
-        }
-        Expiring = Expiring.OrderBy(e => e.Expiry, StringComparer.Ordinal).ToList();
 
         // 证件领用
         IssPending = cn.ExecuteScalar<int>("SELECT COUNT(*) FROM cert_issuance WHERE status = 'issued'");
@@ -114,6 +93,5 @@ public class IndexModel(Db db, Config cfg, Flash flash) : PageModel
     }
 
     public record OverdueItem(long Id, string Name, string Unit, string Deadline);
-    public record ExpiringItem(long Id, string Name, string Label, string Expiry);
     public record RecentTrip(string Name, string Destination, string TravelDates);
 }

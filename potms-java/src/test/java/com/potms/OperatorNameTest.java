@@ -151,6 +151,25 @@ class OperatorNameTest {
                 "没填姓名就把历史数据改了");
     }
 
+    @Test
+    @Order(9)
+    @DisplayName("仪表盘与 Python 版对齐：只有逾期未还 + 近期出行计划两张卡")
+    void dashboardCardsMatchPython() throws Exception {
+        String body = app.get("/").body();
+        assertTrue(body.contains("证件逾期未还"));
+        assertTrue(body.contains("近期出行计划"), "卡片标题应与 Python 版一致");
+        // 这张卡另外四版都没有
+        assertFalse(body.contains("30 天内到期"), "仪表盘上多了一张「证照 30 天内到期」");
+        assertFalse(body.contains("临期证照"));
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("/favicon.ico 应答 204")
+    void faviconReturnsNoContent() throws Exception {
+        assertEquals(204, app.get("/favicon.ico").statusCode());
+    }
+
     private void saveFullName(String name) throws Exception {
         app.post("/account", "csrf_token=" + app.token("/account")
                 + "&current_password=admin123&new_username=admin&new_full_name=" + e(name));

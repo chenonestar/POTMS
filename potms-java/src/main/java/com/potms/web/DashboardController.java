@@ -35,7 +35,6 @@ public class DashboardController {
 
     public record OverdueItem(String name, String deadline, String tripStatus) {}
 
-    public record ExpiringItem(String name, String type, String expiry) {}
 
     public record RecentTrip(String name, String destination, String travelDates) {}
 
@@ -54,7 +53,6 @@ public class DashboardController {
         LocalDate now = LocalDate.ofInstant(java.time.Instant.now(),
                 ZoneOffset.ofHours(cfg.tzOffsetHours));
         String today = now.format(YMD);
-        String warnDate = now.plusDays(Config.CERT_EXPIRY_WARN_DAYS).format(YMD);
 
         model.addAttribute("ctx", Ctx.of(req));
         model.addAttribute("totalActive", count(
@@ -94,25 +92,6 @@ public class DashboardController {
         model.addAttribute("certInUse", (long) inUse.size());
         model.addAttribute("certOverdue", (long) overdue.size());
         model.addAttribute("overdue", overdue);
-
-        // 证照到期预警
-        List<ExpiringItem> expiring = new ArrayList<>();
-        String[][] kinds = {
-            {"passport_expiry", "普通护照"},
-            {"hm_pass_expiry", "往来港澳通行证"},
-            {"tw_pass_expiry", "大陆居民往来台湾通行证"},
-        };
-        for (var row : jdbc.queryForList(
-                "SELECT name, passport_expiry, hm_pass_expiry, tw_pass_expiry FROM certificates")) {
-            for (String[] k : kinds) {
-                String expiry = str(row.get(k[0]));
-                if (!expiry.isEmpty() && today.compareTo(expiry) <= 0
-                        && expiry.compareTo(warnDate) <= 0) {
-                    expiring.add(new ExpiringItem(str(row.get("name")), k[1], expiry));
-                }
-            }
-        }
-        model.addAttribute("expiring", expiring);
 
         model.addAttribute("recentTravel", jdbc.query(
                 "SELECT name, destination_passport, travel_dates FROM travel_details "

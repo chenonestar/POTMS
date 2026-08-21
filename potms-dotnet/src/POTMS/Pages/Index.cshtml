@@ -113,29 +113,11 @@
             </table>
         </div></div></div>
     </div>
+    @* 与 Python 版并排两张卡：证件逾期未还 | 近期出行计划。
+       这里原先还有一张「证照即将到期（30天内）」，另外四版都没有，去掉。 *@
     <div class="col-md-6 mb-4">
-        <div class="card h-100"><div class="card-header bg-white"><strong><i class="bi bi-clock-history text-warning"></i> 证照即将到期（30天内）</strong></div>
+        <div class="card h-100"><div class="card-header bg-white"><strong><i class="bi bi-clock-history"></i> 近期出行计划</strong></div>
         <div class="card-body p-0"><div class="table-responsive">
-            <table class="table table-sm mb-0">
-                <thead class="table-light"><tr><th>姓名</th><th>证件</th><th>到期日</th></tr></thead>
-                <tbody>
-                @foreach (var e in Model.Expiring)
-                {
-                    <tr><td>@e.Name</td><td>@e.Label</td><td class="text-warning">@e.Expiry</td></tr>
-                }
-                @if (Model.Expiring.Count == 0)
-                {
-                    <tr><td colspan="3" class="text-center text-muted py-3">无即将到期证照</td></tr>
-                }
-                </tbody>
-            </table>
-        </div></div></div>
-    </div>
-</div>
-
-<div class="card mb-4">
-    <div class="card-header bg-white"><strong><i class="bi bi-airplane"></i> 最近出行</strong></div>
-    <div class="card-body p-0"><div class="table-responsive">
         <table class="table table-sm mb-0">
             <thead class="table-light"><tr><th>姓名</th><th>地点、证照</th><th>计划出行日期</th></tr></thead>
             <tbody>
@@ -149,5 +131,6 @@
             }
             </tbody>
         </table>
-    </div></div>
+    </div></div></div>
+    </div>
 </div>

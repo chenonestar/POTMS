@@ -90,6 +90,10 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
 
+// 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，明确应答 204，
+// 浏览器会记住并停止追问；否则每个标签页都会走一遍 404 并渲染整张错误页。
+app.MapGet("/favicon.ico", () => Results.NoContent()).AllowAnonymous();
+
 // 每日自动备份（幂等：当天已备份则跳过）
 try { Backup.RunDaily(cfg); } catch { /* 备份失败不应阻断启动 */ }
 
