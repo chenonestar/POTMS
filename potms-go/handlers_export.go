@@ -88,11 +88,12 @@ var printTables = map[string][2]string{
 	"certificate": {"certificates", "因私出国（境）备案人员证照登记表"},
 	"travel":      {"travel_details", "因私出国（境）人员明细表"},
 	"decontrol":   {"decontrol_filing", "因私事出国（境）人员撤控备案表"},
+	"issuance":    {"cert_issuance", "因私出国（境）证件领用登记表"},
 }
 
 var printBackEP = map[string]string{
 	"info": "personnel.list", "filing": "personnel.list", "certificate": "certificate.list",
-	"travel": "travel.list", "decontrol": "decontrol.list",
+	"travel": "travel.list", "decontrol": "decontrol.list", "issuance": "issuance.list",
 }
 
 func handlePrintView(w http.ResponseWriter, r *http.Request) {
@@ -104,13 +105,23 @@ func handlePrintView(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "dashboard.index", nil)
 		return
 	}
-	row := queryOne("SELECT * FROM "+spec[0]+" WHERE id = ?", id)
+	// 领用单要 JOIN 备案表拿单位，并把证件种类代码转成中文
+	var row Row
+	if printType == "issuance" {
+		row = queryOne("SELECT i.*, pf.work_unit FROM cert_issuance i "+
+			"JOIN personnel_filing pf ON i.personnel_filing_id = pf.id WHERE i.id = ?", id)
+	} else {
+		row = queryOne("SELECT * FROM "+spec[0]+" WHERE id = ?", id)
+	}
 	if row == nil {
 		flashMsg(w, r, "记录不存在。", "danger")
 		redirect(w, r, printBackEP[printType], nil)
 		return
 	}
 	data := Row{"title": spec[1], "row": row, "mode": printType}
+	if printType == "issuance" {
+		data["type_labels"] = certTypesLabel(rowStr(row, "cert_types"))
+	}
 	if printType == "filing" && row["personnel_info_id"] != nil {
 		data["info"] = queryOne("SELECT * FROM personnel_info WHERE id = ?", row["personnel_info_id"])
 	}
@@ -191,4 +202,16 @@ func handleImportTemplate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", `attachment; filename*=UTF-8''`+urlPathEscape("备案人员导入模板.xlsx"))
 	f.Write(w)
+}
+
+func handleExportIssuance(w http.ResponseWriter, r *http.Request) {
+	doExport(w, r, exportSpec{
+		func(q map[string]string, ids []int64) (string, []interface{}) {
+			strIDs := make([]string, len(ids))
+			for i, id := range ids {
+				strIDs[i] = fmt.Sprint(id)
+			}
+			return buildIssuanceFilters(q, strIDs)
+		},
+		exportIssuance, "cert_issuance", "issuance.list"})
 }

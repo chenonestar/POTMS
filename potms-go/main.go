@@ -179,6 +179,19 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /submit-unit/{uid}/edit", handleSubmitUnitEdit)
 	mux.HandleFunc("POST /submit-unit/{uid}/delete", handleSubmitUnitDelete)
 
+	// 证件领用（REQ-012）
+	//
+	// /issuance/new 与 /issuance/{iss_id} 会撞：ServeMux 不允许「方法更少但路径更泛」
+	// 的模式共存。把 new 也拆成 GET/POST 两条，两边的方法集就一样了。
+	mux.HandleFunc("GET /issuance/{$}", handleIssuanceList)
+	mux.HandleFunc("GET /issuance/new", handleIssuanceNew)
+	mux.HandleFunc("POST /issuance/new", handleIssuanceNew)
+	mux.HandleFunc("GET /issuance/{iss_id}", handleIssuanceView)
+	mux.HandleFunc("/issuance/{iss_id}/return", handleIssuanceReturn)
+	mux.HandleFunc("POST /issuance/{iss_id}/void", handleIssuanceVoid)
+	mux.HandleFunc("GET /issuance/{iss_id}/signature.png", handleIssuanceSignature)
+	mux.HandleFunc("GET /export/issuance", handleExportIssuance)
+
 	// 全局搜索
 	mux.HandleFunc("GET /search", handleSearch)
 

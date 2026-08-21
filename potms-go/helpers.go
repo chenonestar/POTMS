@@ -78,7 +78,13 @@ func normalizeResidence(raw string) string {
 // ---------------------------------------------------------------------------
 // 操作日志（含变更前后快照）
 // ---------------------------------------------------------------------------
-var snapshotSkip = map[string]bool{"created_at": true, "updated_at": true}
+// 快照中忽略的字段：时间戳是无意义的变更；签名位图与笔迹矢量体积大且不可读，
+// 塞进日志只会把 snapshot 撑爆。
+var snapshotSkip = map[string]bool{
+	"created_at": true, "updated_at": true,
+	"sign_image": true, "sign_meta": true,
+	"return_sign_image": true, "return_sign_meta": true,
+}
 
 func cleanSnapshot(data Row) Row {
 	if data == nil {
@@ -97,7 +103,7 @@ func cleanSnapshot(data Row) Row {
 var snapshotTables = map[string]bool{
 	"personnel_info": true, "personnel_filing": true, "certificates": true,
 	"travel_details": true, "decontrol_filing": true, "sys_dict": true,
-	"sys_org": true, "sys_submit_unit": true,
+	"sys_org": true, "sys_submit_unit": true, "cert_issuance": true,
 }
 
 func rowSnapshot(table string, id int64) Row {
@@ -244,13 +250,27 @@ func getPersonnelOptions() []Row {
 			"FROM personnel_filing pf LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id " +
 			"WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name")
 	certRows, _ := queryMaps("SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates")
+	// certMap：扁平列表（下游 datalist 用）
+	// certTypeMap：按证件种类代码索引（领用登记页勾选证件种类时带出对应号码）
 	certMap := map[int64][]string{}
+	certTypeMap := map[int64]map[string]string{}
 	for _, cr := range certRows {
 		pid := toInt64(cr["personnel_filing_id"])
-		for _, k := range []string{"passport_no", "hm_pass_no", "tw_pass_no"} {
-			v := strings.TrimSpace(rowStr(cr, k))
-			if v != "" && !containsStr(certMap[pid], v) {
+		if certTypeMap[pid] == nil {
+			certTypeMap[pid] = map[string]string{}
+		}
+		for _, kc := range [][2]string{
+			{"passport_no", "01"}, {"hm_pass_no", "02"}, {"tw_pass_no", "03"},
+		} {
+			v := strings.TrimSpace(rowStr(cr, kc[0]))
+			if v == "" {
+				continue
+			}
+			if !containsStr(certMap[pid], v) {
 				certMap[pid] = append(certMap[pid], v)
+			}
+			if _, ok := certTypeMap[pid][kc[1]]; !ok {
+				certTypeMap[pid][kc[1]] = v
 			}
 		}
 	}
@@ -265,6 +285,12 @@ func getPersonnelOptions() []Row {
 			"id_number": r["id_number"], "position": r["position_or_title"],
 			"title":    title,
 			"cert_nos": certMap[toInt64(r["id"])],
+			"cert_by_type": func() map[string]string {
+				if m := certTypeMap[toInt64(r["id"])]; m != nil {
+					return m
+				}
+				return map[string]string{}
+			}(),
 		})
 	}
 	return out

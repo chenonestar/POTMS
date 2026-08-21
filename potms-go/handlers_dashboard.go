@@ -79,7 +79,14 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"ORDER BY CASE WHEN travel_start IS NULL OR travel_start = '' THEN 1 ELSE 0 END, " +
 		"travel_start DESC, created_at DESC LIMIT 5")
 
+	// 证件领用
+	issPending := countQuery("SELECT COUNT(*) FROM cert_issuance WHERE status = 'issued'")
+	issThisMonth := countQuery(
+		"SELECT COUNT(*) FROM cert_issuance WHERE status != 'voided' AND issue_date LIKE ?",
+		time.Now().Format("200601")+"%")
+
 	render(w, r, "dashboard.html", Row{
+		"iss_pending": issPending, "iss_this_month": issThisMonth,
 		"total_active": totalActive, "total_decontrolled": totalDecontrolled,
 		"total_certificates": totalCertificates, "total_travel": totalTravel,
 		"by_unit": rowsIface(byUnit), "by_political": rowsIface(byPolitical), "by_rank": rowsIface(byRank),

@@ -24,7 +24,13 @@ var (
 var endpointRoutes = map[string]string{
 	"auth.login": "/login", "auth.logout": "/logout", "auth.account": "/account",
 	"auth.backfill_operator": "/account/backfill-operator",
-	"dashboard.index": "/", "dashboard.backup_now": "/backup/now",
+	"issuance.list":          "/issuance/", "issuance.new": "/issuance/new",
+	"issuance.view":          "/issuance/{iss_id}",
+	"issuance.do_return":     "/issuance/{iss_id}/return",
+	"issuance.void":          "/issuance/{iss_id}/void",
+	"issuance.signature":     "/issuance/{iss_id}/signature.png",
+	"export.issuance_export": "/export/issuance",
+	"dashboard.index":        "/", "dashboard.backup_now": "/backup/now",
 	"personnel.list": "/personnel/", "personnel.info_new": "/personnel/info/new",
 	"personnel.info_list":   "/personnel/info/",
 	"personnel.info_delete": "/personnel/info/{info_id}/delete",
@@ -135,6 +141,9 @@ func baseContext(w http.ResponseWriter, r *http.Request) map[string]interface{} 
 	flashes := popFlashes(w, r)
 
 	ctx := map[string]interface{}{
+		// 模板里读 config.REQUIRE_SIGNATURE 决定签名板是否标必填、
+		// 以及前端提交时留空要不要拦下（后端仍会独立再判一次）
+		"config": map[string]interface{}{"REQUIRE_SIGNATURE": RequireSignature},
 		"session": map[string]interface{}{
 			"logged_in": isLoggedIn(r),
 			"username":  sess["username"],
@@ -169,8 +178,16 @@ func baseContext(w http.ResponseWriter, r *http.Request) map[string]interface{} 
 			}
 			return ""
 		}(),
-		"dict_opts":      func(cat string) interface{} { return rowsIface(getDictOptions(cat)) },
-		"dict_value":     getDictValue,
+		"dict_opts": func(cat string) interface{} { return rowsIface(getDictOptions(cat)) },
+		// 包一层而不是直接挂 getDictValue：gonja 的 split() 产出的是 PyString，
+		// 直接调 Go 原生 func(string, string) 会因类型不匹配而炸。走 VarArgs 拿
+		// 字符串就没有这个问题。
+		"dict_value": func(params *exec.VarArgs) *exec.Value {
+			if len(params.Args) < 2 {
+				return exec.AsValue("")
+			}
+			return exec.AsValue(getDictValue(params.Args[0].String(), params.Args[1].String()))
+		},
 		"org_flat":       func() interface{} { return rowsIface(getOrgFlat()) },
 		"org_tree_opts":  func() interface{} { return rowsIface(getOrgTreeOptions()) },
 		"org_children":   func(pid int64) interface{} { return rowsIface(getOrgChildren(pid)) },
