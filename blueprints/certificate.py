@@ -6,7 +6,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, list_all, row_snapshot
+from utils.helpers import log_action, list_all, row_snapshot, operator_name
 from utils.validators import parse_date_input, check_required, check_dates
 
 certificate_bp = Blueprint("certificate", __name__)
@@ -208,7 +208,7 @@ def _extract_form(form):
         "tw_pass_no": form.get("tw_pass_no", "").strip(),
         "tw_pass_expiry": parse_date_input(form.get("tw_pass_expiry", "")),
         "tw_pass_submit_date": parse_date_input(form.get("tw_pass_submit_date", "")),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 

@@ -8,7 +8,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, list_all, normalize_residence, get_dict_options, row_snapshot
+from utils.helpers import log_action, list_all, normalize_residence, get_dict_options, row_snapshot, operator_name
 from utils.validators import parse_date_input, check_required, check_dates, check_identity
 
 decontrol_bp = Blueprint("decontrol", __name__)
@@ -151,7 +151,7 @@ def _extract_form(form):
         "reason": form.get("reason", "").strip(),
         "decontrol_date": parse_date_input(form.get("decontrol_date", "")) or datetime.now().strftime("%Y%m%d"),
         "cert_handover_date": parse_date_input(form.get("cert_handover_date", "")),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 

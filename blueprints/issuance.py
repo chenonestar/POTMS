@@ -23,7 +23,7 @@ from flask.typing import ResponseReturnValue
 from auth import login_required
 from config import Config
 from database import get_db
-from utils.helpers import log_action, list_all, row_snapshot, get_dict_value
+from utils.helpers import log_action, list_all, row_snapshot, get_dict_value, operator_name
 from utils.validators import parse_date_input, check_required, check_dates
 
 issuance_bp = Blueprint("issuance", __name__)
@@ -249,7 +249,7 @@ def do_return(iss_id) -> ResponseReturnValue:
             "UPDATE cert_issuance SET return_date=?, return_sign_image=?, return_sign_meta=?, "
             "return_operator=?, status='returned', updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (return_date, blob, _clean_meta(request.form.get("sign_meta", "")),
-             session.get("username", "admin"), iss_id),
+             operator_name(), iss_id),
         )
         db.commit()
         _sync_travel_dates(row["travel_id"])
@@ -381,9 +381,9 @@ def _extract_form(form):
         "cert_types": ",".join(types),
         "cert_nos": form.get("cert_nos", "").strip(),
         "issue_date": parse_date_input(form.get("issue_date", "")),
-        "issuer": form.get("issuer", "").strip() or session.get("username", "admin"),
+        "issuer": operator_name(),
         "remarks": form.get("remarks", "").strip(),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 

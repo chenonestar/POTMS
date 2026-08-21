@@ -101,7 +101,7 @@ def log_action(action: str, target_type: str, target_id: Optional[int] = None,
         "INSERT INTO operation_logs (operator, action, target_type, target_id, detail, ip_address, snapshot) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            _operator_name(),
+            _log_operator(),
             action,
             target_type,
             target_id,
@@ -147,7 +147,24 @@ def row_snapshot(table: str, row_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
-def _operator_name() -> str:
+def operator_name() -> str:
+    """业务单据上的**经办人**：真实姓名，没填则回退到登录账号。
+
+    单据、打印件、导出表上的「经办人」必须是真人名字——打印出来的领用凭证上
+    一个 admin，没法拿去归档。姓名在「账户设置」里维护，登录时放进 session。
+
+    注意与 _log_operator() 的分工：那个是给操作日志用的，记的是**账号**。
+    """
+    from flask import session
+    return session.get("full_name") or session.get("username") or "unknown"
+
+
+def _log_operator() -> str:
+    """操作日志里的**操作人**：登录账号，不用姓名。
+
+    账号是身份标识，姓名可以随时改。日志只记「张三」的话，改名之后历史记录
+    就对不上人了。展示时再按账号查出姓名，渲染成「张三（admin）」。
+    """
     from flask import session
     return session.get("username", "unknown")
 

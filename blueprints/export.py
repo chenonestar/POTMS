@@ -12,13 +12,17 @@ from utils.excel_export import (
     export_decontrol,
     export_issuance,
 )
-from utils.helpers import log_action
+from utils.helpers import log_action, operator_name
 
 export_bp = Blueprint("export", __name__)
 
 
 def _operator():
-    return session.get("username", "unknown")
+    """导出文件名里的「谁导的」——这是交给人看的产物，用真实姓名。
+
+    注意：导出的日志**内容**里，操作人一列仍是登录账号，那是审计口径，不改。
+    """
+    return operator_name()
 
 
 def _selected_ids():

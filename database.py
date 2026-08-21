@@ -129,6 +129,17 @@ def run_migrations():
         if "snapshot" not in log_cols:
             db.execute("ALTER TABLE operation_logs ADD COLUMN snapshot TEXT")
 
+        # 登录账户的真实姓名。
+        #
+        # 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+        # 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+        # 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+        # PRAGMA 对不存在的表返回空集，直接 ALTER 会炸——极旧的库可能连 users 表
+        # 都没有（迁移用例就构造了这种形态），所以先确认表在不在。
+        user_cols = {row[1] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+        if user_cols and "full_name" not in user_cols:
+            db.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
+
         # 撤控：证件移交日期 / 撤控日期
         dec_cols = {row[1] for row in db.execute("PRAGMA table_info(decontrol_filing)").fetchall()}
         if "cert_handover_date" not in dec_cols:
@@ -334,6 +345,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    full_name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

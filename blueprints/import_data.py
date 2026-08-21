@@ -4,7 +4,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from utils.excel_import import parse_import_file, generate_import_template
-from utils.helpers import log_action
+from utils.helpers import log_action, operator_name
 
 import_bp = Blueprint("import_data", __name__)
 
@@ -29,7 +29,7 @@ def index() -> ResponseReturnValue:
             return render_template("import/form.html", result=None)
 
         try:
-            result = parse_import_file(f.stream, operator=session.get("username", "admin"))
+            result = parse_import_file(f.stream, operator=operator_name())
             log_action("import", "batch", detail=f"total={result['total']}, success={result['success']}, errors={len(result['errors'])}")
             if result["success"] > 0:
                 flash(f"成功导入 {result['success']} 条记录（共 {result['total']} 条）。", "success")

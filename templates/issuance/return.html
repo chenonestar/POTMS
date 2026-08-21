@@ -21,7 +21,7 @@
         </div>
         <div class="col-md-3">
             <label class="form-label">经办人（接收人）</label>
-            <input type="text" class="form-control" value="{{ session.username }}" readonly>
+            <input type="text" class="form-control" value="{{ session.full_name or session.username }}" readonly>
         </div>
     </div>
 </div>

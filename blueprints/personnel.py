@@ -6,7 +6,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import (
+from utils.helpers import (operator_name,
     get_dict_options, get_dict_value, log_action, list_all,
     detect_surname_split, normalize_residence, row_snapshot,
 )
@@ -489,7 +489,7 @@ def _extract_info_form(form):
         "political_status": form.get("political_status", "").strip(),
         "party_join_date": parse_date_input(form.get("party_join_date", "")),
         "position": form.get("position", "").strip(),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 
@@ -532,7 +532,7 @@ def _extract_filing_form(form):
         "tag": form.get("tag", "新增").strip(),
         "informed": form.get("informed", "否").strip(),
         "remarks": form.get("remarks", "").strip(),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 

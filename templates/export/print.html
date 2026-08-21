@@ -157,7 +157,7 @@
 </div>
 {% endif %}
 
-<p class="meta">打印日期：<span id="printDate"></span>　｜　操作人：{{ session.username }}</p>
+<p class="meta">打印日期：<span id="printDate"></span>　｜　操作人：{{ session.full_name or session.username }}</p>
 
 <script>
 document.getElementById('printDate').textContent = new Date().toISOString().slice(0,10);
