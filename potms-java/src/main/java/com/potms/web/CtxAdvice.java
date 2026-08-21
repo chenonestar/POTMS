@@ -5,7 +5,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/** 把配置里的展示时区偏移灌进 Ctx，供模板格式化 UTC 时间戳。 */
+/** 把配置里的展示时区偏移与签名强制开关灌进 Ctx，供模板使用。 */
 @Component
 public class CtxAdvice {
 
@@ -16,7 +16,8 @@ public class CtxAdvice {
     }
 
     @EventListener(ApplicationReadyEvent.class)
-    public void applyTimezone() {
+    public void applyConfig() {
         Ctx.defaultTzOffset = cfg.tzOffsetHours;
+        Ctx.defaultRequireSignature = cfg.requireSignature;
     }
 }

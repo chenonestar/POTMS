@@ -50,7 +50,7 @@ public class ReturnModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             else if (string.CompareOrdinal(ReturnDate, row.IssueDate) < 0)
                 errors.Add($"归还日期不应早于领用日期（{row.IssueDate}）。");
         }
-        var (blob, sigErr) = Signature.Decode(Request.Form["sign_png"]);
+        var (blob, sigErr) = Signature.Decode(Request.Form["sign_png"], cfg.RequireSignature);
         if (sigErr.Length > 0) errors.Add(sigErr);
 
         if (errors.Count > 0) { foreach (var e in errors) Flash.Danger(e); return Page(); }

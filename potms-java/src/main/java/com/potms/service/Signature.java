@@ -34,11 +34,26 @@ public final class Signature {
         }
     }
 
-    /** dataURL → PNG 字节。 */
+    /** dataURL → PNG 字节，强制签名（等价 {@code decode(dataUrl, true)}）。 */
     public static Decoded decode(String dataUrl) {
+        return decode(dataUrl, true);
+    }
+
+    /**
+     * dataURL → PNG 字节。
+     *
+     * <p>留空是否算错，取决于 {@code required}（来自 POTMS_REQUIRE_SIGNATURE，
+     * 默认强制）。注意这里是**唯一**真正的守门人：前端那两道拦截（提交前校验、
+     * 少于 8 点算误触）都在浏览器里，伪造 POST 绕得过。
+     *
+     * <p>格式校验不受开关影响——签了就必须是合法 PNG，不能因为「不强制」就把
+     * 坏数据放进库里。
+     */
+    public static Decoded decode(String dataUrl, boolean required) {
         String raw = dataUrl == null ? "" : dataUrl.trim();
         if (raw.isEmpty()) {
-            return new Decoded(null, "请手写签名后再提交。");
+            // 放宽模式：留空即无签名，记录里如实存 NULL
+            return new Decoded(null, required ? "请手写签名后再提交。" : "");
         }
         if (!raw.startsWith(PREFIX)) {
             return new Decoded(null, "签名数据格式不正确。");

@@ -30,6 +30,18 @@ public class Config {
     public final byte[] secretKey;
     public final int tzOffsetHours;
 
+    /**
+     * 证件领用 / 归还是否强制手写签名（环境变量 POTMS_REQUIRE_SIGNATURE，默认强制）。
+     *
+     * <p>默认强制：签名就是「本人确实领了/还了」的凭证，一旦允许留空，这条记录就只剩
+     * 经办人的一面之词。放宽必须是明确的选择，不能是默认值。
+     *
+     * <p>单位尚未配备手写板、或存在代领代还与历史回填记录时，设
+     * POTMS_REQUIRE_SIGNATURE=0 暂时放宽。放宽后签名板仍然显示（能签就签），
+     * 只是留空也能提交。
+     */
+    public final boolean requireSignature;
+
     public Config() {
         this(null);
     }
@@ -65,6 +77,12 @@ public class Config {
             }
         }
         this.tzOffsetHours = off;
+
+        String req = System.getenv("POTMS_REQUIRE_SIGNATURE");
+        String flag = req == null ? "1" : req.trim().toLowerCase(java.util.Locale.ROOT);
+        this.requireSignature = !(flag.equals("0") || flag.equals("false")
+                || flag.equals("no") || flag.equals("off"));
+
         this.secretKey = loadOrCreateSecret();
     }
 

@@ -78,6 +78,12 @@ builder.WebHost.UseUrls($"http://{Environment.GetEnvironmentVariable("POTMS_HOST
 
 var app = builder.Build();
 
+// 中文错误页。两条入口都要接：ReExecute 管「返回了 4xx/5xx 但没写响应体」的情况
+// （404 就是这一类），ExceptionHandler 管未捕获异常。此前两者都没配，404 一片空白、
+// 500 是 ASP.NET 的英文默认页，与 Python / Go / Rust 三版对不上。
+app.UseExceptionHandler("/Error/500");
+app.UseStatusCodePagesWithReExecute("/Error/{0}");
+
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();

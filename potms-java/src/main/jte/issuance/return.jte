@@ -31,7 +31,7 @@
         </div>
         <div class="form-section">
             <h5>归还人签名</h5>
-            @template.components.signature_pad(label = "归还人手写签名")
+            @template.components.signature_pad(required = ctx.requireSignature(), label = "归还人手写签名")
         </div>
         <div class="mt-3 mb-4">
             <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存归还登记</button>

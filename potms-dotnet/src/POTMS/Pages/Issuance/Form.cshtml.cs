@@ -44,7 +44,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         Data["cert_types"] = string.Join(",", SelectedTypes);
 
         var errors = Validate(cn, Data);
-        var (blob, sigErr) = Signature.Decode(Request.Form["sign_png"]);
+        var (blob, sigErr) = Signature.Decode(Request.Form["sign_png"], cfg.RequireSignature);
         if (sigErr.Length > 0) errors.Add(sigErr);
 
         if (errors.Count > 0)

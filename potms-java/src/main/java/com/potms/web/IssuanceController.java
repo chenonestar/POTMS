@@ -140,8 +140,10 @@ public class IssuanceController {
     public String create(HttpServletRequest req, Model model) {
         Map<String, String> data = extract(req);
         List<String> errors = validate(data);
-        var sig = Signature.decode(req.getParameter("sign_png"));
-        if (!sig.ok()) {
+        var sig = Signature.decode(req.getParameter("sign_png"), cfg.requireSignature);
+        // 判据是 error 而不是 ok()：放宽模式下留空是**合法**结果，
+        // 此时 bytes 为 null（ok() 为 false）但 error 为空，不该拦下。
+        if (!sig.error().isEmpty()) {
             errors.add(sig.error());
         }
         if (!errors.isEmpty()) {
@@ -231,8 +233,10 @@ public class IssuanceController {
                 errors.add("归还日期不应早于领用日期（" + issueDate + "）。");
             }
         }
-        var sig = Signature.decode(req.getParameter("sign_png"));
-        if (!sig.ok()) {
+        var sig = Signature.decode(req.getParameter("sign_png"), cfg.requireSignature);
+        // 判据是 error 而不是 ok()：放宽模式下留空是**合法**结果，
+        // 此时 bytes 为 null（ok() 为 false）但 error 为空，不该拦下。
+        if (!sig.error().isEmpty()) {
             errors.add(sig.error());
         }
         if (!errors.isEmpty()) {

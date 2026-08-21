@@ -100,7 +100,7 @@
 
         <div class="form-section">
             <h5>领用人签名</h5>
-            @template.components.signature_pad(label = "领用人手写签名")
+            @template.components.signature_pad(required = ctx.requireSignature(), label = "领用人手写签名")
         </div>
 
         <div class="mt-3 mb-4">

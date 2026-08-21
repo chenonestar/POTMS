@@ -1,5 +1,6 @@
 @page "/Issuance/Return/{id:long}"
 @model POTMS.Pages.Issuance.ReturnModel
+@inject POTMS.Config Cfg
 @{ ViewData["Title"] = "证件归还登记"; var it = Model.Item; }
 <h4 class="mb-3 mt-3"><i class="bi bi-box-arrow-in-left"></i> 证件归还登记</h4>
 
@@ -35,14 +36,24 @@
 <script src="~/js/signature.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    POTMSSignature.attach({
+    // 不把 form 交给 attach()：signature.js 是五版共用的同一份文件（md5 一致），
+    // 不能为了「是否强制」这条本版配置去改它。这里自己绑 submit——留空时是否拦下，
+    // 由服务端下发的 RequireSignature 决定。
+    var pad = POTMSSignature.attach({
         canvas: document.getElementById('signCanvas'),
         clearBtn: document.getElementById('signClear'),
         undoBtn: document.getElementById('signUndo'),
         pngInput: document.getElementById('signPng'),
         metaInput: document.getElementById('signMeta'),
-        hintEl: document.getElementById('signHint'),
-        form: document.getElementById('signForm')
+        hintEl: document.getElementById('signHint')
+    });
+    var signRequired = @(Cfg.RequireSignature ? "true" : "false");
+    document.getElementById('signForm').addEventListener('submit', function (ev) {
+        if (!pad.commit() && signRequired) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            alert('请先手写签名后再提交。');
+        }
     });
 });
 </script>

@@ -390,12 +390,19 @@ class PageSmokeTest {
         }
 
         static AppUnderTest start(int port, boolean seed) throws Exception {
+            return start(port, seed, java.util.Map.of());
+        }
+
+        /** env：额外的环境变量，用于验证配置开关（如 POTMS_REQUIRE_SIGNATURE）。 */
+        static AppUnderTest start(int port, boolean seed, java.util.Map<String, String> env)
+                throws Exception {
             Path dir = Files.createTempDirectory("potms-smoke-");
             Path jar = Path.of("target", "potms.jar");
             var pb = new ProcessBuilder("java", "-Dstdout.encoding=UTF-8",
                     "-jar", jar.toAbsolutePath().toString());
             pb.environment().put("POTMS_BASE", dir.toString());
             pb.environment().put("POTMS_PORT", String.valueOf(port));
+            pb.environment().putAll(env);
             pb.redirectErrorStream(true);
             pb.redirectOutput(dir.resolve("app.log").toFile());
             Process p = pb.start();

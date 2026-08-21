@@ -12,11 +12,20 @@ public static class Signature
     public const int MaxSignBytes = 512 * 1024;
     public const int MaxMetaChars = 400_000;
 
-    /// <summary>dataURL → PNG 字节。失败时返回 (null, 错误信息)。</summary>
-    public static (byte[]? Blob, string Error) Decode(string? pngDataUrl)
+    /// <summary>dataURL → PNG 字节。失败时返回 (null, 错误信息)。
+    ///
+    /// <para>留空是否算错，取决于 <paramref name="required"/>（来自 POTMS_REQUIRE_SIGNATURE，
+    /// 默认强制）。注意这里是**唯一**真正的守门人：前端那两道拦截（提交前校验、
+    /// 少于 8 点算误触）都在浏览器里，伪造 POST 绕得过。</para>
+    ///
+    /// <para>格式校验不受开关影响——签了就必须是合法 PNG，不能因为「不强制」就把
+    /// 坏数据放进库里。</para>
+    /// </summary>
+    public static (byte[]? Blob, string Error) Decode(string? pngDataUrl, bool required = true)
     {
         var raw = (pngDataUrl ?? "").Trim();
-        if (raw.Length == 0) return (null, "请手写签名后再提交。");
+        // 放宽模式：留空即无签名，记录里如实存 NULL
+        if (raw.Length == 0) return (null, required ? "请手写签名后再提交。" : "");
         if (!raw.StartsWith(Prefix, StringComparison.Ordinal)) return (null, "签名数据格式不正确。");
 
         var payload = raw[Prefix.Length..];

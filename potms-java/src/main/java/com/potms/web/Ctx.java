@@ -17,12 +17,14 @@ import java.util.List;
  * @param path      当前请求路径，供侧边栏高亮
  * @param query     原始查询串，供分页拼接
  * @param tzOffset  展示时区偏移（数据库统一存 UTC），供模板格式化时间戳
+ * @param requireSignature 证件领用/归还是否强制手写签名（POTMS_REQUIRE_SIGNATURE）
  */
 public record Ctx(String user, String operatorName, String csrfToken, List<Flash.Message> flashes,
-                  String path, String query, int tzOffset) {
+                  String path, String query, int tzOffset, boolean requireSignature) {
 
-    /** 由 CtxAdvice 在请求进入时注入，避免每个控制器都要拿一次 Config。 */
+    /** 由 CtxAdvice 在启动时注入，避免每个控制器都要拿一次 Config。 */
     static volatile int defaultTzOffset = 8;
+    static volatile boolean defaultRequireSignature = true;
 
     public static Ctx of(HttpServletRequest req) {
         return new Ctx(
@@ -32,7 +34,8 @@ public record Ctx(String user, String operatorName, String csrfToken, List<Flash
                 Flash.pop(req),
                 req.getRequestURI(),
                 req.getQueryString() == null ? "" : req.getQueryString(),
-                defaultTzOffset);
+                defaultTzOffset,
+                defaultRequireSignature);
     }
 
     /** UTC 时间戳 → 本地展示串。 */
