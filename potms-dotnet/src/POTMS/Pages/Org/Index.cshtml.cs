@@ -7,22 +7,20 @@ namespace POTMS.Pages.Org;
 
 public class IndexModel(Db db, Flash flash) : AppPageModel(flash)
 {
-    public List<OrgOption> Tree { get; private set; } = [];
+    /// <summary>全部节点，已按 parent_id, sort_order, id 排好；页面据此递归成树。</summary>
     public List<OrgNode> Flat { get; private set; } = [];
-    public Dictionary<long, int> UsageCount { get; private set; } = [];
 
     public void OnGet()
     {
         using var cn = db.Open();
-        Tree = Helpers.GetOrgTreeOptions(cn);
         Flat = Helpers.GetOrgFlat(cn);
-        foreach (var n in Flat)
-            UsageCount[n.Id] = cn.ExecuteScalar<int>(
-                "SELECT (SELECT COUNT(*) FROM sys_org WHERE parent_id=@id) + " +
-                "       (SELECT COUNT(*) FROM personnel_filing WHERE work_unit=@nm)", new { id = n.Id, nm = n.Name });
     }
 
-    public IActionResult OnPostSave(long? id, string? name, long parentId, int sortOrder)
+    /// <param name="sortOrder">
+    /// 可空是刻意的：树形界面不再提供排序输入，表单里没有这个字段。绑成非空 int
+    /// 会默认成 0，一保存就把老库里已有的排序悄悄抹平。为 null 时保持原值不动。
+    /// </param>
+    public IActionResult OnPostSave(long? id, string? name, long parentId, int? sortOrder)
     {
         name = (name ?? "").Trim();
         if (name.Length == 0) { Flash.Danger("名称为必填项。"); return RedirectToPage(); }
@@ -31,7 +29,7 @@ public class IndexModel(Db db, Flash flash) : AppPageModel(flash)
         if (id is null)
         {
             cn.Execute("INSERT INTO sys_org (name, parent_id, sort_order) VALUES (@name, @p, @s)",
-                new { name, p = parentId, s = sortOrder });
+                new { name, p = parentId, s = sortOrder ?? 0 });
             var newId = cn.ExecuteScalar<long>("SELECT last_insert_rowid()");
             Log(cn, "create", "sys_org", newId, $"新增组织：{name}");
             Flash.Success("组织节点已新增。");
@@ -40,8 +38,12 @@ public class IndexModel(Db db, Flash flash) : AppPageModel(flash)
         {
             if (id == parentId) { Flash.Danger("上级不能是自己。"); return RedirectToPage(); }
             var before = Helpers.RowSnapshot(cn, "sys_org", id.Value);
-            cn.Execute("UPDATE sys_org SET name=@name, parent_id=@p, sort_order=@s WHERE id=@id",
-                new { name, p = parentId, s = sortOrder, id });
+            if (sortOrder is null)
+                cn.Execute("UPDATE sys_org SET name=@name, parent_id=@p WHERE id=@id",
+                    new { name, p = parentId, id });
+            else
+                cn.Execute("UPDATE sys_org SET name=@name, parent_id=@p, sort_order=@s WHERE id=@id",
+                    new { name, p = parentId, s = sortOrder.Value, id });
             Log(cn, "update", "sys_org", id, $"修改组织：{name}", before,
                 Helpers.RowSnapshot(cn, "sys_org", id.Value));
             Flash.Success("组织节点已更新。");

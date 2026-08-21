@@ -164,6 +164,9 @@ public abstract class AppFactory : WebApplicationFactory<Program>
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "potms-smoke-" + Guid.NewGuid().ToString("N"));
     private Task<HttpClient>? _client;
 
+    /// <summary>本实例的数据目录——用例要直连库核对「页面上看不见但必须对」的字段。</summary>
+    public string DataDir => _dir;
+
     protected AppFactory() => Directory.CreateDirectory(_dir);
 
     /// <summary>建库、灌种子数据并登录一次，之后复用
