@@ -1,0 +1,100 @@
+@page "/Issuance/View/{id:long}"
+@model POTMS.Pages.Issuance.ViewModel
+@{ ViewData["Title"] = "领用记录详情"; var it = Model.Item; }
+
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-vector-pen"></i> 证件领用记录 #@it.Id</h4>
+    <div>
+        <a href="/Print/issuance/@it.Id" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> 打印</a>
+        @if (it.Status == "issued")
+        {
+            <a href="/Issuance/Return/@it.Id" class="btn btn-success ms-1"><i class="bi bi-box-arrow-in-left"></i> 归还登记</a>
+            <button type="button" class="btn btn-outline-danger ms-1" data-bs-toggle="modal" data-bs-target="#voidModal"><i class="bi bi-x-circle"></i> 作废</button>
+        }
+        <a href="/Issuance" class="btn btn-secondary ms-1">返回列表</a>
+    </div>
+</div>
+
+@if (it.Status == "voided")
+{
+    <div class="alert alert-secondary"><i class="bi bi-x-circle"></i> <strong>本记录已作废</strong>：@it.VoidReason</div>
+}
+
+<div class="form-section">
+    <h5>领用信息</h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label text-muted small">单位</label><div>@it.WorkUnit</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">领用人</label><div><strong>@it.HolderName</strong></div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">身份证号</label><div>@(string.IsNullOrEmpty(it.IdNumber) ? "-" : it.IdNumber)</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">状态</label><div>
+            @if (it.Status == "issued") { <span class="badge bg-warning text-dark">已领用（未归还）</span> }
+            else if (it.Status == "returned") { <span class="badge bg-success">已归还</span> }
+            else { <span class="badge bg-secondary">已作废</span> }
+        </div></div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-3"><label class="form-label text-muted small">证件种类</label><div>@Model.TypeLabels</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">证件号码</label><div>@(string.IsNullOrEmpty(it.CertNos) ? "-" : it.CertNos)</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">领用日期</label><div>@it.IssueDate</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">经办人</label><div>@it.Issuer</div></div>
+    </div>
+    @if (Model.Travel is not null)
+    {
+        <div class="row g-3 mt-1"><div class="col-md-12">
+            <label class="form-label text-muted small">关联出行记录</label>
+            <div><a href="/Travel/View/@Model.Travel.Id">#@Model.Travel.Id @Model.Travel.DestinationPassport · @Model.Travel.TravelDates</a></div>
+        </div></div>
+    }
+    @if (!string.IsNullOrEmpty(it.Remarks))
+    {
+        <div class="row g-3 mt-1"><div class="col-md-12">
+            <label class="form-label text-muted small">备注</label><div>@it.Remarks</div></div></div>
+    }
+</div>
+
+<div class="row">
+    <div class="col-md-6"><div class="form-section">
+        <h5>领用人签名</h5>
+        @if (it.SignImage is { Length: > 0 })
+        {
+            <img src="/Issuance/Signature/@it.Id" alt="领用签名" class="border rounded bg-white" style="max-width:100%;">
+        }
+        else { <p class="text-muted mb-0">无签名（历史数据回填）</p> }
+    </div></div>
+    <div class="col-md-6"><div class="form-section">
+        <h5>归还签名</h5>
+        @if (it.ReturnSignImage is { Length: > 0 })
+        {
+            <img src="/Issuance/Signature/@it.Id?kind=return" alt="归还签名" class="border rounded bg-white" style="max-width:100%;">
+            <div class="mt-2 small text-muted">归还日期 @it.ReturnDate · 经办人 @it.ReturnOperator</div>
+        }
+        else if (!string.IsNullOrEmpty(it.ReturnDate)) { <p class="text-muted mb-0">归还日期 @it.ReturnDate（无签名）</p> }
+        else { <p class="text-muted mb-0">尚未归还</p> }
+    </div></div>
+</div>
+
+<p class="text-muted small">
+    <i class="bi bi-shield-check"></i>
+    签名凭证一经保存不可修改。如登记有误，请作废本记录后重新登记。
+</p>
+
+@if (it.Status == "issued")
+{
+    <div class="modal fade" id="voidModal" tabindex="-1">
+        <div class="modal-dialog"><div class="modal-content">
+            <form method="post" asp-page-handler="Void">
+                <div class="modal-header"><h5 class="modal-title">作废领用记录</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p>作废后本记录将保留存档但不再计入在借统计，需重新登记。</p>
+                    <label class="form-label required">作废原因</label>
+                    <input type="text" class="form-control" name="voidReason" required placeholder="如：证件种类登记错误">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认作废</button>
+                </div>
+            </form>
+        </div></div>
+    </div>
+}

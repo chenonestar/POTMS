@@ -65,7 +65,8 @@ func protect(next http.Handler) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, int64(MaxContentLength))
 
 		path := r.URL.Path
-		public := path == "/login" || strings.HasPrefix(path, "/static/")
+		public := path == "/login" || path == "/favicon.ico" ||
+			strings.HasPrefix(path, "/static/")
 
 		// CSRF：所有状态变更请求（含登录表单本身）
 		if !csrfOK(r) {
@@ -90,11 +91,17 @@ func protect(next http.Handler) http.Handler {
 func registerRoutes(mux *http.ServeMux) {
 	// 静态资源
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	// 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，明确应答 204，
+	// 浏览器会记住并停止追问，也免得每个标签页都在日志里留一条 404。
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	// 认证
 	mux.HandleFunc("/login", handleLogin)
 	mux.HandleFunc("GET /logout", handleLogout)
 	mux.HandleFunc("/account", handleAccount)
+	mux.HandleFunc("POST /account/backfill-operator", handleBackfillOperator)
 
 	// 首页 / 备份
 	mux.HandleFunc("GET /{$}", handleDashboard)
@@ -171,6 +178,19 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /submit-unit/add", handleSubmitUnitAdd)
 	mux.HandleFunc("POST /submit-unit/{uid}/edit", handleSubmitUnitEdit)
 	mux.HandleFunc("POST /submit-unit/{uid}/delete", handleSubmitUnitDelete)
+
+	// 证件领用（REQ-012）
+	//
+	// /issuance/new 与 /issuance/{iss_id} 会撞：ServeMux 不允许「方法更少但路径更泛」
+	// 的模式共存。把 new 也拆成 GET/POST 两条，两边的方法集就一样了。
+	mux.HandleFunc("GET /issuance/{$}", handleIssuanceList)
+	mux.HandleFunc("GET /issuance/new", handleIssuanceNew)
+	mux.HandleFunc("POST /issuance/new", handleIssuanceNew)
+	mux.HandleFunc("GET /issuance/{iss_id}", handleIssuanceView)
+	mux.HandleFunc("/issuance/{iss_id}/return", handleIssuanceReturn)
+	mux.HandleFunc("POST /issuance/{iss_id}/void", handleIssuanceVoid)
+	mux.HandleFunc("GET /issuance/{iss_id}/signature.png", handleIssuanceSignature)
+	mux.HandleFunc("GET /export/issuance", handleExportIssuance)
 
 	// 全局搜索
 	mux.HandleFunc("GET /search", handleSearch)

@@ -80,6 +80,10 @@ echo   - 首次运行自动创建 data.db / uploads / exports / backup / .secret
 echo     于 exe 同目录；默认管理员 admin / admin123，请尽快改密。
 echo   - 默认以 waitress 生产服务器运行，访问 http://localhost:5000
 echo   - 如需局域网访问：设置环境变量 POTMS_HOST=0.0.0.0
+echo   - 证件领用/归还默认必须手写签名；尚未配备手写板时可临时放宽：
+echo       set POTMS_REQUIRE_SIGNATURE=0
+echo     放宽后未签名的记录会在详情页与打印件上标注「无签名」，
+echo     配齐手写板后请去掉该变量恢复强制。
 echo ============================================================
 echo.
 pause

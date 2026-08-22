@@ -1,0 +1,13 @@
+# 构建产物
+target/
+dist/
+
+# 运行时数据（与其它四版一致，不入库）
+data.db
+data.db-shm
+data.db-wal
+.secret_key
+uploads/
+exports/
+backup/
+.sm2.p12

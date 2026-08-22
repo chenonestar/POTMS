@@ -136,7 +136,7 @@ pub async fn info_new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, F
     let mut req = Req::new(&st, &headers, &uri);
     if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
-    let data = extract_info(&form, &req.sess.username());
+    let data = extract_info(&form, &req.sess.operator_name());
     let mut errs = validate_info(&data);
     let id_number = data.get("id_number").cloned().unwrap_or_default();
     if errs.is_empty() && !id_number.is_empty() {
@@ -177,7 +177,7 @@ pub async fn info_edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, 
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM personnel_info WHERE id = ?", &[I(info_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
-    let data = extract_info(&form, &req.sess.username());
+    let data = extract_info(&form, &req.sess.operator_name());
     let errs = validate_info(&data);
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }
@@ -266,7 +266,7 @@ pub async fn filing_new_post(State(st): State<St>, headers: HeaderMap, uri: Uri,
     if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let info_id: i64 = query_args(&req.query).get("info_id").and_then(|s| s.parse().ok()).unwrap_or(0);
-    let data = extract_filing(&form, &req.sess.username());
+    let data = extract_filing(&form, &req.sess.operator_name());
     let errs = { let conn = st.db.lock().unwrap(); validate_filing(&data, false, &conn) };
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }
@@ -312,7 +312,7 @@ pub async fn filing_edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM personnel_filing WHERE id = ?", &[I(filing_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "personnel.list", &[]); }
-    let data = extract_filing(&form, &req.sess.username());
+    let data = extract_filing(&form, &req.sess.operator_name());
     let errs = { let conn = st.db.lock().unwrap(); validate_filing(&data, true, &conn) };
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }

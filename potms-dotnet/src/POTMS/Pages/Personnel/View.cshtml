@@ -1,0 +1,100 @@
+@page "/Personnel/View/{id:long}"
+@model POTMS.Pages.Personnel.ViewPageModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "备案详情";
+    var f = Model.Filing;
+    using var cn = Database.Open();
+    string DV(string cat, string? code) => POTMS.Services.Helpers.GetDictValue(cn, cat, code);
+    string IT(string? codes) => POTMS.Services.IssuanceOps.TypesLabel(cn, codes);
+}
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-file-earmark-person"></i> 备案详情 — @f.Name</h4>
+    <div>
+        <a href="/Print/filing/@f.Id" class="btn btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> 打印</a>
+        <a href="/Personnel/FilingForm?id=@f.Id" class="btn btn-warning ms-1"><i class="bi bi-pencil"></i> 编辑</a>
+        <a href="/Personnel" class="btn btn-secondary ms-1">返回列表</a>
+    </div>
+</div>
+
+@if (Model.Successor is not null)
+{
+    <div class="alert alert-secondary py-2"><i class="bi bi-arrow-right-circle"></i>
+        本记录已撤控，由 <a href="/Personnel/View/@Model.Successor.Id">#@Model.Successor.Id @Model.Successor.Name</a> 重报替代。</div>
+}
+@if (Model.Predecessor is not null)
+{
+    <div class="alert alert-info py-2"><i class="bi bi-arrow-left-circle"></i>
+        本记录为重报，替代原撤控记录 <a href="/Personnel/View/@Model.Predecessor.Id">#@Model.Predecessor.Id</a>。</div>
+}
+
+<div class="form-section"><h5>备案信息</h5>
+<div class="row g-3">
+    <div class="col-md-3"><label class="form-label text-muted small">姓名</label><div><strong>@f.Name</strong></div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">性别</label><div>@f.Gender</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">出生日期</label><div>@f.BirthDate</div></div>
+    <div class="col-md-4"><label class="form-label text-muted small">身份证号</label><div>@f.IdNumber</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-6"><label class="form-label text-muted small">户口所在地</label><div>@f.Residence</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">政治面貌</label><div>@f.PoliticalStatus</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">工作单位</label><div>@f.WorkUnit</div></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label text-muted small">职务/职称</label><div>@f.PositionOrTitle</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">人事主管单位</label><div>@f.SupervisorUnit</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">标记</label><div>@f.Tag</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">已告知本人</label><div>@f.Informed</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">状态</label><div>
+        @(f.Status == "active" ? Html.Raw("<span class=\"badge bg-success\">在案</span>")
+                               : Html.Raw("<span class=\"badge bg-secondary\">已撤控</span>"))</div></div>
+</div>
+@if (!string.IsNullOrEmpty(f.Remarks))
+{ <div class="row g-3 mt-1"><div class="col-12"><label class="form-label text-muted small">备注</label><div>@f.Remarks</div></div></div> }
+</div>
+
+@if (Model.Info is not null)
+{
+    var i = Model.Info;
+    <div class="form-section"><h5>关联：备案人员信息登记表 <a class="small ms-2" href="/Personnel/InfoForm?id=@i.Id">编辑</a></h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label text-muted small">单位</label><div>@i.Unit</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">部门</label><div>@i.Department</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">学历</label><div>@DV("education", i.Education)</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">学位</label><div>@DV("degree", i.Degree)</div></div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-3"><label class="form-label text-muted small">职称</label><div>@DV("title", i.Title)</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">职级</label><div>@DV("rank", i.Rank)</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">参加工作日期</label><div>@i.WorkStartDate</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">入党日期</label><div>@i.PartyJoinDate</div></div>
+    </div></div>
+}
+
+<div class="form-section"><h5>关联业务记录</h5>
+<div class="row">
+    <div class="col-md-4">
+        <h6 class="text-muted small">证照登记（@Model.Certificates.Count）</h6>
+        <ul class="list-unstyled small">
+        @foreach (var c in Model.Certificates)
+        { <li><a href="/Certificate/Form?id=@c.Id">护照 @(c.PassportNo ?? "-") · 港澳 @(c.HmPassNo ?? "-")</a></li> }
+        @if (Model.Certificates.Count == 0) { <li class="text-muted">无</li> }
+        </ul>
+    </div>
+    <div class="col-md-4">
+        <h6 class="text-muted small">出国明细（@Model.Travels.Count）</h6>
+        <ul class="list-unstyled small">
+        @foreach (var t in Model.Travels)
+        { <li><a href="/Travel/View/@t.Id">@t.DestinationPassport · @t.TravelDates</a></li> }
+        @if (Model.Travels.Count == 0) { <li class="text-muted">无</li> }
+        </ul>
+    </div>
+    <div class="col-md-4">
+        <h6 class="text-muted small">证件领用（@Model.Issuances.Count）</h6>
+        <ul class="list-unstyled small">
+        @foreach (var s in Model.Issuances)
+        { <li><a href="/Issuance/View/@s.Id">@s.IssueDate @IT(s.CertTypes)</a></li> }
+        @if (Model.Issuances.Count == 0) { <li class="text-muted">无</li> }
+        </ul>
+    </div>
+</div></div>

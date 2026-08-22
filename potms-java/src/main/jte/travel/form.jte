@@ -1,0 +1,185 @@
+@import com.potms.web.Fmt
+@import com.potms.web.Helpers
+@import java.util.List
+@import java.util.Map
+@param com.potms.web.Ctx ctx
+@param Map<String, String> data
+@param boolean editing
+@param Long travelId
+@param List<Map<String, Object>> attachments
+@param List<Helpers.PersonOption> people
+@param List<Helpers.DictOption> categoryOpts
+!{String action = editing ? "/travel/" + travelId + "/edit" : "/travel/new";
+  String selected = Fmt.v(data, "personnel_filing_id");}
+@template.layout(ctx = ctx, title = "因私出国（境）人员明细表", content = @`
+    <h4 class="mb-3 mt-3"><i class="bi bi-airplane"></i> ${editing ? "编辑" : "新增"}因私出国（境）人员明细表</h4>
+
+    <%-- data-draft 分两支写：JTE 禁止属性名位置出现表达式 --%>
+    @if(editing)
+    <form method="POST" action="${action}" enctype="multipart/form-data" class="needs-validation" novalidate>
+    @else
+    <form method="POST" action="${action}" enctype="multipart/form-data" class="needs-validation" novalidate data-draft="travel">
+    @endif
+        <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
+
+        <div class="form-section">
+            <h5>选择备案人员</h5>
+            <p class="text-muted small mb-2">选择人员后，基本信息自动从备案信息带入，无需手动填写。</p>
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label">搜索备案人员</label>
+                    <input type="text" class="form-control" id="personSearch" placeholder="输入姓名 / 身份证号 / 单位 过滤"
+                           oninput="filterPersons('personSearch','personSelect')" autocomplete="off">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label required">备案人员</label>
+                    <select class="form-select" name="personnel_filing_id" id="personSelect" required onchange="autoFillTravel()" size="6">
+                        <option value="">请选择备案人员</option>
+                        @for(var p : people)
+                            <option value="${p.id()}" data-unit="${p.unit()}" data-dept="${p.department()}" data-name="${p.name()}"
+                                    data-position="${p.position()}" data-idno="${p.idNumber()}" data-title="${p.title()}"
+                                    data-certs="${String.join(",", p.certNos())}"
+                                    data-search="${(p.name() + p.idNumber() + p.unit()).toLowerCase()}"
+                                    selected="${Fmt.is(selected, String.valueOf(p.id()))}">${p.fullName()}</option>
+                        @endfor
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h5>基本信息 <small class="text-muted">(自动带入)</small></h5>
+            <div class="row g-3">
+                <div class="col-md-3"><label class="form-label">单位</label><input type="text" class="form-control" name="unit" id="tUnit" value="${Fmt.v(data, "unit")}" readonly></div>
+                <div class="col-md-3"><label class="form-label">部门</label><input type="text" class="form-control" name="department" id="tDept" value="${Fmt.v(data, "department")}" readonly></div>
+                <div class="col-md-2"><label class="form-label">姓名</label><input type="text" class="form-control" name="name" id="tName" value="${Fmt.v(data, "name")}" readonly></div>
+                <div class="col-md-2"><label class="form-label">职务</label><input type="text" class="form-control" name="position" id="tPos" value="${Fmt.v(data, "position")}" readonly></div>
+                <div class="col-md-2"><label class="form-label">职称</label><input type="text" class="form-control" name="title" id="tTitle" value="${Fmt.v(data, "title")}" readonly placeholder="自动带入"></div>
+            </div>
+            <div class="row g-3 mt-1">
+                <div class="col-md-3"><label class="form-label">身份证号</label><input type="text" class="form-control" name="id_number" id="tIdno" value="${Fmt.v(data, "id_number")}" readonly></div>
+                <div class="col-md-9"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="${Fmt.v(data, "destination_passport")}" placeholder="目的地国家/地区及使用的证照类型" required></div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h5>出行信息</h5>
+            <div class="row g-3">
+                <div class="col-md-3"><label class="form-label required">类别</label>
+                    <select class="form-select" name="category" required>
+                        <option value="">请选择</option>
+                        @for(var o : categoryOpts)<option value="${o.value()}" selected="${Fmt.is(Fmt.v(data, "category"), o.value())}">${o.value()}</option>@endfor
+                    </select>
+                </div>
+                <div class="col-md-4"><label class="form-label required">计划出行日期</label>
+                    <input type="text" class="form-control" name="travel_dates" value="${Fmt.v(data, "travel_dates")}" placeholder="YYYY/MM/DD-YYYY/MM/DD" inputmode="numeric" required>
+                    <div class="form-text">直接输入数字，分隔符自动补全，如 2026/08/01-2026/08/11</div>
+                </div>
+                <div class="col-md-2"><label class="form-label">批准日期</label><input type="text" class="form-control" name="approval_date" value="${Fmt.v(data, "approval_date")}" placeholder="YYYYMMDD" maxlength="8"></div>
+                <div class="col-md-3"><label class="form-label required">是否做证</label>
+                    <select class="form-select" name="need_new_passport" required>
+                        <option value="否" selected="${Fmt.is(Fmt.v(data, "need_new_passport", "否"), "否")}">否 — 已有证件</option>
+                        <option value="是" selected="${Fmt.is(Fmt.v(data, "need_new_passport", "否"), "是")}">是 — 需新办证件</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h5>证件流转</h5>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">证件号码</label>
+                    <input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="${Fmt.v(data, "passport_no")}" placeholder="选已登记证件或手输新证件号" autocomplete="off">
+                    <datalist id="certNoList"></datalist>
+                    <div class="form-text">已有证件可下拉选，做证新号手输。</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">证件领用日期 <span class="text-muted">(派生)</span></label>
+                    <input type="text" class="form-control" value="${Fmt.v(data, "passport_collect_date")}" placeholder="未领用" readonly>
+                    <div class="form-text">由「证件领用」模块登记后自动带入。</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">实际回国日期</label>
+                    <input type="text" class="form-control" name="actual_return_date" value="${Fmt.v(data, "actual_return_date")}" placeholder="YYYYMMDD" maxlength="8">
+                    <div class="form-text">回国后须于 10 个工作日内交回证件；留空则以计划结束日计。</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">证件归还日期 <span class="text-muted">(派生)</span></label>
+                    <input type="text" class="form-control" value="${Fmt.v(data, "passport_return_date")}" placeholder="未归还" readonly>
+                    <div class="form-text">由「证件领用」模块归还登记后自动带入。</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h5>附件上传（PDF扫描件）</h5>
+            <p class="text-muted small">路径A（已有证件）：须上传《个人申请报告》《审批表》。路径B（新办证件）：须增传《同意申办函》。</p>
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">个人申请报告 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_application" accept=".pdf"><div class="form-text">PDF格式，≤10MB</div></div>
+                <div class="col-md-4"><label class="form-label">审批表 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_approval" accept=".pdf"><div class="form-text">PDF格式，≤10MB</div></div>
+                <div class="col-md-4"><label class="form-label">同意申办函</label><input type="file" class="form-control" name="att_consent" accept=".pdf"><div class="form-text">路径B（新办证件）时上传</div></div>
+            </div>
+            @if(editing && !attachments.isEmpty())
+                <div class="mt-2"><strong>已有附件：</strong>
+                    <ul class="list-group list-group-flush">
+                        @for(var att : attachments)
+                            !{long aid = Fmt.n(att, "id");}
+                            <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+                                <span><i class="bi bi-file-pdf text-danger"></i> [${Fmt.s(att, "file_type")}] ${Fmt.s(att, "file_name")} (${Math.round(Fmt.n(att, "file_size") / 1024.0)} KB)</span>
+                                <span>
+                                    <a href="/travel/attachment/${aid}/preview" target="_blank" class="btn btn-sm btn-outline-info" title="预览"><i class="bi bi-eye"></i></a>
+                                    <a href="/travel/attachment/${aid}/download" class="btn btn-sm btn-outline-secondary" title="下载"><i class="bi bi-download"></i></a>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                                            data-action="/travel/attachment/${aid}/delete"
+                                            data-message="确定要删除附件 ${Fmt.s(att, "file_name")} 吗？"><i class="bi bi-trash"></i></button>
+                                </span>
+                            </li>
+                        @endfor
+                    </ul>
+                </div>
+            @endif
+        </div>
+
+        <div class="mt-3 mb-4">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+            <a href="/travel" class="btn btn-secondary">取消</a>
+        </div>
+    </form>
+    @template.components.confirm_modal()
+`, scripts = @`
+    <script>
+    function autoFillTravel() {
+        var sel = document.getElementById('personSelect');
+        var opt = sel.options[sel.selectedIndex];
+        document.getElementById('tUnit').value = opt.getAttribute('data-unit') || '';
+        document.getElementById('tDept').value = opt.getAttribute('data-dept') || '';
+        document.getElementById('tName').value = opt.getAttribute('data-name') || '';
+        document.getElementById('tPos').value = opt.getAttribute('data-position') || '';
+        document.getElementById('tIdno').value = opt.getAttribute('data-idno') || '';
+        document.getElementById('tTitle').value = opt.getAttribute('data-title') || '';
+        // 填充该人已登记证件号作为「证件号码」的候选
+        var dl = document.getElementById('certNoList');
+        if (dl) {
+            dl.innerHTML = '';
+            (opt.getAttribute('data-certs') || '').split(',').filter(Boolean).forEach(function (x) {
+                var o = document.createElement('option'); o.value = x; dl.appendChild(o);
+            });
+        }
+    }
+    function filterPersons(searchId, selectId) {
+        var q = document.getElementById(searchId).value.trim().toLowerCase();
+        var sel = document.getElementById(selectId);
+        for (var i = 0; i < sel.options.length; i++) {
+            var o = sel.options[i];
+            if (!o.value) continue;
+            var hay = (o.getAttribute('data-search') || o.text).toLowerCase();
+            o.hidden = q !== '' && hay.indexOf(q) === -1;
+        }
+    }
+    // 证件领用日期已迁移至「证件领用」模块（须手写签名），此处仅只读展示。
+    document.addEventListener('DOMContentLoaded', function() {
+        if (document.getElementById('personSelect').value) autoFillTravel();
+    });
+    </script>
+`)

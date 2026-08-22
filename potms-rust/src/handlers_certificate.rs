@@ -133,7 +133,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Form(f
     let mut req = Req::new(&st, &headers, &uri);
     if let Some(r) = require_login(&st, &mut req) { return r; }
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
-    let data = extract(&form, &req.sess.username());
+    let data = extract(&form, &req.sess.operator_name());
     let errs = validate(&data);
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }
@@ -166,7 +166,7 @@ pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM certificates WHERE id = ?", &[I(cert_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "certificate.list", &[]); }
-    let data = extract(&form, &req.sess.username());
+    let data = extract(&form, &req.sess.operator_name());
     let errs = validate(&data);
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }

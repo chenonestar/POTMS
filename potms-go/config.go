@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -24,6 +25,15 @@ var (
 	MaxContentLength   = 10 << 20 // 上传 10MB
 	CertWarnDays       = 30       // 证照到期预警天数
 	TZOffsetHours      = 8        // 显示时区偏移（store UTC / display local）
+
+	// 证件领用 / 归还是否强制手写签名（POTMS_REQUIRE_SIGNATURE，默认强制）。
+	//
+	// 默认强制：签名就是「本人确实领了/还了」的凭证，一旦允许留空，这条记录就只剩
+	// 经办人的一面之词。放宽必须是明确的选择，不能是默认值。
+	//
+	// 单位尚未配备手写板、或存在代领代还与历史回填记录时，设 POTMS_REQUIRE_SIGNATURE=0
+	// 暂时放宽。放宽后签名板仍然显示（能签就签），只是留空也能提交。
+	RequireSignature = true
 )
 
 func initConfig() {
@@ -47,9 +57,15 @@ func initConfig() {
 		os.MkdirAll(d, 0o755)
 	}
 	if v := os.Getenv("POTMS_TZ_OFFSET"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
 			TZOffsetHours = n
 		}
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("POTMS_REQUIRE_SIGNATURE"))) {
+	case "0", "false", "no", "off":
+		RequireSignature = false
+	default:
+		RequireSignature = true
 	}
 	SecretKey = loadOrCreateSecret()
 }

@@ -22,7 +22,7 @@ macro_rules! export_handler {
             let ids = selected_ids(&req.query);
             let (path, filename, where_) = {
                 let conn = st.db.lock().unwrap();
-                let (path, filename, where_) = $build(&conn, &st.cfg, &req.sess.username(), &q, &ids);
+                let (path, filename, where_) = $build(&conn, &st.cfg, &req.sess.operator_name(), &q, &ids);
                 (path, filename, where_)
             };
             match path {
@@ -72,6 +72,7 @@ fn print_spec(t: &str) -> Option<(&'static str, &'static str, &'static str)> {
         "certificate" => ("certificates", "因私出国（境）备案人员证照登记表", "certificate.list"),
         "travel" => ("travel_details", "因私出国（境）人员明细表", "travel.list"),
         "decontrol" => ("decontrol_filing", "因私事出国（境）人员撤控备案表", "decontrol.list"),
+        "issuance" => ("cert_issuance", "因私出国（境）证件领用登记表", "issuance.list"),
         _ => return None,
     })
 }
@@ -82,11 +83,21 @@ pub async fn print_view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path
     let spec = match print_spec(&print_type) { Some(s) => s, None => { flash(&mut req, "不支持的打印类型。", "danger"); return redirect(&st, &req, "dashboard.index", &[]); } };
     let data = {
         let conn = st.db.lock().unwrap();
-        let row = db::query_one(&conn, &format!("SELECT * FROM {} WHERE id = ?", spec.0), &[I(id)]);
+        // 领用单要 JOIN 备案表拿单位，并把证件种类代码转成中文
+        let row = if print_type == "issuance" {
+            db::query_one(&conn, "SELECT i.*, pf.work_unit FROM cert_issuance i \
+                 JOIN personnel_filing pf ON i.personnel_filing_id = pf.id WHERE i.id = ?", &[I(id)])
+        } else {
+            db::query_one(&conn, &format!("SELECT * FROM {} WHERE id = ?", spec.0), &[I(id)])
+        };
         match row {
             None => { drop(conn); flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, spec.2, &[]); }
             Some(row) => {
                 let mut d = json!({"title": spec.1, "row": row, "mode": print_type});
+                if print_type == "issuance" {
+                    let codes = helpers::row_str(&d["row"], "cert_types");
+                    d["type_labels"] = json!(crate::handlers_issuance::types_label(&conn, &codes));
+                }
                 if print_type == "filing" {
                     if let Some(iid) = d["row"].get("personnel_info_id").and_then(|v| v.as_i64()) {
                         d["info"] = json!(db::query_one(&conn, "SELECT * FROM personnel_info WHERE id = ?", &[I(iid)]));
@@ -114,3 +125,9 @@ pub async fn batch_print(State(st): State<St>, headers: HeaderMap, uri: Uri, Pat
     let total = rows.len();
     page(&st, &mut req, "export/batch_print.html", json!({"title": spec.1, "rows": rows, "mode": print_type, "total": total}))
 }
+
+export_handler!(issuance_export, "cert_issuance", "issuance.list", |conn, cfg, op, q: &std::collections::HashMap<String,String>, ids: &[i64]| {
+    let (w, p) = crate::handlers_issuance::issuance_filters(q, ids);
+    let (path, fname) = crate::excel::export_issuance(conn, cfg, op, &w, &p);
+    (path, fname, w)
+});

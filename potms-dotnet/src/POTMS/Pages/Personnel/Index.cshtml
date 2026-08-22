@@ -1,0 +1,83 @@
+@page "/Personnel"
+@model POTMS.Pages.Personnel.IndexModel
+@{ ViewData["Title"] = "人员备案"; }
+
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-people"></i> 因私出国（境）人员登记备案</h4>
+    <div>
+        <a href="/Personnel/InfoForm" class="btn btn-outline-primary"><i class="bi bi-person-plus"></i> 新增信息登记表</a>
+        <a href="/Personnel/FilingForm" class="btn btn-primary ms-1"><i class="bi bi-plus-lg"></i> 新增备案表</a>
+        <a href="/Personnel/InfoList" class="btn btn-outline-secondary ms-1"><i class="bi bi-list-columns"></i> 信息表管理</a>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('/Export/Filing');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('/Export/Filing');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="/Export/Filing">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 身份证号 / 单位" value="@Model.Search"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="status">
+            <option value="">全部状态</option>
+            <option value="active" selected="@(Model.StatusFilter == "active")">在案</option>
+            <option value="decontrolled" selected="@(Model.StatusFilter == "decontrolled")">已撤控</option>
+        </select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="tag">
+            <option value="">全部标记</option>
+            <option value="新增" selected="@(Model.TagFilter == "新增")">新增</option>
+            <option value="变更" selected="@(Model.TagFilter == "变更")">变更</option>
+        </select></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="/Personnel" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="姓名">姓名</th><th data-col="性别">性别</th><th data-col="出生日期">出生日期</th>
+        <th data-col="身份证号">身份证号</th><th data-col="工作单位">工作单位</th>
+        <th data-col="职务">职务/职称</th><th data-col="标记">标记</th><th data-col="状态">状态</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    @foreach (var r in Model.Items.Rows)
+    {
+        <tr>
+            <td><input type="checkbox" class="row-check" value="@r.Id"></td>
+            <td>@r.Name</td><td>@r.Gender</td><td>@r.BirthDate</td>
+            <td><small>@r.IdNumber</small></td><td title="@r.WorkUnit">@r.WorkUnit</td>
+            <td>@r.PositionOrTitle</td>
+            <td><span class="badge bg-@(r.Tag == "变更" ? "warning text-dark" : "info")">@r.Tag</span></td>
+            <td>@(r.Status == "active"
+                    ? Html.Raw("<span class=\"badge bg-success\">在案</span>")
+                    : Html.Raw("<span class=\"badge bg-secondary\">已撤控</span>"))</td>
+            <td><div class="btn-group btn-group-sm">
+                <a href="/Personnel/View/@r.Id" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+                <a href="/Print/filing/@r.Id" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+                <a href="/Personnel/FilingForm?id=@r.Id" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+                @if (r.Status == "active")
+                {
+                    <a href="/Decontrol/Form?filingId=@r.Id" class="btn btn-outline-dark" title="撤控"><i class="bi bi-arrow-repeat"></i></a>
+                }
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                        data-action="/Personnel?handler=Delete&amp;id=@r.Id" data-message="确定要删除 @r.Name 的备案记录吗？"><i class="bi bi-trash"></i></button>
+            </div></td>
+        </tr>
+    }
+    @if (Model.Items.Total == 0)
+    {
+        <tr><td colspan="10" class="text-center text-muted py-4">暂无备案记录</td></tr>
+    }
+    </tbody>
+</table>
+</div></div>
+<partial name="_ConfirmModal" />
+
+@section Scripts {
+<script>document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_filing'); });</script>
+}

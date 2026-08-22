@@ -7,7 +7,7 @@ from flask.typing import ResponseReturnValue
 from auth import login_required
 from config import Config
 from database import get_db
-from utils.helpers import paginate, log_action
+from utils.helpers import paginate, log_action, operator_name
 
 logs_bp = Blueprint("logs", __name__)
 
@@ -33,7 +33,7 @@ def export() -> ResponseReturnValue:
     try:
         from flask import session
         from utils.excel_export import export_logs
-        filepath, filename = export_logs(session.get("username", "admin"), year)
+        filepath, filename = export_logs(operator_name(), year)
         log_action("export", "operation_logs", detail=f"归档导出 {year} 年操作日志：{filename}")
         return send_file(filepath, as_attachment=True, download_name=filename)
     except Exception as e:
@@ -154,9 +154,15 @@ def index() -> ResponseReturnValue:
         {"code": "batch", "value": "批量导入"},
     ]
 
+    # 日志里存的是登录账号；显示时补上姓名，渲染成「张三（admin）」。
+    # 姓名从 users 表现查，查不到（比如账号已改名或删除）就只显示账号。
+    names = {r["username"]: (r["full_name"] or "").strip()
+             for r in get_db().execute("SELECT username, full_name FROM users").fetchall()}
+
     return render_template(
         "logs/view.html",
         items=pg,
+        operator_names=names,
         action_filter=action_filter,
         target_filter=target_filter,
         date_from=date_from,

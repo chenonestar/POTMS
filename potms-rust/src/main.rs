@@ -14,9 +14,11 @@ mod handlers_travel;
 mod handlers_decontrol;
 mod handlers_misc;
 mod handlers_export;
+mod handlers_issuance;
 mod handlers_import;
 mod excel;
 mod backup;
+mod signature;
 
 use axum::{
     extract::{Path, State},
@@ -184,30 +186,14 @@ async fn not_found(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respon
     )
 }
 
-#[tokio::main]
-async fn main() {
-    let cfg = config::Config::load();
-    let conn = db::open(&cfg.database);
-    db::init_schema(&conn);
-    db::run_migrations(&conn);
-    let first_run = db::seed_data(&conn);
-    if first_run {
-        println!("首次运行：已创建默认账户 admin / admin123（请尽快修改）");
-    }
-    let db: Db = Arc::new(Mutex::new(conn));
-    let env = render::build_env(db.clone(), cfg.clone());
-
-    let state: St = Arc::new(AppState {
-        db,
-        env,
-        cfg: cfg.clone(),
-        lockout: session::Lockout::default(),
-    });
-
-    let app = Router::new()
+/// 组装全部路由。抽成函数是为了让测试能驱动**同一套**路由——
+/// 测试里另抄一份 Router，测过的就不是真正跑起来的那个。
+pub fn build_app(state: St) -> Router {
+    Router::new()
         .route("/login", get(handlers_auth::login_get).post(handlers_auth::login_post))
         .route("/logout", get(handlers_auth::logout))
         .route("/account", get(handlers_auth::account_get).post(handlers_auth::account_post))
+        .route("/account/backfill-operator", post(handlers_auth::backfill_operator))
         .route("/", get(handlers_dashboard::index))
         .route("/backup/now", post(handlers_dashboard::backup_now))
         // 人员备案
@@ -273,10 +259,45 @@ async fn main() {
         // 导入
         .route("/import/", get(handlers_import::index_get).post(handlers_import::index_post))
         .route("/import/template", get(handlers_import::download_template))
+        // 证件领用（REQ-012）
+        .route("/issuance/", get(handlers_issuance::list))
+        .route("/issuance/new", get(handlers_issuance::new_get).post(handlers_issuance::new_post))
+        .route("/issuance/:iss_id", get(handlers_issuance::view))
+        .route("/issuance/:iss_id/return",
+               get(handlers_issuance::return_get).post(handlers_issuance::return_post))
+        .route("/issuance/:iss_id/void", post(handlers_issuance::void))
+        .route("/issuance/:iss_id/signature.png", get(handlers_issuance::signature_png))
+        .route("/export/issuance", get(handlers_export::issuance_export))
         .route("/static/*path", get(static_handler))
+        // 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，明确应答 204，
+        // 浏览器会记住并停止追问，也免得每个标签页都撞进 404 兜底页。
+        .route("/favicon.ico", get(|| async { axum::http::StatusCode::NO_CONTENT }))
         .layer(axum::extract::DefaultBodyLimit::max(config::MAX_CONTENT_LENGTH))
         .fallback(not_found)
-        .with_state(state);
+        .with_state(state)
+}
+
+#[tokio::main]
+async fn main() {
+    let cfg = config::Config::load();
+    let conn = db::open(&cfg.database);
+    db::init_schema(&conn);
+    db::run_migrations(&conn);
+    let first_run = db::seed_data(&conn);
+    if first_run {
+        println!("首次运行：已创建默认账户 admin / admin123（请尽快修改）");
+    }
+    let db: Db = Arc::new(Mutex::new(conn));
+    let env = render::build_env(db.clone(), cfg.clone());
+
+    let state: St = Arc::new(AppState {
+        db,
+        env,
+        cfg: cfg.clone(),
+        lockout: session::Lockout::default(),
+    });
+
+    let app = build_app(state);
 
     let addr = "127.0.0.1:5000";
     println!("POTMS (Rust) 启动：http://{addr}");

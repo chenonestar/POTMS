@@ -111,7 +111,7 @@ func extractInfoForm(r *http.Request) map[string]string {
 		"education":       f("education"), "degree": f("degree"), "title": f("title"),
 		"rank": f("rank"), "political_status": f("political_status"),
 		"party_join_date": parseDateInput(f("party_join_date")),
-		"position":        f("position"), "operator": sessionUser(r),
+		"position":        f("position"), "operator": operatorName(r),
 	}
 }
 
@@ -230,7 +230,7 @@ func extractFilingForm(r *http.Request) map[string]string {
 		"residence":        normalizeResidence(f("residence")),
 		"political_status": f("political_status"), "work_unit": f("work_unit"),
 		"position_or_title": f("position_or_title"), "supervisor_unit": f("supervisor_unit"),
-		"tag": tag, "informed": informed, "remarks": f("remarks"), "operator": sessionUser(r),
+		"tag": tag, "informed": informed, "remarks": f("remarks"), "operator": operatorName(r),
 	}
 }
 

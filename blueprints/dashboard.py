@@ -113,8 +113,17 @@ def index() -> ResponseReturnValue:
         "travel_start DESC, created_at DESC LIMIT 5"
     ).fetchall()
 
+    # ——— 证件领用 ———
+    iss_pending = db.execute(
+        "SELECT COUNT(*) FROM cert_issuance WHERE status = 'issued'").fetchone()[0]
+    iss_this_month = db.execute(
+        "SELECT COUNT(*) FROM cert_issuance WHERE status != 'voided' AND issue_date LIKE ?",
+        (datetime.now().strftime("%Y%m") + "%",)).fetchone()[0]
+
     return render_template(
         "dashboard.html",
+        iss_pending=iss_pending,
+        iss_this_month=iss_this_month,
         total_active=total_active,
         total_decontrolled=total_decontrolled,
         total_certificates=total_certificates,

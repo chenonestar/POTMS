@@ -5,6 +5,8 @@ from functools import wraps
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from flask.typing import ResponseReturnValue
 
+import sqlite3
+
 from database import get_db
 
 auth_bp = Blueprint("auth", __name__)
@@ -95,6 +97,8 @@ def login() -> ResponseReturnValue:
             session.permanent = True  # 启用 PERMANENT_SESSION_LIFETIME 超时（默认1小时）
             session["logged_in"] = True
             session["username"] = user["username"]
+            # 单据上的经办人取这个；没填姓名时回退到账号，保证字段永不为空
+            session["full_name"] = (user["full_name"] or "").strip() or user["username"]
             flash("登录成功。", "success")
             return redirect(url_for("dashboard.index"))
 
@@ -133,6 +137,7 @@ def account() -> ResponseReturnValue:
 
         current_pw = request.form.get("current_password", "")
         new_username = request.form.get("new_username", "").strip()
+        new_full_name = request.form.get("new_full_name", "").strip()
         new_pw = request.form.get("new_password", "")
         confirm_pw = request.form.get("confirm_password", "")
 
@@ -143,9 +148,12 @@ def account() -> ResponseReturnValue:
 
         change_username = bool(new_username) and new_username != user["username"]
         change_password = bool(new_pw)
+        change_full_name = new_full_name != (user["full_name"] or "")
 
-        if not change_username and not change_password:
+        if not change_username and not change_password and not change_full_name:
             errors.append("未检测到任何修改。")
+        if len(new_full_name) > 30:
+            errors.append("姓名过长（最多 30 个字符）。")
         if not new_username:
             errors.append("用户名不能为空。")
         elif change_username:
@@ -163,17 +171,23 @@ def account() -> ResponseReturnValue:
         if errors:
             for e in errors:
                 flash(e, "danger")
-            return render_template("account.html", username=user["username"])
+            return render_template("account.html", username=user["username"],
+                                   full_name=user["full_name"] or "",
+                                   legacy=_legacy_operator_counts(user["username"]))
 
         if change_username:
             db.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, user["id"]))
         if change_password:
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
                        (hash_password(new_pw), user["id"]))
+        if change_full_name:
+            db.execute("UPDATE users SET full_name = ? WHERE id = ?",
+                       (new_full_name or None, user["id"]))
         db.commit()
         log_action("update", "users", user["id"],
                    detail="账户变更：" + "、".join(
                        ([f"用户名→{new_username}"] if change_username else [])
+                       + ([f"姓名→{new_full_name or '（清空）'}"] if change_full_name else [])
                        + (["密码"] if change_password else [])))
 
         # 改密码后为安全起见强制重新登录
@@ -184,7 +198,93 @@ def account() -> ResponseReturnValue:
 
         if change_username:
             session["username"] = new_username
+        if change_username or change_full_name:
+            session["full_name"] = new_full_name or new_username or user["username"]
         flash("账户信息已更新。", "success")
         return redirect(url_for("auth.account"))
 
-    return render_template("account.html", username=user["username"])
+    return render_template("account.html", username=user["username"],
+                           full_name=user["full_name"] or "",
+                           legacy=_legacy_operator_counts(user["username"]))
+
+
+# ---------------------------------------------------------------------------
+# 历史经办人回填
+#
+# 升级那一刻系统还不知道真实姓名——得先去账户设置填。所以「加列」和「改历史
+# 数据」不能是同一步，回填只能等姓名填好之后由用户显式触发。
+#
+# 刻意做成按钮而不是升级时静默 UPDATE：批量改历史数据不可逆，得让人看清影响
+# 条数再点。执行前自动备一次库，整件事也记进操作日志。
+# ---------------------------------------------------------------------------
+
+# 业务表的经办人字段。operation_logs 不在其列——那是审计痕迹，记的是账号。
+_OPERATOR_COLUMNS = [
+    ("personnel_info", "operator"),
+    ("personnel_filing", "operator"),
+    ("certificates", "operator"),
+    ("travel_details", "operator"),
+    ("decontrol_filing", "operator"),
+    ("cert_issuance", "operator"),
+    ("cert_issuance", "issuer"),
+    ("cert_issuance", "return_operator"),
+]
+
+
+def _legacy_operator_counts(username: str) -> dict:
+    """统计业务表里还有多少条记录把登录账号当经办人。"""
+    db = get_db()
+    total = 0
+    for table, col in _OPERATOR_COLUMNS:
+        try:
+            total += db.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (username,)).fetchone()[0]
+        except sqlite3.OperationalError:
+            continue        # 老库可能还没有 cert_issuance 表
+    return {"username": username, "total": total}
+
+
+@auth_bp.route("/account/backfill-operator", methods=["POST"])
+@login_required
+def backfill_operator() -> ResponseReturnValue:
+    """把业务表里等于登录账号的经办人，批量改成真实姓名。"""
+    from utils.helpers import log_action
+    from utils.backup import run_daily_backup
+
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE username = ?",
+                      (session.get("username"),)).fetchone()
+    if not user:
+        session.clear()
+        return redirect(url_for("auth.login"))
+
+    full_name = (user["full_name"] or "").strip()
+    if not full_name:
+        flash("请先填写并保存姓名，再回填历史记录。", "warning")
+        return redirect(url_for("auth.account"))
+    if full_name == user["username"]:
+        flash("姓名与登录账号相同，无需回填。", "info")
+        return redirect(url_for("auth.account"))
+
+    # 不可逆的批量写入，先留一份退路
+    try:
+        run_daily_backup(force=True)               # force：当天已备过也要再备，因为马上要改数据
+    except Exception as exc:                       # noqa: BLE001 - 备份失败就别动数据
+        flash(f"自动备份失败（{exc}），已中止回填。请手动备份 data.db 后重试。", "danger")
+        return redirect(url_for("auth.account"))
+
+    changed = 0
+    for table, col in _OPERATOR_COLUMNS:
+        try:
+            cur = db.execute(f"UPDATE {table} SET {col} = ? WHERE {col} = ?",
+                             (full_name, user["username"]))
+            changed += cur.rowcount
+        except sqlite3.OperationalError:
+            continue
+    db.commit()
+
+    log_action("update", "users", user["id"],
+               detail=f"历史经办人回填：{user['username']} → {full_name}，共 {changed} 条")
+    flash(f"已把 {changed} 条历史记录的经办人由「{user['username']}」更新为「{full_name}」。"
+          "操作日志保持原样（审计需要登录账号）。", "success")
+    return redirect(url_for("auth.account"))

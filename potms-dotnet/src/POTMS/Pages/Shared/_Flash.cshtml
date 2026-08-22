@@ -1,0 +1,16 @@
+@inject POTMS.Services.Flash FlashSvc
+@{
+    var messages = FlashSvc.Pop();
+}
+@if (messages.Count > 0)
+{
+    <div class="mt-3">
+        @foreach (var m in messages)
+        {
+            <div class="alert alert-@m.Category alert-dismissible fade show" role="alert">
+                @m.Message
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+    </div>
+}

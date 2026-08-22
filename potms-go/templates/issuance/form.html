@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}证件领用登记{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-vector-pen"></i> 证件领用登记</h4>
+
+{% if travel %}
+<div class="alert alert-info py-2">
+    <i class="bi bi-airplane"></i> 关联出行记录 #{{ travel.id }}：
+    <strong>{{ travel.name }}</strong> · {{ travel.destination_passport }} · 计划出行 {{ travel.travel_dates }}
+    {% if travel.approval_date %}· 批准日期 {{ travel.approval_date }}{% endif %}
+</div>
+{% endif %}
+
+<form method="POST" id="signForm" class="needs-validation" novalidate>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="travel_id" value="{{ data.travel_id or '' }}">
+
+<div class="form-section">
+    <h5>领用人</h5>
+    <p class="text-muted small mb-2">选择备案人员后，姓名 / 身份证号自动带入；勾选证件种类后自动填入已登记的证件号码。</p>
+    <div class="row g-3">
+        <div class="col-md-5">
+            <label class="form-label">搜索备案人员</label>
+            <input type="text" class="form-control" id="personSearch" placeholder="输入姓名 / 身份证号 / 单位 过滤" oninput="filterPersons('personSearch','personSelect')" autocomplete="off">
+        </div>
+        <div class="col-md-5">
+            <label class="form-label required">备案人员</label>
+            <select class="form-select" name="personnel_filing_id" id="personSelect" required size="6" {% if travel %}data-locked="1"{% endif %}>
+                <option value="">请选择备案人员</option>
+                {% for p in personnel_opts() %}
+                <option value="{{ p.id }}"
+                        data-name="{{ p.name }}"
+                        data-idno="{{ p.id_number or '' }}"
+                        data-cert01="{{ p.cert_by_type['01'] | default('', true) }}"
+                        data-cert02="{{ p.cert_by_type['02'] | default('', true) }}"
+                        data-cert03="{{ p.cert_by_type['03'] | default('', true) }}"
+                        data-search="{{ (p.name ~ (p.id_number or '') ~ p.unit) | lower }}"
+                        {{ 'selected' if data.personnel_filing_id | string == p.id | string }}>{{ p.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="row g-3 mt-2">
+        <div class="col-md-3">
+            <label class="form-label required">领用人姓名</label>
+            <input type="text" class="form-control" name="holder_name" id="holderName" value="{{ data.holder_name or '' }}" required readonly>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">身份证号 <span class="text-muted">(自动带入)</span></label>
+            <input type="text" class="form-control" name="id_number" id="holderIdNo" value="{{ data.id_number or '' }}" readonly>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>领用证件</h5>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label required">证件种类（可多选）</label>
+            <div>
+                {# 逗号包裹后做子串判断，而不是 split()：gonja 解析
+                   (a or '').split(',') 时不认括号，会当成 a or (''.split(',')) 而炸。
+                   三版模板要逐字一致，所以统一改成这种写法。 #}
+                {% set picked = ',' ~ (data.cert_types | default('', true)) ~ ',' %}
+                {% for o in dict_opts('cert_type') %}
+                <div class="form-check">
+                    <input class="form-check-input cert-type" type="checkbox" name="cert_types" value="{{ o.code }}" id="ct{{ o.code }}"
+                           {{ 'checked' if (',' ~ o.code ~ ',') in picked }}>
+                    <label class="form-check-label" for="ct{{ o.code }}">{{ o.value }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">证件号码 <span class="text-muted">(按勾选种类自动带入，可修改)</span></label>
+            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="多本证件以顿号分隔">
+            <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。</div>
+        </div>
+    </div>
+    <div class="row g-3 mt-2">
+        <div class="col-md-3">
+            <label class="form-label required">领用日期</label>
+            <input type="text" class="form-control" name="issue_date" value="{{ data.issue_date or '' }}" placeholder="YYYYMMDD" maxlength="8" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">经办人（发放人）</label>
+            <input type="text" class="form-control" value="{{ session.full_name or session.username }}" readonly>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">备注</label>
+            <input type="text" class="form-control" name="remarks" value="{{ data.remarks or '' }}">
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>领用人签名</h5>
+    {% include "components/signature_pad.html" %}
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存领用登记</button>
+    <a href="{{ url_for('issuance.list') }}" class="btn btn-secondary">取消</a>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/signature.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sel = document.getElementById('personSelect');
+    var nameEl = document.getElementById('holderName');
+    var idEl = document.getElementById('holderIdNo');
+    var nosEl = document.getElementById('certNos');
+
+    // 勾选的证件种类 → 拼出对应号码
+    function syncCertNos() {
+        var o = sel.options[sel.selectedIndex];
+        if (!o || !o.value) return;
+        var picked = [];
+        document.querySelectorAll('.cert-type:checked').forEach(function (cb) {
+            var no = o.getAttribute('data-cert' + cb.value);
+            if (no) picked.push(no);
+        });
+        nosEl.value = picked.join('、');
+    }
+
+    function fillPerson() {
+        var o = sel.options[sel.selectedIndex];
+        if (!o || !o.value) { nameEl.value = ''; idEl.value = ''; return; }
+        nameEl.value = o.getAttribute('data-name') || '';
+        idEl.value = o.getAttribute('data-idno') || '';
+        syncCertNos();
+    }
+
+    sel.addEventListener('change', fillPerson);
+    document.querySelectorAll('.cert-type').forEach(function (cb) {
+        cb.addEventListener('change', syncCertNos);
+    });
+
+    // 从出行记录带入时人员已确定，禁止改选以免与出行记录脱节
+    if (sel.getAttribute('data-locked')) {
+        sel.querySelectorAll('option').forEach(function (op) {
+            if (!op.selected) op.disabled = true;
+        });
+    }
+
+    // 不把 form 交给 attach()：signature.js 是五版共用的同一份文件（md5 一致），
+    // 不能为了「是否强制」这条本版配置去改它。这里自己绑 submit——留空时是否拦下，
+    // 由服务端下发的 REQUIRE_SIGNATURE 决定。
+    var pad = POTMSSignature.attach({
+        canvas: document.getElementById('signCanvas'),
+        clearBtn: document.getElementById('signClear'),
+        undoBtn: document.getElementById('signUndo'),
+        pngInput: document.getElementById('signPng'),
+        metaInput: document.getElementById('signMeta'),
+        hintEl: document.getElementById('signHint')
+    });
+    var signRequired = {{ 'true' if config.REQUIRE_SIGNATURE else 'false' }};
+    document.getElementById('signForm').addEventListener('submit', function (ev) {
+        if (!pad.commit() && signRequired) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            alert('请先手写签名后再提交。');
+        }
+    });
+});
+</script>
+{% endblock %}

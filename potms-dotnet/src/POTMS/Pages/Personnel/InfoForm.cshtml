@@ -1,0 +1,73 @@
+@page "/Personnel/InfoForm"
+@model POTMS.Pages.Personnel.InfoFormModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "信息登记表";
+    using var cn = Database.Open();
+    List<POTMS.Services.DictOption> Opts(string c) => POTMS.Services.Helpers.GetDictOptions(cn, c);
+    var orgs = POTMS.Services.Helpers.GetOrgTreeOptions(cn);
+    string V(string k) => Model.Data.TryGetValue(k, out var v) ? v ?? "" : "";
+}
+<h4 class="mb-3 mt-3"><i class="bi bi-person-lines-fill"></i> @(Model.Editing ? "编辑" : "新增")备案人员信息登记表</h4>
+
+@{ var draftAttr = Model.Editing ? null : "info"; }
+<form method="post" class="needs-validation" novalidate data-draft="@draftAttr">
+<div class="form-section"><h5>基本信息</h5><div class="row g-3">
+    <div class="col-md-4"><label class="form-label required">单位</label>
+        <select class="form-select" name="unit" required>
+            <option value="">请选择</option>
+            @foreach (var o in orgs.Where(x => x.Depth == 0))
+            { <option value="@o.Name" selected="@(V("unit") == o.Name)">@o.Name</option> }
+        </select></div>
+    <div class="col-md-4"><label class="form-label required">部门</label>
+        <input type="text" class="form-control" name="department" value="@V("department")" required></div>
+    <div class="col-md-4"><label class="form-label required">姓名</label>
+        <input type="text" class="form-control" name="name" value="@V("name")" required></div>
+</div><div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label required">性别</label>
+        <select class="form-select" name="gender" required>
+            <option value="">请选择</option>
+            <option value="男" selected="@(V("gender") == "男")">男</option>
+            <option value="女" selected="@(V("gender") == "女")">女</option>
+        </select></div>
+    <div class="col-md-3"><label class="form-label required">出生日期</label>
+        <input type="text" class="form-control" name="birth_date" value="@V("birth_date")" placeholder="YYYYMMDD" maxlength="8" required></div>
+    <div class="col-md-3"><label class="form-label">身份证号</label>
+        <input type="text" class="form-control" name="id_number" value="@V("id_number")" maxlength="18">
+        <div class="form-text">填写后将校验校验位，并与出生日期、性别比对</div></div>
+    <div class="col-md-3"><label class="form-label">参加工作日期</label>
+        <input type="text" class="form-control" name="work_start_date" value="@V("work_start_date")" placeholder="YYYYMMDD" maxlength="8"></div>
+</div></div>
+
+<div class="form-section"><h5>学历与职务</h5><div class="row g-3">
+    @foreach (var (field, label, req) in new[] {
+        ("education", "学历", true), ("degree", "学位", true), ("title", "职称", false), ("rank", "职级", true) })
+    {
+        <div class="col-md-3">
+            <label class="form-label @(req ? "required" : "")">@label</label>
+            <select class="form-select" name="@field" required="@req">
+                <option value="">请选择</option>
+                @foreach (var o in Opts(field))
+                { <option value="@o.Code" selected="@(V(field) == o.Code)">@o.Value</option> }
+            </select>
+        </div>
+    }
+</div><div class="row g-3 mt-1">
+    <div class="col-md-3"><label class="form-label required">政治面貌</label>
+        <select class="form-select" name="political_status" id="politicalStatus" required>
+            <option value="">请选择</option>
+            @foreach (var o in Opts("political_status"))
+            { <option value="@o.Value" selected="@(V("political_status") == o.Value)">@o.Value</option> }
+        </select></div>
+    <div class="col-md-3"><label class="form-label">入党日期</label>
+        <input type="text" class="form-control" name="party_join_date" id="partyJoinDate" value="@V("party_join_date")" placeholder="YYYYMMDD" maxlength="8">
+        <div class="form-text">党员/预备党员须填写</div></div>
+    <div class="col-md-6"><label class="form-label required">职务（岗位名称）</label>
+        <input type="text" class="form-control" name="position" value="@V("position")" required></div>
+</div></div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+    <a href="/Personnel/InfoList" class="btn btn-secondary">取消</a>
+</div>
+</form>

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    full_name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS personnel_info (
@@ -126,6 +127,110 @@ pub fn run_migrations(conn: &Connection) {
     ] {
         let _ = conn.execute(idx, []);
     }
+
+    // 登录账户的真实姓名。
+    //
+    // 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+    // 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+    // 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+    //
+    // 五版共用一个 data.db，库可能是任意一版建的，所以每一版都要能补这一列。
+    add_column(conn, "users", "full_name", "TEXT");
+
+    // 证件领用记录表（REQ-012，含手写签名）。放在迁移里而不是 SCHEMA_SQL：
+    // 建表语句要与 Python 版 run_migrations 逐字对齐，五版共用同一个 data.db。
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS cert_issuance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            travel_id INTEGER REFERENCES travel_details(id),
+            personnel_filing_id INTEGER NOT NULL REFERENCES personnel_filing(id),
+            holder_name TEXT NOT NULL, id_number TEXT,
+            cert_types TEXT NOT NULL, cert_nos TEXT,
+            issue_date TEXT NOT NULL, issuer TEXT NOT NULL,
+            sign_image BLOB, sign_meta TEXT,
+            return_date TEXT, return_sign_image BLOB, return_sign_meta TEXT,
+            return_operator TEXT,
+            status TEXT NOT NULL DEFAULT 'issued', void_reason TEXT, remarks TEXT,
+            operator TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+         CREATE INDEX IF NOT EXISTS idx_issuance_travel ON cert_issuance(travel_id);
+         CREATE INDEX IF NOT EXISTS idx_issuance_filing ON cert_issuance(personnel_filing_id);
+         CREATE INDEX IF NOT EXISTS idx_issuance_status ON cert_issuance(status);",
+    );
+
+    // 证件种类字典：seed_data 只在首次运行执行，存量库在此补齐
+    for (cat, code, val, ord) in SEED_DICT.iter().filter(|d| d.0 == "cert_type") {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO sys_dict (category, code, value, sort_order) VALUES (?, ?, ?, ?)",
+            rusqlite::params![cat, code, val, ord],
+        );
+    }
+
+    backfill_legacy_issuance(conn);
+}
+
+/// 把「出行表上已有领用日期、却没有领用记录」的历史数据补成一条领用记录（无签名）。
+/// 幂等：仅对尚无领用记录的 travel_id 回填。
+///
+/// 早期库允许 personnel_filing_id 为空，这类记录无法确定领用人，跳过——其出行表上的
+/// 领用日期保持原样，不影响既有逾期口径。
+fn backfill_legacy_issuance(conn: &Connection) {
+    let rows = query_maps(
+        conn,
+        "SELECT t.id, t.personnel_filing_id, t.name, t.id_number, t.passport_no, \
+         t.passport_collect_date, t.passport_return_date, t.operator \
+         FROM travel_details t \
+         WHERE t.passport_collect_date IS NOT NULL AND t.passport_collect_date != '' \
+           AND t.personnel_filing_id IS NOT NULL \
+           AND NOT EXISTS (SELECT 1 FROM cert_issuance c WHERE c.travel_id = t.id)",
+        &[],
+    );
+    for r in rows {
+        let op = {
+            let o = crate::helpers::row_str(&r, "operator");
+            if o.is_empty() { "system".to_string() } else { o }
+        };
+        let rdate = crate::helpers::row_str(&r, "passport_return_date");
+        let returned = !rdate.is_empty();
+        let _ = conn.execute(
+            "INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, \
+             cert_types, cert_nos, issue_date, issuer, return_date, return_operator, status, \
+             remarks, operator) VALUES (?, ?, ?, ?, '01', ?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                crate::helpers::row_i64(&r, "id"),
+                crate::helpers::row_i64(&r, "personnel_filing_id"),
+                crate::helpers::row_str(&r, "name"),
+                crate::helpers::row_str(&r, "id_number"),
+                crate::helpers::row_str(&r, "passport_no"),
+                crate::helpers::row_str(&r, "passport_collect_date"),
+                &op,
+                if returned { Some(rdate.clone()) } else { None },
+                if returned { Some(op.clone()) } else { None },
+                if returned { "returned" } else { "issued" },
+                "历史数据回填（证件种类按护照推定，无签名）",
+                &op,
+            ],
+        );
+    }
+}
+
+/// 幂等地补一列：列已存在就什么都不做。
+///
+/// PRAGMA 对不存在的表返回空集，这时也直接返回——极旧的库可能连 users 表都
+/// 没有，对着不存在的表 ALTER 会报错。
+fn add_column(conn: &Connection, table: &str, column: &str, typ: &str) {
+    let mut stmt = match conn.prepare(&format!("PRAGMA table_info({table})")) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let names: Vec<String> = match stmt.query_map([], |r| r.get::<_, String>(1)) {
+        Ok(rows) => rows.filter_map(Result::ok).collect(),
+        Err(_) => return,
+    };
+    if !names.is_empty() && !names.iter().any(|n| n == column) {
+        let _ = conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column} {typ}"), []);
+    }
 }
 
 const SEED_DICT: &[(&str, &str, &str, i64)] = &[
@@ -151,6 +256,8 @@ const SEED_DICT: &[(&str, &str, &str, i64)] = &[
     ("submit_unit_type", "01", "党政机关", 1), ("submit_unit_type", "02", "金融系统", 2),
     ("submit_unit_type", "03", "教科文卫系统", 3), ("submit_unit_type", "04", "国有大中型企业单位", 4),
     ("submit_unit_type", "99", "其他单位", 5),
+    ("cert_type", "01", "因私护照", 1), ("cert_type", "02", "往来港澳通行证", 2),
+    ("cert_type", "03", "大陆居民往来台湾通行证", 3),
     ("supervisor_unit", "S01", "人事处", 1),
 ];
 
@@ -253,5 +360,60 @@ pub fn sv_opt(s: &str) -> SqlValue {
         SqlValue::Null
     } else {
         SqlValue::Text(s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        init_schema(&c);
+        c
+    }
+
+    fn columns(conn: &Connection, table: &str) -> Vec<String> {
+        let mut st = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        let rows = st.query_map([], |r| r.get::<_, String>(1)).unwrap();
+        rows.filter_map(Result::ok).collect()
+    }
+
+    /// 五版共用一个 data.db，users 的建表 DDL 必须逐版一致地带上 full_name。
+    #[test]
+    fn schema_has_full_name() {
+        let c = mem();
+        assert!(columns(&c, "users").contains(&"full_name".to_string()));
+    }
+
+    /// 迁移每次启动都会跑，重复执行不能报错、也不能把列加两遍。
+    #[test]
+    fn add_column_is_idempotent() {
+        let c = mem();
+        run_migrations(&c);
+        run_migrations(&c);
+        let n = columns(&c, "users").iter().filter(|n| *n == "full_name").count();
+        assert_eq!(n, 1, "full_name 列应恰好一列");
+    }
+
+    /// 老库补列：模拟一个没有 full_name 的 users 表，启动时应被自动补上。
+    #[test]
+    fn migration_adds_column_to_legacy_db() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT)",
+        )
+        .unwrap();
+        assert!(!columns(&c, "users").contains(&"full_name".to_string()));
+        run_migrations(&c);
+        assert!(columns(&c, "users").contains(&"full_name".to_string()));
+    }
+
+    /// 极旧的库可能连 users 表都没有：PRAGMA 返回空集，此时不能去 ALTER 一张不存在的表。
+    #[test]
+    fn migration_skips_missing_table() {
+        let c = Connection::open_in_memory().unwrap();
+        run_migrations(&c); // 不 panic 即通过
+        assert!(columns(&c, "users").is_empty());
     }
 }

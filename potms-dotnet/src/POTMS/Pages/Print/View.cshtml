@@ -1,0 +1,88 @@
+@page "/Print/{type}/{id:long?}"
+@model POTMS.Pages.Print.ViewPageModel
+@{
+    Layout = null;
+    var isIssuance = Model.Mode == "issuance";
+}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>@Model.Title — 打印</title>
+<style>
+  @@page { size: A4; margin: 1.5cm; }
+  body { font-family: "SimSun", "Microsoft YaHei", serif; font-size: 12pt; color: #000; }
+  h3 { text-align: center; margin-bottom: 6px; font-size: 15pt; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border: 1px solid #000; padding: 5px 8px; text-align: left; font-size: 10.5pt; }
+  .label { font-weight: bold; width: 22%; background: #f5f5f5; }
+  .meta { text-align: right; margin-top: 20px; font-size: 10pt; color: #666; }
+  .sig-block { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; }
+  .sig-item { flex: 1; font-size: 10.5pt; }
+  .sig-label { white-space: nowrap; }
+  .sig-line { display: block; border-bottom: 1px solid #000; height: 24px; margin-top: 4px; }
+  .page-break { page-break-after: always; }
+  @@media print { .no-print { display: none; } }
+</style>
+</head>
+<body>
+
+<div class="no-print" style="margin-bottom:12px;">
+  <button onclick="window.print()" style="padding:7px 18px;font-size:14px;cursor:pointer;">打印 / 导出 PDF</button>
+  <button onclick="window.close()" style="padding:7px 18px;font-size:14px;cursor:pointer;margin-left:8px;">关闭</button>
+  @if (Model.Docs.Count > 1) { <span style="margin-left:12px;color:#666;">共 @Model.Docs.Count 份</span> }
+</div>
+
+@for (var n = 0; n < Model.Docs.Count; n++)
+{
+    var doc = Model.Docs[n];
+    <h3>@Model.Title</h3>
+    <table>
+    @foreach (var kv in doc)
+    {
+        <tr>
+            <td class="label">@kv.Key.TrimStart('＿')</td>
+            <td>@kv.Value</td>
+        </tr>
+    }
+    </table>
+
+    @if (isIssuance && n < Model.Signatures.Count)
+    {
+        var sg = Model.Signatures[n];
+        <div class="sig-block">
+            <div class="sig-item" style="text-align:center;">
+                <div class="sig-label">领用人签名</div>
+                @if (sg.HasSign)
+                { <img src="/Issuance/Signature/@sg.Id" alt="领用人签名" style="height:60px;"> }
+                else { <span class="sig-line"></span> }
+            </div>
+            <div class="sig-item" style="text-align:center;">
+                <div class="sig-label">归还人签名</div>
+                @if (sg.HasReturnSign)
+                { <img src="/Issuance/Signature/@sg.Id?kind=return" alt="归还人签名" style="height:60px;"> }
+                else { <span class="sig-line"></span> }
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sig-block">
+            <div class="sig-item"><span class="sig-label">填表人：</span><span class="sig-line"></span></div>
+            <div class="sig-item"><span class="sig-label">审核人：</span><span class="sig-line"></span></div>
+            <div class="sig-item"><span class="sig-label">批准人：</span><span class="sig-line"></span></div>
+        </div>
+    }
+
+    @* 单据上的经办人用真实姓名；没填姓名时 GivenName 声明本身就是账号，直接回退 *@
+    <p class="meta">打印日期：<span class="print-date"></span>　｜　操作人：@(User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value ?? User.Identity?.Name)</p>
+    @if (n < Model.Docs.Count - 1) { <div class="page-break"></div> }
+}
+
+<script>
+document.querySelectorAll('.print-date').forEach(function (el) {
+    el.textContent = new Date().toISOString().slice(0, 10);
+});
+</script>
+</body>
+</html>

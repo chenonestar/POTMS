@@ -510,3 +510,106 @@ func validateImportRow(data map[string]string) [][2]string {
 	}
 	return errs
 }
+
+// ---------------------------------------------------------------------------
+// 7. 证件领用登记表（签名以图片嵌入对应单元格）
+// ---------------------------------------------------------------------------
+
+// 签名图在表格中的展示高度（像素）与对应行高（磅），与 Python / Java 两版取值一致
+const (
+	signImgHeightPx = 48
+	signRowHeight   = 40.0
+)
+
+var issuanceStatusLabel = map[string]string{
+	"issued": "已领用", "returned": "已归还", "voided": "已作废",
+}
+
+// exportIssuance 导出证件领用记录。
+//
+// JOIN personnel_filing 以排除孤儿行（延续既有数据完整性口径）。
+// 第 8 列＝领用签名、第 11 列＝归还签名，两列不写文本，改嵌 PNG。
+func exportIssuance(operator, whereSQL string, params []interface{}) (string, string, error) {
+	rows, err := queryMaps(
+		"SELECT i.*, pf.work_unit FROM cert_issuance i "+
+			"JOIN personnel_filing pf ON i.personnel_filing_id = pf.id "+
+			"WHERE 1=1 "+whereSQL+" ORDER BY i.issue_date DESC, i.id DESC", params...)
+	if err != nil {
+		return "", "", err
+	}
+
+	headers := []string{"单位", "领用人", "身份证号", "证件种类", "证件号码", "领用日期",
+		"发放人", "领用签名", "归还日期", "接收人", "归还签名", "状态", "备注"}
+	sheetName := "证件领用登记表"
+
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", sheetName)
+	styleSheet(f, sheetName, "因私出国（境）证件领用登记表", headers)
+
+	var data [][]interface{}
+	for _, r := range rows {
+		status := s(r, "status")
+		if lbl, ok := issuanceStatusLabel[status]; ok {
+			status = lbl
+		}
+		data = append(data, []interface{}{
+			s(r, "work_unit"), s(r, "holder_name"), s(r, "id_number"),
+			certTypesLabel(s(r, "cert_types")), s(r, "cert_nos"), s(r, "issue_date"),
+			s(r, "issuer"), "", s(r, "return_date"), s(r, "return_operator"), "",
+			status, s(r, "remarks"),
+		})
+	}
+	writeRows(f, sheetName, data)
+
+	// 嵌签名图。单张渲染失败只把该格降级成文字，不中断整表导出。
+	for i, r := range rows {
+		rowNo := i + 3
+		embedded := false
+		for col, key := range map[int]string{8: "sign_image", 11: "return_sign_image"} {
+			blob := rowBlob(r, key)
+			if len(blob) == 0 {
+				continue
+			}
+			cell, _ := excelize.CoordinatesToCellName(col, rowNo)
+			if err := f.AddPictureFromBytes(sheetName, cell, &excelize.Picture{
+				Extension: ".png",
+				File:      blob,
+				Format: &excelize.GraphicOptions{
+					AutoFit: true, LockAspectRatio: true, Positioning: "oneCell",
+				},
+			}); err != nil {
+				f.SetCellValue(sheetName, cell, "[签名图无法读取]")
+				continue
+			}
+			embedded = true
+		}
+		if embedded {
+			f.SetRowHeight(sheetName, rowNo, signRowHeight)
+		}
+	}
+
+	styleData(f, sheetName, len(rows), len(headers))
+	autoWidth(f, sheetName, len(headers), len(rows)+2)
+	// 签名列按图片宽度留白（自动列宽只看文本，会把空单元格压窄）
+	for _, col := range []int{8, 11} {
+		name, _ := excelize.ColumnNumberToName(col)
+		f.SetColWidth(sheetName, name, name, 22)
+	}
+	addNotes(f, []string{
+		"1. 签名为领用/归还时现场手写采集，保存后不可修改；登记有误须作废后重新登记。",
+		"2. 证件号码为领用当时的快照，后续修改证照信息不影响本次领用凭证。",
+		"3. 状态：已领用（未归还）/ 已归还 / 已作废。",
+	})
+	return saveWorkbook(f, sheetName, operator)
+}
+
+// rowBlob 取 BLOB 列。queryMaps 会把 []byte 转成 string，这里再转回来。
+func rowBlob(r Row, key string) []byte {
+	switch v := r[key].(type) {
+	case []byte:
+		return v
+	case string:
+		return []byte(v)
+	}
+	return nil
+}

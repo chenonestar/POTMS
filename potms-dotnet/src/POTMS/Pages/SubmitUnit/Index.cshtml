@@ -1,0 +1,75 @@
+@page "/SubmitUnit"
+@model POTMS.Pages.SubmitUnit.IndexModel
+@{ ViewData["Title"] = "报送单位"; }
+<h4 class="mb-3 mt-3"><i class="bi bi-buildings"></i> 报送单位配置</h4>
+<p class="text-muted small">在撤控备案表中选择报送单位后，联系人与电话会自动带入。</p>
+
+<div class="row">
+<div class="col-md-7">
+<div class="table-card"><div class="table-responsive">
+<table class="table table-hover mb-0">
+    <thead class="table-light"><tr><th>单位名称</th><th>联系人</th><th>联系电话</th><th>排序</th><th>引用</th><th>操作</th></tr></thead>
+    <tbody>
+    @foreach (var u in Model.Items)
+    {
+        var used = Model.Usage.TryGetValue(u.Id, out var n) ? n : 0;
+        <tr>
+            <td>@u.Name</td><td>@u.Contact</td><td>@u.Phone</td><td>—</td>
+            <td>@(used == 0 ? Html.Raw("<span class=\"text-muted\">0</span>") : Html.Raw($"<span class=\"badge bg-secondary\">{used}</span>"))</td>
+            <td><div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-warning" title="编辑"
+                        onclick="suEdit(@u.Id, '@u.Name', '@u.Contact', '@u.Phone')"><i class="bi bi-pencil"></i></button>
+                @if (used > 0)
+                {
+                    <button type="button" class="btn btn-outline-secondary" disabled title="已被 @used 条撤控记录引用"><i class="bi bi-trash"></i></button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                            data-action="/SubmitUnit?handler=Delete&amp;id=@u.Id" data-message="确定要删除报送单位「@u.Name」吗？"><i class="bi bi-trash"></i></button>
+                }
+            </div></td>
+        </tr>
+    }
+    @if (Model.Items.Count == 0)
+    { <tr><td colspan="6" class="text-center text-muted py-4">暂无报送单位</td></tr> }
+    </tbody>
+</table>
+</div></div>
+</div>
+
+<div class="col-md-5">
+<div class="form-section">
+    <h5 id="suFormTitle">新增报送单位</h5>
+    <form method="post" asp-page-handler="Save">
+        <input type="hidden" name="id" id="suId">
+        <div class="mb-3"><label class="form-label required">单位名称</label>
+            <input type="text" class="form-control" name="name" id="suName" required></div>
+        <div class="mb-3"><label class="form-label">联系人</label>
+            <input type="text" class="form-control" name="contact" id="suContact"></div>
+        <div class="mb-3"><label class="form-label">联系电话</label>
+            <input type="text" class="form-control" name="phone" id="suPhone"></div>
+        <input type="hidden" name="sortOrder" value="0">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
+        <button type="button" class="btn btn-secondary" onclick="suReset()">清空</button>
+    </form>
+</div>
+</div>
+</div>
+<partial name="_ConfirmModal" />
+
+@section Scripts {
+<script>
+function suEdit(id, name, contact, phone) {
+    document.getElementById('suId').value = id;
+    document.getElementById('suName').value = name;
+    document.getElementById('suContact').value = contact === 'null' ? '' : contact;
+    document.getElementById('suPhone').value = phone === 'null' ? '' : phone;
+    document.getElementById('suFormTitle').textContent = '编辑报送单位 #' + id;
+}
+function suReset() {
+    ['suId','suName','suContact','suPhone'].forEach(function (i) { document.getElementById(i).value = ''; });
+    document.getElementById('suFormTitle').textContent = '新增报送单位';
+}
+</script>
+}

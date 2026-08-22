@@ -6,7 +6,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import (
+from utils.helpers import (operator_name,
     get_dict_options, get_dict_value, log_action, list_all,
     detect_surname_split, normalize_residence, row_snapshot,
 )
@@ -401,9 +401,13 @@ def delete(filing_id) -> ResponseReturnValue:
     dec_cnt = db.execute(
         "SELECT COUNT(*) FROM decontrol_filing WHERE personnel_filing_id = ?", (filing_id,)
     ).fetchone()[0]
-    if cert_cnt or travel_cnt or dec_cnt:
+    iss_cnt = db.execute(
+        "SELECT COUNT(*) FROM cert_issuance WHERE personnel_filing_id = ?", (filing_id,)
+    ).fetchone()[0]
+    if cert_cnt or travel_cnt or dec_cnt or iss_cnt:
         flash(
-            f"该人员名下尚有证照 {cert_cnt} 条、出国明细 {travel_cnt} 条、撤控记录 {dec_cnt} 条，"
+            f"该人员名下尚有证照 {cert_cnt} 条、出国明细 {travel_cnt} 条、"
+            f"撤控记录 {dec_cnt} 条、证件领用 {iss_cnt} 条，"
             "请先删除或处理这些关联记录后再删除备案。",
             "danger",
         )
@@ -485,7 +489,7 @@ def _extract_info_form(form):
         "political_status": form.get("political_status", "").strip(),
         "party_join_date": parse_date_input(form.get("party_join_date", "")),
         "position": form.get("position", "").strip(),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 
@@ -528,7 +532,7 @@ def _extract_filing_form(form):
         "tag": form.get("tag", "新增").strip(),
         "informed": form.get("informed", "否").strip(),
         "remarks": form.get("remarks", "").strip(),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 

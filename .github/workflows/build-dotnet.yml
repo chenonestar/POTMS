@@ -1,0 +1,63 @@
+name: 构建 .NET 版 Windows 包
+
+on:
+  push:
+    branches: [claude/dotnet-version, main]
+    paths: ['potms-dotnet/**', '.github/workflows/build-dotnet.yml', 'database.py']
+  pull_request:
+    paths: ['potms-dotnet/**', 'database.py']
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试（Linux）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Schema.cs 由 Python 版 database.py 生成，四版共用 data.db，
+      # 此处校验生成物未与源头脱节
+      - name: 校验 Schema.cs 与 database.py 同步
+        run: python3 potms-dotnet/tools/gen-schema.py --check
+
+      - name: 还原依赖
+        run: dotnet restore potms-dotnet/POTMS.sln
+
+      - name: 构建
+        run: dotnet build potms-dotnet/POTMS.sln -c Release --no-restore
+
+      - name: 单元测试
+        run: dotnet test potms-dotnet/POTMS.sln -c Release --no-build --verbosity normal
+
+  build-windows:
+    name: 构建 Windows 自包含包
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # 自包含发布为「目录」而非单文件：
+      # 不裁剪（裁剪会破坏 Razor 依赖的反射），不打单文件（避免原生库释放到 temp）
+      - name: 发布
+        run: >
+          dotnet publish potms-dotnet/src/POTMS/POTMS.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishTrimmed=false -p:PublishSingleFile=false
+          -o dist/POTMS-dotnet
+
+      - name: 附带说明文件
+        shell: bash
+        run: cp potms-dotnet/README.md dist/POTMS-dotnet/README.md
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: POTMS-dotnet-windows-x64
+          path: dist/POTMS-dotnet
+          retention-days: 30

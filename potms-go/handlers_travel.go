@@ -204,7 +204,7 @@ func extractTravelForm(r *http.Request) map[string]string {
 		"passport_collect_date": parseDateInput(f("passport_collect_date")),
 		"passport_return_date":  parseDateInput(f("passport_return_date")),
 		"actual_return_date":    parseDateInput(f("actual_return_date")),
-		"operator":              sessionUser(r),
+		"operator":              operatorName(r),
 	}
 }
 

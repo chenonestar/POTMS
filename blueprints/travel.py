@@ -10,7 +10,7 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, list_all, get_dict_options, row_snapshot
+from utils.helpers import log_action, list_all, get_dict_options, row_snapshot, operator_name
 from utils.validators import (parse_date_input, validate_date_format,
                               parse_travel_range, validate_travel_range, format_travel_range,
                               is_cert_overdue, cert_overdue_deadline,
@@ -210,17 +210,17 @@ def new() -> ResponseReturnValue:
         t_start, t_end = parse_travel_range(data["travel_dates"])
         data["travel_dates"] = format_travel_range(t_start, t_end) or data["travel_dates"]
         db.execute(
+            # 证件领用/归还日期为派生字段，由证件领用模块写入，此处不落值
             "INSERT INTO travel_details (personnel_filing_id, unit, department, name, "
             "position, title, id_number, destination_passport, category, travel_dates, "
             "travel_start, travel_end, approval_date, need_new_passport, passport_no, "
-            "passport_collect_date, passport_return_date, actual_return_date, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "actual_return_date, operator) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
-                data["passport_collect_date"], data["passport_return_date"],
                 data["actual_return_date"], data["operator"],
             ),
         )
@@ -282,17 +282,17 @@ def edit(travel_id) -> ResponseReturnValue:
         t_start, t_end = parse_travel_range(data["travel_dates"])
         data["travel_dates"] = format_travel_range(t_start, t_end) or data["travel_dates"]
         db.execute(
+            # 证件领用/归还日期为派生字段，由证件领用模块维护，此处不覆盖
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
             "name=?, position=?, title=?, id_number=?, destination_passport=?, "
             "category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, "
-            "passport_no=?, passport_collect_date=?, passport_return_date=?, actual_return_date=?, "
+            "passport_no=?, actual_return_date=?, "
             "operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
-                data["passport_collect_date"], data["passport_return_date"],
                 data["actual_return_date"], data["operator"], travel_id,
             ),
         )
@@ -343,6 +343,14 @@ def view(travel_id) -> ResponseReturnValue:
 @login_required
 def delete(travel_id) -> ResponseReturnValue:
     db = get_db()
+    # 引用守卫：已有证件领用记录（含签名凭证）时禁止删除，避免留下悬空引用
+    iss = db.execute(
+        "SELECT COUNT(*) AS n FROM cert_issuance WHERE travel_id = ?", (travel_id,)
+    ).fetchone()
+    if iss and iss["n"]:
+        flash(f"该出行记录已有 {iss['n']} 条证件领用记录，不能删除。"
+              f"如确需删除，请先作废相关领用记录。", "danger")
+        return redirect(url_for("travel.list"))
     # 清理附件文件
     atts = db.execute(
         "SELECT file_path FROM attachments WHERE travel_id = ?", (travel_id,)
@@ -479,12 +487,12 @@ def _extract_form(form):
         "category": form.get("category", "").strip(),
         "travel_dates": form.get("travel_dates", "").strip(),
         "approval_date": parse_date_input(form.get("approval_date", "")),
+        # 注意：passport_collect_date / passport_return_date 已改为派生字段，
+        # 由证件领用模块（blueprints/issuance.py）唯一写入，此处不再从表单读取。
         "need_new_passport": form.get("need_new_passport", "否").strip(),
         "passport_no": form.get("passport_no", "").strip(),
-        "passport_collect_date": parse_date_input(form.get("passport_collect_date", "")),
-        "passport_return_date": parse_date_input(form.get("passport_return_date", "")),
         "actual_return_date": parse_date_input(form.get("actual_return_date", "")),
-        "operator": session.get("username", "admin"),
+        "operator": operator_name(),
     }
 
 
@@ -508,14 +516,11 @@ def _validate_form(data: dict) -> list[str]:
 
     errors += check_dates(data, [
         ("approval_date", "批准日期"),
-        ("passport_collect_date", "证件领用日期"),
-        ("passport_return_date", "证件归还日期"),
         ("actual_return_date", "实际回国日期"),
     ])
 
-    # 路径A（已有证件，不做证）时，证件领用日期为必填
-    if data.get("need_new_passport") == "否" and not data.get("passport_collect_date"):
-        errors.append("路径A（已有证件）时，证件领用日期为必填。")
+    # 证件领用日期原在此校验必填，现已迁移至证件领用模块（须手写签名后登记），
+    # 出行表单不再收集该字段。
 
     return errors
 

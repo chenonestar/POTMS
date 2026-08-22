@@ -1,0 +1,94 @@
+@page "/Certificate"
+@model POTMS.Pages.Certificate.IndexModel
+@{ ViewData["Title"] = "证照登记"; }
+
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-card-checklist"></i> 证照登记列表</h4>
+    <div>
+        <a href="/Certificate/Form" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增</a>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('certificate')"><i class="bi bi-printer"></i> 批量打印</button>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('/Export/Certificate');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('/Export/Certificate');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="/Export/Certificate">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 单位" value="@Model.Search"></div>
+        @foreach (var (nm, lbl, cur) in new[] { ("hasPassport", "护照", Model.HasPassport), ("hasHm", "港澳通行证", Model.HasHm), ("hasTw", "台湾通行证", Model.HasTw) })
+        {
+            <div class="col-md-2"><select class="form-select form-select-sm" name="@nm">
+                <option value="">@lbl</option>
+                <option value="1" selected="@(cur == "1")">有@lbl</option>
+                <option value="0" selected="@(cur == "0")">无@lbl</option>
+            </select></div>
+        }
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="/Certificate" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+@if (Model.Expiring.Count > 0)
+{
+    <div class="alert alert-warning d-flex align-items-center"><i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <div>以下证照即将到期（30天内）：
+        @foreach (var r in Model.Items.Rows)
+        {
+            foreach (var lbl in new[] { "普通护照", "往来港澳通行证", "大陆居民往来台湾通行证" })
+            {
+                if (Model.Expiring.TryGetValue((r.Id, lbl), out var exp))
+                { <text><strong>@r.Name</strong> — @lbl (@exp) &nbsp;</text> }
+            }
+        }
+    </div></div>
+}
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="单位">单位</th><th data-col="部门">部门</th><th data-col="姓名">姓名</th>
+        <th data-col="普通护照">普通护照</th><th data-col="护照有效期">护照有效期</th>
+        <th data-col="港澳通行证">港澳通行证</th><th data-col="港澳通有效期">港澳通有效期</th>
+        <th data-col="台湾通行证">台湾通行证</th><th data-col="台湾通有效期">台湾通有效期</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    @foreach (var r in Model.Items.Rows)
+    {
+        var warn = Model.Expiring.ContainsKey((r.Id, "普通护照")) || Model.Expiring.ContainsKey((r.Id, "往来港澳通行证")) || Model.Expiring.ContainsKey((r.Id, "大陆居民往来台湾通行证"));
+        <tr class="@(warn ? "row-warning" : "")">
+            <td><input type="checkbox" class="row-check" value="@r.Id"></td>
+            <td title="@r.Unit">@r.Unit</td><td title="@r.Department">@r.Department</td><td>@r.Name</td>
+            <td>@(r.PassportNo ?? "-")</td>
+            <td class="@(Model.Expiring.ContainsKey((r.Id, "普通护照")) ? "text-danger fw-bold" : "")">@(r.PassportExpiry ?? "-")</td>
+            <td>@(r.HmPassNo ?? "-")</td>
+            <td class="@(Model.Expiring.ContainsKey((r.Id, "往来港澳通行证")) ? "text-danger fw-bold" : "")">@(r.HmPassExpiry ?? "-")</td>
+            <td>@(r.TwPassNo ?? "-")</td>
+            <td class="@(Model.Expiring.ContainsKey((r.Id, "大陆居民往来台湾通行证")) ? "text-danger fw-bold" : "")">@(r.TwPassExpiry ?? "-")</td>
+            <td><div class="btn-group btn-group-sm">
+                <a href="/Print/certificate/@r.Id" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+                <a href="/Certificate/Form?id=@r.Id" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                        data-action="/Certificate?handler=Delete&amp;id=@r.Id" data-message="确定要删除 @r.Name 的证照记录吗？"><i class="bi bi-trash"></i></button>
+            </div></td>
+        </tr>
+    }
+    @if (Model.Items.Total == 0)
+    { <tr><td colspan="11" class="text-center text-muted py-4">暂无证照记录</td></tr> }
+    </tbody>
+</table>
+</div></div>
+<partial name="_ConfirmModal" />
+
+@section Scripts {
+<script>document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_certificate'); });</script>
+}

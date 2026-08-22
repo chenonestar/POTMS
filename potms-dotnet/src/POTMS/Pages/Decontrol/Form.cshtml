@@ -1,0 +1,80 @@
+@page "/Decontrol/Form"
+@model POTMS.Pages.Decontrol.FormModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "撤控备案表";
+    using var cn = Database.Open();
+    var types = POTMS.Services.Helpers.GetDictOptions(cn, "submit_unit_type");
+    var units = POTMS.Services.Helpers.GetSubmitUnits(cn);
+    var f = Model.Filing;
+    string V(string k) => Model.Data.TryGetValue(k, out var v) ? v ?? "" : "";
+}
+<h4 class="mb-3 mt-3"><i class="bi bi-arrow-repeat"></i> 因私事出国（境）人员撤控备案表</h4>
+
+<div class="alert alert-warning py-2">
+    <i class="bi bi-exclamation-triangle"></i> 将对 <strong>@f.Name</strong>（@f.IdNumber）执行撤控。
+    撤控后该备案记录状态变为「已撤控」；如需重报，请新建备案表，系统会自动与本记录建立关联。
+</div>
+
+<form method="post" class="needs-validation" novalidate>
+<div class="form-section"><h5>人员信息（自备案表带入，不可修改）</h5><div class="row g-3">
+    <div class="col-md-2"><label class="form-label text-muted small">姓名</label><div>@f.Name</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">性别</label><div>@f.Gender</div></div>
+    <div class="col-md-2"><label class="form-label text-muted small">出生日期</label><div>@f.BirthDate</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">身份证号</label><div>@f.IdNumber</div></div>
+    <div class="col-md-3"><label class="form-label text-muted small">工作单位</label><div>@f.WorkUnit</div></div>
+</div></div>
+
+<div class="form-section"><h5>报送单位</h5><div class="row g-3">
+    <div class="col-md-4"><label class="form-label required">报送单位名称</label>
+        <select class="form-select" name="submit_unit_name" id="suName" required>
+            <option value="">请选择</option>
+            @foreach (var u in units)
+            { <option value="@u.Name" data-contact="@u.Contact" data-phone="@u.Phone"
+                      selected="@(V("submit_unit_name") == u.Name)">@u.Name</option> }
+        </select>
+        <div class="form-text">在「报送单位」页维护；选择后联系人/电话自动带入</div></div>
+    <div class="col-md-3"><label class="form-label required">报送单位类别</label>
+        <select class="form-select" name="submit_unit_type" required>
+            <option value="">请选择</option>
+            @foreach (var t in types)
+            { <option value="@t.Code" selected="@(V("submit_unit_type") == t.Code)">@t.Value</option> }
+        </select></div>
+    <div class="col-md-2"><label class="form-label required">联系人</label>
+        <input type="text" class="form-control" name="submit_contact" id="suContact" value="@V("submit_contact")" required></div>
+    <div class="col-md-3"><label class="form-label required">联系电话</label>
+        <input type="text" class="form-control" name="submit_phone" id="suPhone" value="@V("submit_phone")" required></div>
+</div></div>
+
+<div class="form-section"><h5>撤控信息</h5><div class="row g-3">
+    <div class="col-md-3"><label class="form-label required">入库批号</label>
+        <input type="text" class="form-control" name="batch_no" value="@V("batch_no")" required></div>
+    <div class="col-md-3"><label class="form-label">撤控日期</label>
+        <input type="text" class="form-control" name="decontrol_date" value="@V("decontrol_date")" placeholder="YYYYMMDD" maxlength="8"></div>
+    <div class="col-md-3"><label class="form-label">证件移交日期</label>
+        <input type="text" class="form-control" name="cert_handover_date" value="@V("cert_handover_date")" placeholder="YYYYMMDD" maxlength="8"></div>
+</div>
+<div class="row g-3 mt-1">
+    <div class="col-md-12"><label class="form-label required">撤控原因</label>
+        <input type="text" class="form-control" name="reason" value="@V("reason")" required></div>
+</div></div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-danger"><i class="bi bi-check2"></i> 确认撤控</button>
+    <a href="/Personnel" class="btn btn-secondary">取消</a>
+</div>
+</form>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sel = document.getElementById('suName');
+    sel.addEventListener('change', function () {
+        var o = sel.options[sel.selectedIndex];
+        if (!o || !o.value) return;
+        document.getElementById('suContact').value = o.getAttribute('data-contact') || '';
+        document.getElementById('suPhone').value = o.getAttribute('data-phone') || '';
+    });
+});
+</script>
+}

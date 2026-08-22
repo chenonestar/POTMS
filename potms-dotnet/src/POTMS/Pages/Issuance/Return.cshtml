@@ -1,0 +1,60 @@
+@page "/Issuance/Return/{id:long}"
+@model POTMS.Pages.Issuance.ReturnModel
+@inject POTMS.Config Cfg
+@{ ViewData["Title"] = "证件归还登记"; var it = Model.Item; }
+<h4 class="mb-3 mt-3"><i class="bi bi-box-arrow-in-left"></i> 证件归还登记</h4>
+
+<div class="alert alert-info py-2">
+    <strong>@it.HolderName</strong> · @Model.TypeLabels
+    @if (!string.IsNullOrEmpty(it.CertNos)) { <text>· @it.CertNos</text> }
+    · 领用日期 @it.IssueDate · 经办人 @it.Issuer
+</div>
+
+<form method="post" id="signForm" class="needs-validation" novalidate>
+<div class="form-section">
+    <h5>归还信息</h5>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label required">归还日期</label>
+            <input type="text" class="form-control" name="return_date" value="@Model.ReturnDate" placeholder="YYYYMMDD" maxlength="8" required></div>
+        <div class="col-md-3"><label class="form-label">经办人（接收人）</label>
+            <input type="text" class="form-control" value="@(User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value ?? User.Identity?.Name)" readonly></div>
+    </div>
+</div>
+
+<div class="form-section">
+    <h5>归还人签名</h5>
+    <partial name="_SignaturePad" model="@("归还人手写签名")" />
+</div>
+
+<div class="mt-3">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存归还登记</button>
+    <a href="/Issuance/View/@it.Id" class="btn btn-secondary">取消</a>
+</div>
+</form>
+
+@section Scripts {
+<script src="~/js/signature.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // 不把 form 交给 attach()：signature.js 是五版共用的同一份文件（md5 一致），
+    // 不能为了「是否强制」这条本版配置去改它。这里自己绑 submit——留空时是否拦下，
+    // 由服务端下发的 RequireSignature 决定。
+    var pad = POTMSSignature.attach({
+        canvas: document.getElementById('signCanvas'),
+        clearBtn: document.getElementById('signClear'),
+        undoBtn: document.getElementById('signUndo'),
+        pngInput: document.getElementById('signPng'),
+        metaInput: document.getElementById('signMeta'),
+        hintEl: document.getElementById('signHint')
+    });
+    var signRequired = @(Cfg.RequireSignature ? "true" : "false");
+    document.getElementById('signForm').addEventListener('submit', function (ev) {
+        if (!pad.commit() && signRequired) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            alert('请先手写签名后再提交。');
+        }
+    });
+});
+</script>
+}

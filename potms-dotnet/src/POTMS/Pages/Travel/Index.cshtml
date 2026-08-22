@@ -1,0 +1,101 @@
+@page "/Travel"
+@model POTMS.Pages.Travel.IndexModel
+@inject POTMS.Data.Db Database
+@{
+    ViewData["Title"] = "出国（境）申请";
+    using var cn = Database.Open();
+    var cats = POTMS.Services.Helpers.GetDictOptions(cn, "travel_category");
+    string DV(string? code) => POTMS.Services.Helpers.GetDictValue(cn, "travel_category", code);
+}
+<div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+    <h4><i class="bi bi-airplane"></i> 因私出国（境）人员明细</h4>
+    <div>
+        <a href="/Travel/Form" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增</a>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('travel')"><i class="bi bi-printer"></i> 批量打印</button>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('/Export/Travel');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('/Export/Travel');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="/Export/Travel">全量导出</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" placeholder="姓名 / 身份证 / 单位 / 地点" value="@Model.Search"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="category">
+            <option value="">全部类别</option>
+            @foreach (var o in cats) { <option value="@o.Code" selected="@(Model.CategoryFilter == o.Code)">@o.Value</option> }
+        </select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="needNewPassport">
+            <option value="">是否做证</option>
+            <option value="是" selected="@(Model.NeedPassportFilter == "是")">需做证（路径B）</option>
+            <option value="否" selected="@(Model.NeedPassportFilter == "否")">已有证件（路径A）</option>
+        </select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="passportStatus">
+            <option value="">证件状态</option>
+            <option value="not_collected" selected="@(Model.PassportStatus == "not_collected")">未领用</option>
+            <option value="in_use" selected="@(Model.PassportStatus == "in_use")">已领未还</option>
+            <option value="overdue" selected="@(Model.PassportStatus == "overdue")">逾期未还</option>
+        </select></div>
+        <div class="col-md-1"><input type="text" class="form-control form-control-sm" name="dateFrom" placeholder="起始" value="@Model.DateFrom"></div>
+        <div class="col-md-1"><input type="text" class="form-control form-control-sm" name="dateTo" placeholder="截止" value="@Model.DateTo"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="/Travel" class="btn btn-sm btn-outline-secondary">重置</a></div>
+    </form>
+</div></div>
+
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="单位">单位</th><th data-col="姓名">姓名</th><th data-col="地点、证照">地点、证照</th>
+        <th data-col="类别">类别</th><th data-col="计划出行日期">计划出行日期</th>
+        <th data-col="做证">做证</th><th data-col="证件领用">证件领用</th><th data-col="证件归还">证件归还</th>
+        <th data-col="状态">状态</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    @foreach (var r in Model.Items.Rows)
+    {
+        var od = Model.OverdueIds.Contains(r.Id);
+        <tr class="@(od ? "row-warning" : "")">
+            <td><input type="checkbox" class="row-check" value="@r.Id"></td>
+            <td title="@r.Unit">@r.Unit</td><td>@r.Name</td>
+            <td title="@r.DestinationPassport">@r.DestinationPassport</td>
+            <td>@DV(r.Category)</td><td>@r.TravelDates</td>
+            <td>@r.NeedNewPassport</td>
+            <td>@(string.IsNullOrEmpty(r.PassportCollectDate) ? "-" : r.PassportCollectDate)</td>
+            <td class="@(od ? "text-danger fw-bold" : "")">
+                @if (!string.IsNullOrEmpty(r.PassportReturnDate)) { @r.PassportReturnDate }
+                else if (od) { <text>逾期（应还 @Model.Deadlines[r.Id]）</text> }
+                else { <text>-</text> }
+            </td>
+            <td>@(r.TripStatus == "cancelled"
+                    ? Html.Raw("<span class=\"badge bg-secondary\">已取消</span>")
+                    : Html.Raw("<span class=\"badge bg-success\">正常</span>"))</td>
+            <td><div class="btn-group btn-group-sm">
+                <a href="/Travel/View/@r.Id" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+                <a href="/Print/travel/@r.Id" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
+                <a href="/Issuance/Form?travelId=@r.Id" class="btn btn-outline-success" title="证件领用登记"><i class="bi bi-vector-pen"></i></a>
+                <a href="/Travel/Form?id=@r.Id" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal"
+                        data-action="/Travel?handler=Delete&amp;id=@r.Id" data-message="确定要删除 @r.Name 的出国申请记录吗？"><i class="bi bi-trash"></i></button>
+            </div></td>
+        </tr>
+    }
+    @if (Model.Items.Total == 0)
+    { <tr><td colspan="11" class="text-center text-muted py-4">暂无出国申请记录</td></tr> }
+    </tbody>
+</table>
+</div></div>
+<partial name="_ConfirmModal" />
+
+@section Scripts {
+<script>document.addEventListener('DOMContentLoaded', function () { initColumnToggle('mainTable', 'colMenu', 'cols_travel'); });</script>
+}

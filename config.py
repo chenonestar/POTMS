@@ -3,9 +3,15 @@ import os
 import sys
 import secrets
 
-# 数据目录：打包为单文件 exe 时，数据（data.db/uploads/exports/backup）
-# 需持久化到 exe 所在目录，而非临时解压目录。
-if getattr(sys, "frozen", False):
+# 数据目录：优先 POTMS_BASE 环境变量（与 Go / Rust / .NET / Java 四版一致，
+# 便于把数据放到程序目录之外，例如服务账户没有写权限、或要指向共享盘）；
+# 未设置时，打包为单文件 exe 的数据（data.db/uploads/exports/backup）需持久化到
+# exe 所在目录，而非临时解压目录（%TEMP%\_MEIxxxx 退出即删）。
+_base_env = os.environ.get("POTMS_BASE", "").strip()
+if _base_env:
+    BASE_DIR = os.path.abspath(_base_env)
+    os.makedirs(BASE_DIR, exist_ok=True)
+elif getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -61,6 +67,17 @@ class Config:
     # 时间显示：数据库统一存储 UTC，展示时按此偏移换算为本地时间。
     # 中国大陆固定 UTC+8 且无夏令时；如需其它时区，设环境变量 POTMS_TZ_OFFSET（单位：小时）。
     DISPLAY_TZ_OFFSET_HOURS = int(os.environ.get("POTMS_TZ_OFFSET", "8"))
+
+    # 证件领用 / 归还是否强制手写签名。
+    #
+    # 默认强制：签名就是「本人确实领了/还了」的凭证，一旦允许留空，这条记录就只剩
+    # 经办人的一面之词。放宽必须是明确的选择，不能是默认值。
+    #
+    # 单位尚未配备手写板、或存在代领代还与历史回填记录时，设 POTMS_REQUIRE_SIGNATURE=0
+    # 暂时放宽。放宽后签名板仍然显示（能签就签），只是留空也能提交；未签名的记录在
+    # 详情页与打印件上都会明确标注「无签名」，不会与已签名的混为一谈。
+    REQUIRE_SIGNATURE = os.environ.get(
+        "POTMS_REQUIRE_SIGNATURE", "1").strip().lower() not in ("0", "false", "no", "off")
 
     # 证照到期预警（天）
     CERT_EXPIRY_WARN_DAYS = 30

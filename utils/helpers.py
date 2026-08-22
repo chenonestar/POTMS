@@ -101,7 +101,7 @@ def log_action(action: str, target_type: str, target_id: Optional[int] = None,
         "INSERT INTO operation_logs (operator, action, target_type, target_id, detail, ip_address, snapshot) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            _operator_name(),
+            _log_operator(),
             action,
             target_type,
             target_id,
@@ -113,8 +113,11 @@ def log_action(action: str, target_type: str, target_id: Optional[int] = None,
     db.commit()
 
 
-# 快照中忽略的字段（时间戳等无意义变更）
-_SNAPSHOT_SKIP = {"created_at", "updated_at"}
+# 快照中忽略的字段（时间戳等无意义变更；签名位图/笔迹矢量体积大且不可读，不入快照）
+_SNAPSHOT_SKIP = {
+    "created_at", "updated_at",
+    "sign_image", "sign_meta", "return_sign_image", "return_sign_meta",
+}
 
 
 def _clean_snapshot(data: Any) -> Optional[dict]:
@@ -128,7 +131,7 @@ def _clean_snapshot(data: Any) -> Optional[dict]:
 # row_snapshot 允许查询的表白名单（防御性：杜绝动态表名注入的可能）
 _SNAPSHOT_TABLES = frozenset({
     "personnel_info", "personnel_filing", "certificates", "travel_details",
-    "decontrol_filing", "sys_dict", "sys_org", "sys_submit_unit",
+    "decontrol_filing", "sys_dict", "sys_org", "sys_submit_unit", "cert_issuance",
 })
 
 
@@ -144,7 +147,24 @@ def row_snapshot(table: str, row_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
-def _operator_name() -> str:
+def operator_name() -> str:
+    """业务单据上的**经办人**：真实姓名，没填则回退到登录账号。
+
+    单据、打印件、导出表上的「经办人」必须是真人名字——打印出来的领用凭证上
+    一个 admin，没法拿去归档。姓名在「账户设置」里维护，登录时放进 session。
+
+    注意与 _log_operator() 的分工：那个是给操作日志用的，记的是**账号**。
+    """
+    from flask import session
+    return session.get("full_name") or session.get("username") or "unknown"
+
+
+def _log_operator() -> str:
+    """操作日志里的**操作人**：登录账号，不用姓名。
+
+    账号是身份标识，姓名可以随时改。日志只记「张三」的话，改名之后历史记录
+    就对不上人了。展示时再按账号查出姓名，渲染成「张三（admin）」。
+    """
     from flask import session
     return session.get("username", "unknown")
 
@@ -299,14 +319,19 @@ def get_personnel_options() -> list[dict]:
         "WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name"
     ).fetchall()
     # 每人已登记的证件号（护照/港澳/台湾），一次查询建映射
+    # cert_map：扁平列表（下游 datalist 用）；cert_type_map：按证件种类代码索引（领用登记用）
     cert_map: dict = {}
+    cert_type_map: dict = {}
     for cr in db.execute(
         "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates"
     ).fetchall():
         lst = cert_map.setdefault(cr["personnel_filing_id"], [])
-        for v in (cr["passport_no"], cr["hm_pass_no"], cr["tw_pass_no"]):
-            if v and v.strip() and v.strip() not in lst:
-                lst.append(v.strip())
+        by_type = cert_type_map.setdefault(cr["personnel_filing_id"], {})
+        for code, v in (("01", cr["passport_no"]), ("02", cr["hm_pass_no"]), ("03", cr["tw_pass_no"])):
+            if v and v.strip():
+                if v.strip() not in lst:
+                    lst.append(v.strip())
+                by_type.setdefault(code, v.strip())
     result = []
     for r in rows:
         name = f"{r['surname']}{r['given_name']}"
@@ -320,5 +345,6 @@ def get_personnel_options() -> list[dict]:
             "position": r["position_or_title"],
             "title": r["title_val"] or "",
             "cert_nos": cert_map.get(r["id"], []),
+            "cert_by_type": cert_type_map.get(r["id"], {}),
         })
     return result

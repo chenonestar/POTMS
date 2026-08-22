@@ -1,0 +1,19 @@
+# 构建产物
+bin/
+obj/
+publish/
+dist/
+*.user
+
+# 运行时数据（与其它三版一致，不入库）
+data.db
+data.db-shm
+data.db-wal
+.secret_key
+uploads/
+exports/
+backup/
+
+# 测试与解决方案用户文件
+TestResults/
+*.sln.DotSettings.user

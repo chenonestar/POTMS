@@ -101,7 +101,14 @@ pub fn row_i64(r: &Row, key: &str) -> i64 {
 // ---------------------------------------------------------------------------
 const SNAPSHOT_TABLES: &[&str] = &[
     "personnel_info", "personnel_filing", "certificates", "travel_details",
-    "decontrol_filing", "sys_dict", "sys_org", "sys_submit_unit",
+    "decontrol_filing", "sys_dict", "sys_org", "sys_submit_unit", "cert_issuance",
+];
+
+/// 快照中忽略的字段：时间戳是无意义的变更；签名位图与笔迹矢量体积大且不可读，
+/// 塞进日志只会把 snapshot 撑爆。
+const SNAPSHOT_SKIP: &[&str] = &[
+    "created_at", "updated_at",
+    "sign_image", "sign_meta", "return_sign_image", "return_sign_meta",
 ];
 
 pub fn row_snapshot(conn: &Connection, table: &str, id: i64) -> Option<Row> {
@@ -117,7 +124,7 @@ fn clean_snapshot(r: &Option<Row>) -> Value {
         Some(Value::Object(m)) => {
             let mut out = serde_json::Map::new();
             for (k, v) in m {
-                if k != "created_at" && k != "updated_at" {
+                if !SNAPSHOT_SKIP.contains(&k.as_str()) {
                     out.insert(k.clone(), v.clone());
                 }
             }
@@ -248,17 +255,23 @@ pub fn get_personnel_options(conn: &Connection) -> Vec<Row> {
         &[],
     );
     let certs = db::query_maps(conn, "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates", &[]);
+    // cert_map：扁平列表（下游 datalist 用）
+    // cert_by_type：按证件种类代码索引（领用登记页勾选证件种类时带出对应号码）
     let mut cert_map: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+    let mut cert_by_type: std::collections::HashMap<i64, std::collections::HashMap<String, String>> =
+        std::collections::HashMap::new();
     for c in &certs {
         let pid = row_i64(c, "personnel_filing_id");
-        for k in ["passport_no", "hm_pass_no", "tw_pass_no"] {
+        for (k, code) in [("passport_no", "01"), ("hm_pass_no", "02"), ("tw_pass_no", "03")] {
             let v = row_str(c, k);
-            if !v.is_empty() {
-                let e = cert_map.entry(pid).or_default();
-                if !e.contains(&v) {
-                    e.push(v);
-                }
+            if v.is_empty() {
+                continue;
             }
+            let e = cert_map.entry(pid).or_default();
+            if !e.contains(&v) {
+                e.push(v.clone());
+            }
+            cert_by_type.entry(pid).or_default().entry(code.to_string()).or_insert(v);
         }
     }
     rows.iter().map(|r| {
@@ -270,6 +283,7 @@ pub fn get_personnel_options(conn: &Connection) -> Vec<Row> {
             "id_number": row_str(r, "id_number"), "position": row_str(r, "position_or_title"),
             "title": row_str(r, "title_val"),
             "cert_nos": cert_map.get(&row_i64(r, "id")).cloned().unwrap_or_default(),
+            "cert_by_type": cert_by_type.get(&row_i64(r, "id")).cloned().unwrap_or_default(),
         })
     }).collect()
 }

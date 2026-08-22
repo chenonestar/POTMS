@@ -18,6 +18,11 @@ pub struct Config {
     pub backup_folder: PathBuf,
     pub secret_key: Vec<u8>,
     pub tz_offset_hours: i64,
+    /// 证件领用 / 归还是否强制手写签名（POTMS_REQUIRE_SIGNATURE，默认强制）。
+    ///
+    /// 默认强制：签名就是「本人确实领了/还了」的凭证，一旦允许留空，这条记录就只剩
+    /// 经办人的一面之词。放宽必须是明确的选择，不能是默认值。
+    pub require_signature: bool,
 }
 
 impl Config {
@@ -30,10 +35,23 @@ impl Config {
             export_folder: base_dir.join("exports"),
             backup_folder: base_dir.join("backup"),
             secret_key: load_or_create_secret(&base_dir),
-            tz_offset_hours: std::env::var("POTMS_TZ")
+            // 变量名与另外四版统一为 POTMS_TZ_OFFSET；本版原先叫 POTMS_TZ，
+            // 同一台机器上换个版本跑，时区就悄悄退回 +8，而页面上只是时间差了
+            // 几个小时，不报错，很难被发现。旧名继续认，免得已经写进批处理 /
+            // 服务配置的部署失效。
+            tz_offset_hours: std::env::var("POTMS_TZ_OFFSET")
+                .or_else(|_| std::env::var("POTMS_TZ"))
                 .ok()
-                .and_then(|s| s.parse().ok())
+                .and_then(|s| s.trim().parse().ok())
                 .unwrap_or(8),
+            require_signature: !matches!(
+                std::env::var("POTMS_REQUIRE_SIGNATURE")
+                    .unwrap_or_else(|_| "1".into())
+                    .trim()
+                    .to_ascii_lowercase()
+                    .as_str(),
+                "0" | "false" | "no" | "off"
+            ),
             base_dir,
         };
         for d in [&cfg.upload_folder, &cfg.export_folder, &cfg.backup_folder] {
@@ -83,4 +101,47 @@ fn load_or_create_secret(base: &Path) -> Vec<u8> {
 
 fn hex_encode(b: &[u8]) -> String {
     b.iter().map(|x| format!("{:02x}", x)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 时区变量名与另外四版统一为 POTMS_TZ_OFFSET，同时继续认旧名 POTMS_TZ。
+    ///
+    /// 本版原先只认 POTMS_TZ：同一台机器上换个版本跑，时区就悄悄退回 +8，
+    /// 而页面上只是时间差了几个小时，不会报错，很难被发现。
+    ///
+    /// 走真的 Config::load() 而不是抄一份读取逻辑——抄一份只能证明副本对。
+    /// 环境变量是进程级的，所以整段串行放在一个 #[test] 里，并借 POTMS_BASE
+    /// 把数据目录引到临时目录，免得在仓库里落下 .secret_key。
+    #[test]
+    fn tz_offset_env_names() {
+        let tmp = std::env::temp_dir().join(format!("potms-cfg-{}", std::process::id()));
+        let load = || {
+            unsafe { std::env::set_var("POTMS_BASE", &tmp) };
+            Config::load().tz_offset_hours
+        };
+        unsafe {
+            std::env::remove_var("POTMS_TZ_OFFSET");
+            std::env::remove_var("POTMS_TZ");
+        }
+        assert_eq!(load(), 8, "都不设时应为东八区");
+
+        unsafe { std::env::set_var("POTMS_TZ", "9") };
+        assert_eq!(load(), 9, "旧名 POTMS_TZ 仍要认，免得已有部署失效");
+
+        unsafe { std::env::set_var("POTMS_TZ_OFFSET", " 0 ") };
+        assert_eq!(load(), 0, "新名优先，且要容忍两边的空白");
+
+        unsafe { std::env::set_var("POTMS_TZ_OFFSET", "不是数字") };
+        assert_eq!(load(), 8, "非法值退回默认，不因配置笔误拒绝启动");
+
+        unsafe {
+            std::env::remove_var("POTMS_TZ_OFFSET");
+            std::env::remove_var("POTMS_TZ");
+            std::env::remove_var("POTMS_BASE");
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

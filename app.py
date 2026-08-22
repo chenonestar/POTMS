@@ -52,6 +52,7 @@ def create_app() -> Flask:
     from blueprints.personnel import personnel_bp
     from blueprints.certificate import certificate_bp
     from blueprints.travel import travel_bp
+    from blueprints.issuance import issuance_bp
     from blueprints.decontrol import decontrol_bp
     from blueprints.export import export_bp
     from blueprints.import_data import import_bp
@@ -66,6 +67,7 @@ def create_app() -> Flask:
     app.register_blueprint(personnel_bp)
     app.register_blueprint(certificate_bp)
     app.register_blueprint(travel_bp)
+    app.register_blueprint(issuance_bp)
     app.register_blueprint(decontrol_bp)
     app.register_blueprint(export_bp)
     app.register_blueprint(import_bp)
@@ -81,15 +83,43 @@ def create_app() -> Flask:
 
     # 中文错误页：404 / 500（500 同时记录异常堆栈到应用日志）
     from flask import render_template
+    from jinja2 import TemplateNotFound
+
+    def _error_page(template: str, fallback: str, code: int):
+        r"""错误页本身不能再成为错误源。
+
+        打包成单文件 exe 时，PyInstaller 把资源解压到 %TEMP%\_MEIxxxx，程序退出时
+        又把它删掉。一旦服务进程比那个目录活得久（关控制台窗口后 waitress 线程还在
+        跑就会这样），模板与静态文件一起消失：渲染 errors/404.html 抛
+        TemplateNotFound，把一个 404 升级成 500；500 处理器渲染 errors/500.html
+        再抛一次，最后由 waitress 打出整屏堆栈。退回纯文本，至少让浏览器拿到正确的
+        状态码，日志里也只剩一行有用的信息。
+        """
+        try:
+            return render_template(template), code
+        except TemplateNotFound:
+            return fallback, code, {"Content-Type": "text/plain; charset=utf-8"}
+
+    # 浏览器无条件索要的 /favicon.ico。本系统不带站点图标，但每开一个标签页
+    # 浏览器都要问一次；没有这条路由，每次都会走一遍 404 处理器并在日志里留一行。
+    # 明确应答 204，浏览器会记住并停止追问。
+    @app.route("/favicon.ico")
+    def _favicon():
+        return "", 204
 
     @app.errorhandler(404)
     def _not_found(err):
-        return render_template("errors/404.html"), 404
+        return _error_page("errors/404.html", "404 页面不存在", 404)
 
     @app.errorhandler(500)
     def _server_error(err):
         app.logger.exception("Internal Server Error: %s", err)
-        return render_template("errors/500.html"), 500
+        return _error_page(
+            "errors/500.html",
+            "500 服务器内部错误。若本程序是单文件 exe 且刚刚关过窗口，"
+            "请彻底结束 POTMS 进程后重新启动。",
+            500,
+        )
 
     # 数据库连接关闭
     from database import close_db

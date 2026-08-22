@@ -1,5 +1,12 @@
 # 运行时生成的持久化数据 / 密钥（不纳入版本库）
+#
+# data.db 一度被误提交进来（首次提交那一版，空库）。它是运行时产物：
+# 每跑一次程序、每跑一次测试都会被改写，于是 git status 长期是脏的，
+# 真正的改动被淹在噪声里；更要命的是它会带着人员身份证号进版本库。
 .secret_key
+data.db
+data.db-wal
+data.db-shm
 backup/
 uploads/
 exports/

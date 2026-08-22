@@ -1,0 +1,28 @@
+{# 手写签名控件（鼠标 / 触摸屏 / 手写板 / 触摸型签批屏通用）
+   用法：{% include "components/signature_pad.html" %}，外层需有 <form id="signForm">
+   提交时由 signature.js 自动写入隐藏域 sign_png / sign_meta #}
+<div class="mb-3">
+    <label class="form-label">{{ sign_label | default('领用人手写签名') }}
+        {% if config.REQUIRE_SIGNATURE %}<span class="text-danger">*</span>
+        {% else %}<span class="badge bg-secondary fw-normal">可留空</span>{% endif %}</label>
+    <div class="border rounded bg-white p-2">
+        <canvas id="signCanvas" class="d-block w-100" style="cursor: crosshair;"></canvas>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small id="signHint" class="form-text text-muted">请在上方区域签名</small>
+            <div class="btn-group btn-group-sm">
+                <button type="button" id="signUndo" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise"></i> 撤销一笔</button>
+                <button type="button" id="signClear" class="btn btn-outline-danger"><i class="bi bi-eraser"></i> 清除重签</button>
+            </div>
+        </div>
+    </div>
+    <div class="form-text">
+        <i class="bi bi-info-circle"></i>
+        支持鼠标、触摸屏、手写板与触控笔。签名保存后<strong>不可修改</strong>，如登记有误请作废后重新登记。
+        {% if not config.REQUIRE_SIGNATURE %}<br>
+        <i class="bi bi-exclamation-triangle text-warning"></i>
+        当前为<strong>非强制</strong>模式：留空也能提交，但该笔记录会被标注「无签名」。
+        配齐手写板后请去掉 POTMS_REQUIRE_SIGNATURE=0 恢复强制。{% endif %}
+    </div>
+    <input type="hidden" name="sign_png" id="signPng">
+    <input type="hidden" name="sign_meta" id="signMeta">
+</div>

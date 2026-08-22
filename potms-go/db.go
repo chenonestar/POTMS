@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    full_name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS personnel_info (
@@ -192,6 +193,119 @@ func runMigrations() {
 	} {
 		db.Exec(idx)
 	}
+
+	// 登录账户的真实姓名。
+	//
+	// 单据上的「经办人」要写真人名字，不能写登录账号——打印出来的领用凭证上
+	// 一个 admin，是没法拿去归档的。账号继续用于操作日志（账号是身份标识，
+	// 姓名可以改；日志只记姓名的话，改名后历史记录就对不上人了）。
+	//
+	// 五版共用一个 data.db，库可能是任意一版建的，所以每一版都要能补这一列。
+	addColumn("users", "full_name", "TEXT")
+
+	// 证件领用记录表（REQ-012，含手写签名）。放在迁移里而不是 schemaSQL：
+	// 建表语句要与 Python 版 run_migrations 逐字对齐，五版共用同一个 data.db。
+	db.Exec(`CREATE TABLE IF NOT EXISTS cert_issuance (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		travel_id INTEGER REFERENCES travel_details(id),
+		personnel_filing_id INTEGER NOT NULL REFERENCES personnel_filing(id),
+		holder_name TEXT NOT NULL, id_number TEXT,
+		cert_types TEXT NOT NULL, cert_nos TEXT,
+		issue_date TEXT NOT NULL, issuer TEXT NOT NULL,
+		sign_image BLOB, sign_meta TEXT,
+		return_date TEXT, return_sign_image BLOB, return_sign_meta TEXT,
+		return_operator TEXT,
+		status TEXT NOT NULL DEFAULT 'issued', void_reason TEXT, remarks TEXT,
+		operator TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
+	for _, idx := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_issuance_travel ON cert_issuance(travel_id)",
+		"CREATE INDEX IF NOT EXISTS idx_issuance_filing ON cert_issuance(personnel_filing_id)",
+		"CREATE INDEX IF NOT EXISTS idx_issuance_status ON cert_issuance(status)",
+	} {
+		db.Exec(idx)
+	}
+
+	// 证件种类字典：seedData 只在首次运行执行，存量库在此补齐
+	for _, d := range seedDict {
+		if d[0] == "cert_type" {
+			db.Exec("INSERT OR IGNORE INTO sys_dict (category, code, value, sort_order) VALUES (?, ?, ?, ?)",
+				d[0], d[1], d[2], d[3])
+		}
+	}
+
+	backfillLegacyIssuance()
+}
+
+// backfillLegacyIssuance 把「出行表上已有领用日期、却没有领用记录」的历史数据
+// 补成一条领用记录（无签名）。幂等：仅对尚无领用记录的 travel_id 回填。
+//
+// 早期库允许 personnel_filing_id 为空，这类记录无法确定领用人，跳过——其出行表上的
+// 领用日期保持原样，不影响既有逾期口径。
+func backfillLegacyIssuance() {
+	rows, err := queryMaps(
+		"SELECT t.id, t.personnel_filing_id, t.name, t.id_number, t.passport_no, " +
+			"t.passport_collect_date, t.passport_return_date, t.operator " +
+			"FROM travel_details t " +
+			"WHERE t.passport_collect_date IS NOT NULL AND t.passport_collect_date != '' " +
+			"  AND t.personnel_filing_id IS NOT NULL " +
+			"  AND NOT EXISTS (SELECT 1 FROM cert_issuance c WHERE c.travel_id = t.id)")
+	if err != nil {
+		return
+	}
+	for _, r := range rows {
+		op := rowStr(r, "operator")
+		if op == "" {
+			op = "system"
+		}
+		rdate := rowStr(r, "passport_return_date")
+		status, retOp := "issued", interface{}(nil)
+		if rdate != "" {
+			status, retOp = "returned", op
+		}
+		var retDate interface{}
+		if rdate != "" {
+			retDate = rdate
+		}
+		db.Exec(
+			"INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, "+
+				"cert_types, cert_nos, issue_date, issuer, return_date, return_operator, status, "+
+				"remarks, operator) VALUES (?, ?, ?, ?, '01', ?, ?, ?, ?, ?, ?, ?, ?)",
+			r["id"], r["personnel_filing_id"], rowStr(r, "name"), rowStr(r, "id_number"),
+			rowStr(r, "passport_no"), rowStr(r, "passport_collect_date"), op,
+			retDate, retOp, status,
+			"历史数据回填（证件种类按护照推定，无签名）", op)
+	}
+}
+
+// addColumn 幂等地补一列：列已存在就什么都不做。
+//
+// PRAGMA 对不存在的表返回空集，这时也直接返回——极旧的库可能连 users 表都
+// 没有，对着不存在的表 ALTER 会报错。
+func addColumn(table, column, typ string) {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	found, any := false, false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return
+		}
+		any = true
+		if name == column {
+			found = true
+		}
+	}
+	if any && !found {
+		db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + typ)
+	}
 }
 
 var seedDict = [][4]interface{}{
@@ -217,6 +331,8 @@ var seedDict = [][4]interface{}{
 	{"submit_unit_type", "01", "党政机关", 1}, {"submit_unit_type", "02", "金融系统", 2},
 	{"submit_unit_type", "03", "教科文卫系统", 3}, {"submit_unit_type", "04", "国有大中型企业单位", 4},
 	{"submit_unit_type", "99", "其他单位", 5},
+	{"cert_type", "01", "因私护照", 1}, {"cert_type", "02", "往来港澳通行证", 2},
+	{"cert_type", "03", "大陆居民往来台湾通行证", 3},
 	{"supervisor_unit", "S01", "人事处", 1},
 }
 

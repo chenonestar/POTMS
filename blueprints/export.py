@@ -10,14 +10,19 @@ from utils.excel_export import (
     export_certificates,
     export_travel_details,
     export_decontrol,
+    export_issuance,
 )
-from utils.helpers import log_action
+from utils.helpers import log_action, operator_name
 
 export_bp = Blueprint("export", __name__)
 
 
 def _operator():
-    return session.get("username", "unknown")
+    """导出文件名里的「谁导的」——这是交给人看的产物，用真实姓名。
+
+    注意：导出的日志**内容**里，操作人一列仍是登录账号，那是审计口径，不改。
+    """
+    return operator_name()
 
 
 def _selected_ids():
@@ -114,8 +119,23 @@ def decontrol_export() -> ResponseReturnValue:
         return redirect(url_for("decontrol.list"))
 
 
+@export_bp.route("/export/issuance")
+@login_required
+def issuance_export() -> ResponseReturnValue:
+    from blueprints.issuance import build_filters
+    try:
+        ids = _selected_ids()
+        where, params = build_filters(request.args, ids=ids or None)
+        filepath, filename = export_issuance(_operator(), where, params)
+        log_action("export", "cert_issuance", detail=f"{filename}（{_scope_note(where, ids)}）")
+        return send_file(filepath, as_attachment=True, download_name=filename)
+    except Exception as e:
+        flash(f"导出失败: {e}", "danger")
+        return redirect(url_for("issuance.list"))
+
+
 # =========================================================================
-# 在线打印 — 5 类表单
+# 在线打印 — 6 类表单
 # =========================================================================
 @export_bp.route("/print/<string:print_type>/<int:id>")
 @login_required
@@ -165,6 +185,20 @@ def print_view(print_type, id) -> ResponseReturnValue:
             flash("记录不存在。", "danger")
             return redirect(url_for("decontrol.list"))
         return render_template("export/print.html", title="因私事出国（境）人员撤控备案表", row=row, mode="decontrol")
+
+    # --- 证件领用登记表 ---
+    elif print_type == "issuance":
+        row = db.execute(
+            "SELECT i.*, pf.work_unit FROM cert_issuance i "
+            "JOIN personnel_filing pf ON i.personnel_filing_id = pf.id WHERE i.id = ?",
+            (id,)).fetchone()
+        if not row:
+            flash("记录不存在。", "danger")
+            return redirect(url_for("issuance.list"))
+        from blueprints.issuance import _types_label
+        return render_template("export/print.html", title="因私出国（境）证件领用登记表",
+                               row=row, mode="issuance",
+                               type_labels=_types_label(row["cert_types"]))
 
     flash("不支持的打印类型。", "danger")
     return redirect(url_for("dashboard.index"))

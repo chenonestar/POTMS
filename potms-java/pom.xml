@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.0</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.potms</groupId>
+  <artifactId>potms</artifactId>
+  <version>1.0.0</version>
+  <name>POTMS</name>
+  <description>因私出国（境）人员审批管理系统 — Java 版</description>
+
+  <properties>
+    <!-- Java 21 LTS：Temurin/毕昇/Dragonwell 均可，禁用 Oracle JDK（见 README 许可证一节） -->
+    <java.version>21</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <jte.version>3.2.4</jte.version>
+    <sqlite.version>3.53.2.1</sqlite.version>
+    <poi.version>5.5.1</poi.version>
+    <bc.version>1.85</bc.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- JdbcTemplate：Spring 对 JDBC 的薄封装，不接管 schema。
+         刻意不用 JPA/Hibernate —— 它会引入自己的元数据与 DDL 生成，
+         破坏五个语言版本共用同一个 data.db 的前提（与 .NET 版拒绝 EF Migrations 同理）。 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.xerial</groupId>
+      <artifactId>sqlite-jdbc</artifactId>
+      <version>${sqlite.version}</version>
+    </dependency>
+
+    <!-- JTE：编译期生成 Java 代码的模板引擎，类型安全、零反射。
+         语法最接近其它四版的 Jinja / minijinja，模板迁移是机械活。 -->
+    <dependency>
+      <groupId>gg.jte</groupId>
+      <artifactId>jte-spring-boot-starter-4</artifactId>
+      <version>${jte.version}</version>
+    </dependency>
+
+    <!-- 只取 spring-security-crypto（BCrypt），不引整个 Spring Security：
+         会话与 CSRF 沿用其它四版的自实现，保持五版行为一致。 -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-crypto</artifactId>
+    </dependency>
+
+    <!-- Excel：Apache POI（Apache-2.0）。签名图嵌入依赖 JDK 自带 ImageIO，
+         无需任何第三方图像库（Python 版与 .NET 版都得手写 IHDR 解析器绕开）。 -->
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>${poi.version}</version>
+    </dependency>
+
+    <!-- 国密 SM2/SM3：对签名图 + 笔迹矢量 + 领用要素整体签章，防篡改 -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>${bc.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <version>${bc.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>potms</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+
+      <!-- 模板预编译：生产环境不带 JDK 编译器也能跑，且启动时不再解析模板 -->
+      <plugin>
+        <groupId>gg.jte</groupId>
+        <artifactId>jte-maven-plugin</artifactId>
+        <version>${jte.version}</version>
+        <configuration>
+          <sourceDirectory>${project.basedir}/src/main/jte</sourceDirectory>
+          <targetDirectory>${project.build.outputDirectory}</targetDirectory>
+          <contentType>Html</contentType>
+          <binaryStaticContent>true</binaryStaticContent>
+        </configuration>
+        <executions>
+          <execution>
+            <phase>process-classes</phase>
+            <goals><goal>precompile</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

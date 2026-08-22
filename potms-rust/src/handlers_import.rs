@@ -39,7 +39,7 @@ pub async fn index_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mut 
     }
     let result = {
         let conn = st.db.lock().unwrap();
-        match crate::excel::parse_import_file(&conn, &filedata, &req.sess.username()) {
+        match crate::excel::parse_import_file(&conn, &filedata, &req.sess.operator_name()) {
             Ok(res) => {
                 helpers::log_action(&conn, &req.sess.username(), &req.ip, "import", "batch", None, &format!("total={}, success={}, errors={}", res.total, res.success, res.errors.len()), None, None);
                 Some(res)
