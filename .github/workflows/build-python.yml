@@ -185,7 +185,12 @@ jobs:
             Write-Host '冒烟通过：登录页与静态资源均正常'
           }
           finally {
+            # --onefile 的引导程序会再 fork 一个子进程跑真正的应用，只杀 $proc
+            # 留下的子进程会继续占着 5000 端口（runner 收尾时报 orphan process）。
+            # 按名字连锅端。
             if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            Get-Process -Name POTMS -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep -Seconds 1   # 等它把日志文件的句柄放掉再读
             Write-Host '--- exe stdout ---'; Get-Content $out -ErrorAction SilentlyContinue
             Write-Host '--- exe stderr ---'; Get-Content $err -ErrorAction SilentlyContinue
           }
