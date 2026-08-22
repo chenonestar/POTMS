@@ -46,6 +46,18 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
  *
  * <p>切换来源只改环境变量，不动业务逻辑——这正是当初把「证书来源」
  * 定为可配置项的目的。
+ *
+ * <p><b>关于签章时间的效力边界，要说清楚。</b>{@code signedAt} 现在在签名载荷之内，
+ * 因此<b>改库改不动它</b>：动了时间，签名就验不过。但它仍然是<b>本机时钟自述</b>的
+ * 时间——有管理员权限的人可以把系统时间往前调再签章，签出来的章一样有效。
+ * 要拿到不可否认的时间，只能引第三方 RFC 3161 时间戳服务（TSA），而那需要
+ * 网络可达且对方认可该 TSA，内网部署基本不具备条件。
+ *
+ * <p>所以本版的定位是<b>可核验的自述时间</b>：能证明「这份凭证自签章后没被动过，
+ * 且签章时本机声称是这个时间」，不能证明「这个时间是真的」。这与默认自签证书
+ * 「只防内部篡改、不能对外举证」的定位是一致的——在证书本身还是自签的前提下，
+ * 单独去接 TSA 属于给帐篷装金库门。若将来换成 CA 证书对外举证，
+ * 再补 TSA 才有意义，接入点就在 {@link #sign} 里取 signedAt 那一处。
  */
 public final class Sm2Seal {
 
@@ -113,7 +125,10 @@ public final class Sm2Seal {
      */
     public Seal sign(byte[] signImage, String signMeta, String facts) {
         ensureLoaded();
-        byte[] payload = canonicalPayload(signImage, signMeta, facts);
+        // 签章时间必须在**签名之前**取定并纳入载荷。放在载荷之外的话，
+        // 谁能写库谁就能把 signed_at 从 8 月改成 3 月而签名照样验得过。
+        String signedAt = Instant.now().toString();
+        byte[] payload = canonicalPayload(signImage, signMeta, facts, signedAt);
         String hash = HexFormat.of().formatHex(sm3(payload));
         try {
             var sig = java.security.Signature.getInstance(SIG_ALGO, BC);
@@ -123,19 +138,47 @@ public final class Sm2Seal {
             return new Seal(hash, hex,
                     certificate.getSubjectX500Principal().getName(),
                     certificate.getSerialNumber().toString(16),
-                    Instant.now().toString(), source);
+                    signedAt, source);
         } catch (java.security.GeneralSecurityException e) {
             throw new IllegalStateException("SM2 签章失败: " + e.getMessage(), e);
         }
     }
 
-    /** 用当前证书公钥验章。凭证被改过任何一个字节，这里就会返回 false。 */
-    public boolean verify(byte[] signImage, String signMeta, String facts, String signatureHex) {
+    /**
+     * 用当前证书公钥验章。凭证被改过任何一个字节，这里就会返回 false——
+     * 现在也包括签章时间：signedAt 已在载荷内，改了就验不过。
+     *
+     * <p>{@code signedAt} 传入库里存的那一份（而不是当前时间）：验章要重建
+     * **签章当时**的载荷。
+     */
+    public boolean verify(byte[] signImage, String signMeta, String facts,
+                          String signatureHex, String signedAt) {
         ensureLoaded();
         try {
             var sig = java.security.Signature.getInstance(SIG_ALGO, BC);
             sig.initVerify(certificate.getPublicKey());
-            sig.update(canonicalPayload(signImage, signMeta, facts));
+            sig.update(canonicalPayload(signImage, signMeta, facts, signedAt));
+            return sig.verify(HexFormat.of().parseHex(signatureHex));
+        } catch (java.security.GeneralSecurityException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 旧版载荷（签章时间在载荷之外）的验章，仅用于校验本次改动之前生成的存证。
+     *
+     * <p>那批签章确实签过、也确实没被改过图与要素，只是当年没把时间锁进去。
+     * 直接按新载荷去验会全部报「校验失败」，把一个「时间无保护」的历史事实
+     * 误报成「凭证被篡改」——那是更严重的误导。所以留这条旧路，
+     * 但结论要在页面上标成「旧版签章」，不能与新章混为一谈。
+     */
+    public boolean verifyLegacy(byte[] signImage, String signMeta, String facts,
+                                String signatureHex) {
+        ensureLoaded();
+        try {
+            var sig = java.security.Signature.getInstance(SIG_ALGO, BC);
+            sig.initVerify(certificate.getPublicKey());
+            sig.update(canonicalPayload(signImage, signMeta, facts, null));
             return sig.verify(HexFormat.of().parseHex(signatureHex));
         } catch (java.security.GeneralSecurityException | IllegalArgumentException e) {
             return false;
@@ -145,12 +188,20 @@ public final class Sm2Seal {
     /**
      * 待签数据的规范化拼装。字段以 0x1F（单元分隔符）连接，避免
      * 「张三|123」与「张|三123」这类拼接歧义被用来构造碰撞。
+     *
+     * <p>{@code signedAt} 为 null 时产出**旧版载荷**（三字段、无时间），
+     * 只给 {@link #verifyLegacy} 复核历史存证用；新签章一律带时间。
+     * 两种载荷天然不会相撞：旧版少一个字段，多出来的那个分隔符就是分界。
      */
-    public static byte[] canonicalPayload(byte[] signImage, String signMeta, String facts) {
+    public static byte[] canonicalPayload(byte[] signImage, String signMeta, String facts,
+                                          String signedAt) {
         var out = new java.io.ByteArrayOutputStream();
         writeField(out, signImage == null ? new byte[0] : sm3(signImage));
         writeField(out, (signMeta == null ? "" : signMeta).getBytes(StandardCharsets.UTF_8));
         writeField(out, (facts == null ? "" : facts).getBytes(StandardCharsets.UTF_8));
+        if (signedAt != null) {
+            writeField(out, signedAt.getBytes(StandardCharsets.UTF_8));
+        }
         return out.toByteArray();
     }
 

@@ -14,17 +14,26 @@ import org.springframework.stereotype.Component;
 @Component
 public class SealStore {
 
-    /** 验章结论。 */
+    /**
+     * 验章结论。
+     *
+     * @param legacy 该签章生成于「签章时间纳入载荷」之前，其 signedAt 不受签名保护。
+     *               单独标出来，是因为把它跟新章混作「签章有效」会让人误以为
+     *               那个时间也是可核验的。
+     */
     public record Status(boolean present, boolean valid, String signedAt,
-                         String certSubject, String source) {
-        public static final Status ABSENT = new Status(false, false, "", "", "");
+                         String certSubject, String source, boolean legacy) {
+        public static final Status ABSENT = new Status(false, false, "", "", "", false);
 
         /** 页面展示用的一句话结论。 */
         public String label() {
             if (!present) {
                 return "未签章";
             }
-            return valid ? "签章有效" : "签章校验失败";
+            if (!valid) {
+                return "签章校验失败";
+            }
+            return legacy ? "签章有效（旧版，时间未受保护）" : "签章有效";
         }
     }
 
@@ -73,14 +82,24 @@ public class SealStore {
             return Status.ABSENT;
         }
         var seal = rows.get(0);
+        String signedAt = s(seal.get("signed_at"));
+        String signature = s(seal.get("signature"));
+        String facts = facts(row, kind);
         boolean ok;
+        boolean legacy = false;
         try {
-            ok = sm2.verify(signImage, signMeta, facts(row, kind), s(seal.get("signature")));
+            ok = sm2.verify(signImage, signMeta, facts, signature, signedAt);
+            if (!ok) {
+                // 先按新载荷验，不过再退回旧载荷试一次。顺序不能反：
+                // 反过来的话，新章里被篡改的时间会先撞上旧路而被放行。
+                legacy = sm2.verifyLegacy(signImage, signMeta, facts, signature);
+                ok = legacy;
+            }
         } catch (RuntimeException e) {
             ok = false;   // 证书不可用时按「验不过」处理，不掩盖问题
         }
-        return new Status(true, ok, s(seal.get("signed_at")),
-                s(seal.get("cert_subject")), s(seal.get("cert_source")));
+        return new Status(true, ok, signedAt,
+                s(seal.get("cert_subject")), s(seal.get("cert_source")), legacy);
     }
 
     private static String s(Object o) {

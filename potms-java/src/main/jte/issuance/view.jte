@@ -70,7 +70,10 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>领用人签名</span>
                     @if(issueSeal.present())
-                        <span class="badge ${issueSeal.valid() ? "bg-success" : "bg-danger"}">
+                        <%-- 旧版章（签章时间未纳入签名载荷）不能给纯绿：
+                           它确实验得过，但那个时间不受保护，与新章不是一回事。 --%>
+                        <span class="badge ${!issueSeal.valid() ? "bg-danger"
+                                : issueSeal.legacy() ? "bg-warning text-dark" : "bg-success"}">
                             <i class="bi ${issueSeal.valid() ? "bi-shield-check" : "bi-shield-exclamation"}"></i> ${issueSeal.label()}
                         </span>
                     @else
@@ -93,7 +96,10 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>归还人签名</span>
                     @if(returnSeal.present())
-                        <span class="badge ${returnSeal.valid() ? "bg-success" : "bg-danger"}">
+                        <%-- 旧版章（签章时间未纳入签名载荷）不能给纯绿：
+                           它确实验得过，但那个时间不受保护，与新章不是一回事。 --%>
+                        <span class="badge ${!returnSeal.valid() ? "bg-danger"
+                                : returnSeal.legacy() ? "bg-warning text-dark" : "bg-success"}">
                             <i class="bi ${returnSeal.valid() ? "bi-shield-check" : "bi-shield-exclamation"}"></i> ${returnSeal.label()}
                         </span>
                     @endif
