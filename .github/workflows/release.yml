@@ -1,0 +1,425 @@
+name: 发布 Release（五版一次出齐）
+
+# 各版自己的工作流只在改到自己目录时触发，产物是保留 30 天的 artifact，
+# 且五版从来没有在同一个 commit 上同时绿过。这条工作流把五版钉在同一个
+# tag 上重新测一遍、构建一遍，产物直接挂到 GitHub Release 上长期可下载。
+#
+# 两种触发方式等价：
+#   1. 推 tag：git tag v1.0.0 && git push origin v1.0.0
+#   2. Actions 页面点「Run workflow」填版本号——不用推 tag，工作流自己建
+#
+# 产出的 Release 一律是**草稿**。发版是对外且不好收回的动作，草稿这一步就是
+# 确认环节：产物下下来试过了，再手动点 Publish。
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号，形如 v1.0.0（前面的 v 可省）'
+        required: true
+
+permissions:
+  contents: write        # gh release create 要写 Release 与 tag
+
+jobs:
+  # ---------------------------------------------------------------- 版本号
+  meta:
+    name: 解析版本号
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}          # 1.0.0 / 1.1.0-rc1
+      tag: ${{ steps.v.outputs.tag }}                  # v1.0.0
+      app_version: ${{ steps.v.outputs.app_version }}  # 1.0.0（jpackage 只认三段数字）
+    steps:
+      - id: v
+        # 经环境变量传入，不把用户输入直接拼进脚本
+        env:
+          RAW: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: |
+          ver="${RAW#v}"
+          if ! echo "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+].+)?$'; then
+            echo "::error::版本号格式不对：'$RAW'。期望 v1.0.0 这样的三段式，可带 -rc1 后缀。"
+            exit 1
+          fi
+          # jpackage 的 --app-version 只接受纯数字三段，预发布后缀要摘掉
+          app=$(echo "$ver" | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=$ver"     >> "$GITHUB_OUTPUT"
+          echo "tag=v$ver"        >> "$GITHUB_OUTPUT"
+          echo "app_version=$app" >> "$GITHUB_OUTPUT"
+          echo "版本 $ver（jpackage 用 $app）"
+
+      # 同名 Release 已存在的话，越早发现越好——放到最后会白等五版构建十几分钟，
+      # 而且那时已经攒了一堆 artifact 要收拾。
+      - name: 确认该版本尚未发布
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.v.outputs.version }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::$TAG 已经有 Release 了。要重发请先删掉它（gh release delete $TAG），或换一个版本号。"
+            exit 1
+          fi
+          echo "$TAG 可用"
+
+  # ---------------------------------------------------------------- Python
+  python:
+    name: Python 版
+    needs: meta
+    runs-on: windows-latest
+    env:
+      PKG: POTMS-python-${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 安装依赖与 PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install pyinstaller
+      - name: 测试
+        run: pytest
+
+      # 参数与 build.bat / build-python.yml 一致。刻意保持 --onefile：
+      # 单文件拷贝即用，data.db 与 exe 平级，升级只换那一个文件不会碰到数据。
+      - name: 打包 exe
+        run: >
+          pyinstaller --onefile --noconfirm
+          --name POTMS
+          --add-data "templates;templates"
+          --add-data "static;static"
+          --hidden-import bcrypt
+          --hidden-import waitress
+          --exclude-module cryptography
+          app.py
+
+      # 发版前必须确认这个 exe 真能起来：漏 hidden-import、--add-data 没生效
+      # 这类问题 pytest 一条都测不出来，只有打包后才缺。
+      - name: 冒烟（启动 exe 并请求登录页与静态资源）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD 'dist\POTMS.exe'
+          $out = Join-Path $PWD 'smoke-out.txt'
+          $err = Join-Path $PWD 'smoke-err.txt'
+          $env:POTMS_BASE = Join-Path $PWD 'smoke-data'
+          $env:POTMS_HOST = '127.0.0.1'
+          $env:POTMS_PORT = '5000'
+          $proc = Start-Process -FilePath $exe -WorkingDirectory $PWD -PassThru `
+                    -RedirectStandardOutput $out -RedirectStandardError $err
+          try {
+            $login = $null
+            foreach ($i in 1..30) {
+              if ($proc.HasExited) { throw "exe 启动后立刻退出，退出码 $($proc.ExitCode)" }
+              Start-Sleep -Seconds 1
+              try {
+                $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5000/login' -UseBasicParsing -TimeoutSec 5
+                if ($r.StatusCode -eq 200) { $login = $r; break }
+              } catch { }
+            }
+            if ($null -eq $login) { throw '30 秒内没等到登录页返回 200' }
+            if ($login.Content -notmatch 'name="username"' -or
+                $login.Content -notmatch 'name="password"') {
+              throw '登录页缺少用户名/密码字段，模板可能没打进 exe'
+            }
+            if ($login.Content -notmatch '因私出国') { throw '登录页中文标题异常，疑似编码问题' }
+            $css = Invoke-WebRequest -Uri 'http://127.0.0.1:5000/static/css/style.css' `
+                     -UseBasicParsing -TimeoutSec 5
+            if ($css.StatusCode -ne 200 -or $css.RawContentLength -le 0) {
+              throw '静态样式表取不到，--add-data static 可能没生效'
+            }
+            Write-Host '冒烟通过'
+          }
+          finally {
+            if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            Get-Process -Name POTMS -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep -Seconds 1
+            Write-Host '--- exe stdout ---'; Get-Content $out -ErrorAction SilentlyContinue
+            Write-Host '--- exe stderr ---'; Get-Content $err -ErrorAction SilentlyContinue
+          }
+
+      - name: 组装并打包
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "pkg/$env:PKG" | Out-Null
+          Copy-Item dist\POTMS.exe "pkg/$env:PKG/"
+          Copy-Item README.md "pkg/$env:PKG/"
+          Compress-Archive -Path "pkg/$env:PKG" -DestinationPath "$env:PKG-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-python
+          path: '*.zip'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Go
+  go:
+    name: Go 版
+    needs: meta
+    runs-on: windows-latest
+    env:
+      PKG: POTMS-go-${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: potms-go/go.sum
+      - name: go vet
+        working-directory: potms-go
+        run: go vet ./...
+      - name: 测试
+        working-directory: potms-go
+        run: go test ./...
+      - name: 构建 exe
+        working-directory: potms-go
+        run: go build -trimpath -ldflags="-s -w" -o POTMS.exe .
+      - name: 组装并打包
+        shell: pwsh
+        working-directory: potms-go
+        run: |
+          New-Item -ItemType Directory -Path "pkg/$env:PKG" | Out-Null
+          Copy-Item POTMS.exe "pkg/$env:PKG/"
+          Copy-Item -Recurse templates "pkg/$env:PKG/templates"
+          Copy-Item -Recurse static "pkg/$env:PKG/static"
+          Copy-Item README.md "pkg/$env:PKG/"
+          Compress-Archive -Path "pkg/$env:PKG" -DestinationPath "$env:GITHUB_WORKSPACE/$env:PKG-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-go
+          path: '*.zip'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Rust
+  rust:
+    name: Rust 版
+    needs: meta
+    runs-on: windows-latest
+    env:
+      PKG: POTMS-rust-${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: potms-rust
+      - name: 测试
+        working-directory: potms-rust
+        run: cargo test --release
+      - name: 构建 release exe
+        working-directory: potms-rust
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: 组装并打包
+        shell: pwsh
+        working-directory: potms-rust
+        run: |
+          New-Item -ItemType Directory -Path "pkg/$env:PKG" | Out-Null
+          # 模板与静态资源已由 rust-embed 编进 exe，真正的单文件
+          Copy-Item target/x86_64-pc-windows-msvc/release/potms.exe "pkg/$env:PKG/POTMS.exe"
+          Copy-Item README.md "pkg/$env:PKG/"
+          Compress-Archive -Path "pkg/$env:PKG" -DestinationPath "$env:GITHUB_WORKSPACE/$env:PKG-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-rust
+          path: '*.zip'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- .NET
+  dotnet:
+    name: .NET 版
+    needs: meta
+    runs-on: windows-latest
+    env:
+      PKG: POTMS-dotnet-${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: 校验 Schema.cs 与 database.py 同步
+        run: python3 potms-dotnet/tools/gen-schema.py --check
+      - name: 构建
+        run: dotnet build potms-dotnet/POTMS.sln -c Release
+      - name: 测试
+        run: dotnet test potms-dotnet/POTMS.sln -c Release --no-build --verbosity normal
+
+      # 自包含目录版：不裁剪（裁剪会破坏 Razor 依赖的反射），
+      # 不打单文件（避免原生库释放到 temp 触发杀软误报 / 权限受限）
+      - name: 发布
+        run: >
+          dotnet publish potms-dotnet/src/POTMS/POTMS.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishTrimmed=false -p:PublishSingleFile=false
+          -p:Version=${{ needs.meta.outputs.app_version }}
+          -o pkg/${{ env.PKG }}
+      - name: 组装并打包
+        shell: pwsh
+        run: |
+          Copy-Item potms-dotnet/README.md "pkg/$env:PKG/"
+          Compress-Archive -Path "pkg/$env:PKG" -DestinationPath "$env:PKG-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-dotnet
+          path: '*.zip'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Java
+  java:
+    name: Java 版
+    needs: meta
+    runs-on: windows-latest
+    env:
+      PKG: POTMS-java-${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # 刻意用 Temurin：Oracle JDK 的 NFTC 免费窗口到期后需 Java SE Universal
+      # Subscription（按企业总员工数计费）。详见 potms-java/README.md 许可证一节。
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: 校验 schema 与 database.py 同步
+        run: python3 potms-java/tools/gen-schema-java.py --check
+      - name: 打包胖 jar
+        run: mvn -B -f potms-java/pom.xml package -DskipTests
+      # 全站冒烟会起真进程走真 HTTP，须先有 target/potms.jar
+      - name: 测试
+        run: mvn -B -f potms-java/pom.xml test
+
+      # jlink 只挑用得上的模块，把运行时压到 ~50MB
+      - name: 裁剪运行时（jlink）
+        shell: bash
+        run: |
+          jlink --add-modules java.base,java.desktop,java.sql,java.naming,java.management,\
+          java.instrument,java.security.jgss,java.security.sasl,java.xml,java.xml.crypto,\
+          java.logging,java.net.http,java.prefs,java.scripting,java.transaction.xa,\
+          jdk.crypto.ec,jdk.crypto.cryptoki,jdk.unsupported,jdk.zipfs \
+            --strip-debug --no-header-files --no-man-pages --compress=zip-6 \
+            --output runtime
+
+      # --description 写进 exe 的版本资源 FileDescription（任务管理器里显示的程序名）。
+      # 它不能直接写在命令行上：JDK 启动器按系统 ANSI 代码页解码 argv，runner 是
+      # en-US（ACP=1252），中文到不了 jpackage 手里，全变问号。参数文件由 jpackage
+      # 用默认字符集读取（JDK 18+ 恒为 UTF-8），绕开那道解码。
+      - name: 准备 jpackage 参数文件（UTF-8）
+        shell: bash
+        run: |
+          printf -- '--description\n"因私出国（境）人员审批管理系统"\n' > jpackage-args.txt
+
+      # 目录版而非 exe 安装包：政务终端常无管理员权限，解压即用最稳妥。
+      # --win-console 与另外几版一致：默认的窗口子系统启动器双击后毫无反应
+      # （服务在后台起来了但看不见），用户会以为没启动而反复双击。
+      - name: 生成免装 JRE 的目录版（jpackage）
+        shell: bash
+        run: |
+          jpackage --type app-image \
+            --name POTMS \
+            --app-version '${{ needs.meta.outputs.app_version }}' \
+            --vendor POTMS \
+            @jpackage-args.txt \
+            --input potms-java/target \
+            --main-jar potms.jar \
+            --main-class org.springframework.boot.loader.launch.JarLauncher \
+            --runtime-image runtime \
+            --win-console \
+            --java-options "-Dfile.encoding=UTF-8" \
+            --dest dist
+
+      # 参数文件只保证中文安全抵达 jpackage；写进 Windows 版本资源时会不会再掉
+      # 一次，只有在 Windows 上读回来才知道。
+      - name: 核对任务管理器里显示的程序名
+        shell: pwsh
+        run: |
+          $info = (Get-Item dist\POTMS\POTMS.exe).VersionInfo
+          Write-Host "FileDescription = $($info.FileDescription)"
+          if ($info.FileDescription -notlike '*因私出国*') {
+            throw "exe 版本资源里的中文没写对（任务管理器会显示成问号）：$($info.FileDescription)"
+          }
+      - name: 组装并打包
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path pkg | Out-Null
+          Move-Item dist/POTMS "pkg/$env:PKG"
+          Copy-Item potms-java/README.md "pkg/$env:PKG/"
+          Copy-Item potms-java/target/potms.jar "pkg/$env:PKG/potms-fatjar.jar"
+          Compress-Archive -Path "pkg/$env:PKG" -DestinationPath "$env:PKG-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-java
+          path: '*.zip'
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Release
+  release:
+    name: 创建 Release（草稿）
+    needs: [meta, python, go, rust, dotnet, java]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: pkg-*
+          merge-multiple: true
+
+      # 政务环境常要把包拷进内网隔离机，校验和是「拷过去的和构建出来的是同一个
+      # 东西」的唯一凭据，附一份。
+      - name: 生成校验和并列清单
+        working-directory: assets
+        run: |
+          sha256sum *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -lh
+
+      - name: 撰写 Release 说明
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          cat > notes.md <<EOF
+          因私出国（境）人员审批管理系统 $VER
+
+          同一套需求的五个语言实现，共用同构的 \`data.db\`，功能对齐。
+          全部为 Windows x64、免安装、解压即用，均由本次工作流在同一个提交上
+          **先跑完各自的测试**再构建。
+
+          | 版本 | 形态 | 说明 |
+          |---|---|---|
+          | Python  | 单文件 exe | 模板与静态资源打包在内，运行时解压到临时目录 |
+          | Go      | exe + 目录 | \`templates/\` 与 \`static/\` 在 exe 旁边，可直接改 |
+          | Rust    | 单文件 exe | 资源由 rust-embed 编进二进制，真正的单文件 |
+          | .NET    | 自包含目录 | 免装 .NET 运行时 |
+          | Java    | 免装 JRE 目录 | jlink 裁剪运行时，另附胖 jar 备用 |
+
+          **首次运行**：默认管理员 \`admin\` / \`admin123\`，请立即修改。
+          数据库、上传件、导出件、备份都落在程序所在目录，换机器整个目录拷走即可。
+
+          **升级**：只替换可执行文件（Python / Go / Rust）或程序目录中除数据外的部分
+          （.NET / Java），\`data.db\`、\`uploads/\`、\`backup/\`、\`.secret_key\` 不要动。
+
+          **校验**：\`SHA256SUMS.txt\` 与各 zip 一同发布，拷贝进内网后可比对。
+
+          完整提交记录见 [$TAG 的比较视图](https://github.com/${{ github.repository }}/commits/$TAG)。
+          EOF
+          cat notes.md
+
+      # 一律先建草稿：发版对外且不好收回，草稿这一步就是确认环节。
+      # 把 zip 下下来试过了，再到 Releases 页面手动 Publish。
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            --title "POTMS $VER" \
+            --notes-file notes.md \
+            --draft \
+            --target "${{ github.sha }}" \
+            assets/*.zip assets/SHA256SUMS.txt
+          echo "::notice::草稿 Release 已建好，确认无误后到 Releases 页面手动 Publish"

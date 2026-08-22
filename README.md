@@ -85,6 +85,24 @@ POTMS/
 
 ## 打包部署
 
+> **直接下现成的包**：[Releases](https://github.com/chenonestar/POTMS/releases) 里五个语言版本一次出齐，
+> 全部 Windows x64、免安装、解压即用，并附 `SHA256SUMS.txt` 供拷进内网后比对。
+> 下面几节是自己动手构建的做法。
+
+### 发布新版本
+
+`.github/workflows/release.yml` 负责出包：把五版钉在同一个提交上，**各自跑完测试**再构建，
+产物直接挂到 Release。两种触发方式等价：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0        # 方式一：推 tag
+```
+
+方式二：Actions → 「发布 Release（五版一次出齐）」→ Run workflow → 填版本号，不用推 tag。
+
+产出的 Release **一律是草稿**：发版对外且不好收回，草稿这一步就是确认环节——
+把 zip 下下来试过了，再到 Releases 页面手动 Publish。
+
 ### 方式一：源码直接运行
 
 适用于已有 Python 环境的机器：
