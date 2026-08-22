@@ -1,0 +1,199 @@
+name: 构建 Python 版 Windows EXE
+
+# Python 版是五版里的源头版本（database.py 生成 .NET / Java 的 schema），
+# 却一直只有手工 build.bat，没有自动构建。这条工作流把 build.bat 做的事
+# 搬到 CI 上，另外补一步 build.bat 做不到的验证：起真的 exe 打一次 HTTP。
+# PyInstaller 的典型翻车方式（漏 hidden-import、--add-data 没打进去）在
+# pytest 里一律测不出来——源码目录下模板和静态文件都在，只有打包后才缺。
+
+on:
+  push:
+    branches: [main]
+    # 只列根目录下属于 Python 版的路径；potms-go/ 等四个子目录各有各的工作流。
+    # GitHub Actions 的解析器不支持 YAML 锚点，push / pull_request 两处只能各写一遍。
+    paths:
+      - 'app.py'
+      - 'auth.py'
+      - 'config.py'
+      - 'database.py'
+      - 'init_reset.py'
+      - 'blueprints/**'
+      - 'utils/**'
+      - 'templates/**'
+      - 'static/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'pytest.ini'
+      - 'build.bat'
+      - '.github/workflows/build-python.yml'
+  pull_request:
+    paths:
+      - 'app.py'
+      - 'auth.py'
+      - 'config.py'
+      - 'database.py'
+      - 'init_reset.py'
+      - 'blueprints/**'
+      - 'utils/**'
+      - 'templates/**'
+      - 'static/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'pytest.ini'
+      - 'build.bat'
+      - '.github/workflows/build-python.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试（Linux）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # build.bat 要求 3.12+，这里与部署目标取齐；测试与打包用同一版本，
+      # 免得「测的是一个解释器、打的是另一个」。
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # .NET 的 Schema.cs 与 Java 的 schema.sql/Schema.java 都由 database.py
+      # 生成，五版共用同一个 data.db。改了 database.py 却忘了重新生成，另外两版
+      # 建出来的表就和这版对不上——那两条工作流各自会拦，但只在改动落到它们的
+      # 目录时才触发；从 Python 这侧改 database.py 是它们都看不见的路径，
+      # 所以源头这边必须自己查一遍。
+      - name: 校验 .NET / Java 的 schema 与 database.py 同步
+        run: |
+          python3 potms-dotnet/tools/gen-schema.py --check
+          python3 potms-java/tools/gen-schema-java.py --check
+
+      - name: 测试
+        run: pytest
+
+      # data.db 和 __pycache__ 曾被误提交进仓库，靠 .gitignore 收拾干净。
+      # 这一步防的是复发：测试跑完若冒出未被忽略的新文件（比如往 exports/
+      # 之外的新目录写东西），说明 .gitignore 又漏了一类产物。
+      - name: 确认测试没有弄脏仓库
+        run: |
+          dirty=$(git status --porcelain)
+          if [ -n "$dirty" ]; then
+            echo "::error::测试后工作区不干净，以下文件未被 .gitignore 覆盖："
+            echo "$dirty"
+            exit 1
+          fi
+
+  build-windows:
+    name: 构建 Windows EXE
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: 安装依赖与 PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install pyinstaller
+
+      # 与 Go 版工作流同样的道理：这套系统只在 Windows 上部署，路径分隔符、
+      # 文件锁、编码这几类问题在 Linux 上一律测不出来。
+      - name: Windows 原生测试
+        run: pytest
+
+      # 参数与 build.bat 保持一致，改一处必须两处一起改，
+      # 否则 CI 产出的 exe 和本机手工打的不是同一个东西。
+      - name: 打包 exe
+        run: >
+          pyinstaller --onefile --noconfirm
+          --name POTMS
+          --add-data "templates;templates"
+          --add-data "static;static"
+          --hidden-import bcrypt
+          --hidden-import waitress
+          --exclude-module cryptography
+          app.py
+
+      # 真起进程打一次 HTTP。三件事一起验：
+      #   1. exe 能起来（hidden-import 齐全，waitress 能加载）；
+      #   2. 模板打进去了且能渲染（--add-data templates）；
+      #   3. 静态文件打进去了（--add-data static）。
+      # POTMS_BASE 把 data.db / .secret_key 引到单独目录，不落在 dist 里，
+      # 免得混进上传的产物。
+      - name: 冒烟（启动 exe 并请求登录页与静态资源）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Start-Process 的相对路径按 .NET 的当前目录解析，未必等于 $PWD，一律给绝对路径
+          $exe = Join-Path $PWD 'dist\POTMS.exe'
+          $out = Join-Path $PWD 'smoke-out.txt'
+          $err = Join-Path $PWD 'smoke-err.txt'
+          $env:POTMS_BASE = Join-Path $PWD 'smoke-data'
+          $env:POTMS_HOST = '127.0.0.1'
+          $env:POTMS_PORT = '5000'
+          # app.py 启动时往 stdout 打中文横幅。stdout 一旦被重定向（这里重定向到
+          # 文件，做成 Windows 服务时同理），Python 就改用系统 ANSI 代码页编码；
+          # runner 是 en-US，即 cp1252，编不出中文会直接抛 UnicodeEncodeError 把
+          # 进程带走。开 UTF-8 模式绕开。这是打包版的一个真实隐患，不是 CI 的特例。
+          $env:PYTHONUTF8 = '1'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $proc = Start-Process -FilePath $exe -WorkingDirectory $PWD -PassThru `
+                    -RedirectStandardOutput $out -RedirectStandardError $err
+
+          try {
+            $login = $null
+            foreach ($i in 1..30) {
+              if ($proc.HasExited) { throw "exe 启动后立刻退出，退出码 $($proc.ExitCode)" }
+              Start-Sleep -Seconds 1
+              try {
+                $r = Invoke-WebRequest -Uri 'http://127.0.0.1:5000/login' -UseBasicParsing -TimeoutSec 5
+                if ($r.StatusCode -eq 200) { $login = $r; break }
+              } catch { }
+            }
+            if ($null -eq $login) { throw '30 秒内没等到登录页返回 200' }
+
+            # 表单字段在则模板确实渲染过，不只是返回了一个错误页
+            if ($login.Content -notmatch 'name="username"' -or
+                $login.Content -notmatch 'name="password"') {
+              throw '登录页缺少用户名/密码字段，模板可能没打进 exe'
+            }
+            # 中文标题能正确读回，说明响应编码没在 en-US runner 上被破坏
+            if ($login.Content -notmatch '因私出国') {
+              throw '登录页中文标题异常，疑似编码问题'
+            }
+
+            $css = Invoke-WebRequest -Uri 'http://127.0.0.1:5000/static/css/style.css' `
+                     -UseBasicParsing -TimeoutSec 5
+            if ($css.StatusCode -ne 200 -or $css.RawContentLength -le 0) {
+              throw '静态样式表取不到，--add-data static 可能没生效'
+            }
+
+            Write-Host '冒烟通过：登录页与静态资源均正常'
+          }
+          finally {
+            if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            Write-Host '--- exe stdout ---'; Get-Content $out -ErrorAction SilentlyContinue
+            Write-Host '--- exe stderr ---'; Get-Content $err -ErrorAction SilentlyContinue
+          }
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: POTMS-python-windows-x64
+          path: dist/POTMS.exe
+          if-no-files-found: error
+          retention-days: 30

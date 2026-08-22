@@ -142,6 +142,8 @@ POTMS.exe
 
 **一键打包（推荐）**：在 Windows 上直接双击运行仓库根目录的 **`build.bat`**，它会自动安装依赖、执行打包并输出 `dist\POTMS.exe`。
 
+**不想自己打包**：GitHub Actions 工作流 `.github/workflows/build-python.yml` 会在推送到 `main`（或手动触发 workflow_dispatch）时自动跑测试并打包，产物名为 **`POTMS-python-windows-x64`**，在对应 workflow run 页面下载即可，保留 30 天。该工作流的打包参数与 `build.bat` 保持一致，改一处需两处同步；打包后还会真的启动 exe 请求登录页与静态资源，确认模板与 `static/` 确实打进去了。
+
 手动打包命令如下：
 
 ```bash
