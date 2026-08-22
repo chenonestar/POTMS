@@ -208,3 +208,31 @@ def test_import_operator_from_session(app_client):
     row = sqlite3.connect(Config.DATABASE).execute(
         "SELECT operator FROM personnel_filing").fetchone()
     assert row[0] == "wangwu"      # 操作人来自会话，而非表格
+
+
+def test_banner_survives_non_utf8_stdout(tmp_path):
+    """启动横幅里的中文，在非 UTF-8 的 stdout 上不能把进程打死。
+
+    Windows 上 stdout 被重定向（写日志文件、注册成服务）时，Python 改用系统
+    ANSI 代码页；英文 Windows 是 cp1252，编不出中文，print 抛 UnicodeEncodeError，
+    程序启动即崩。CI 的 exe 冒烟就是这么红的一次。
+
+    这里用 PYTHONIOENCODING=cp1252 在子进程里复现同一条路径——不是模拟，
+    是让解释器真的换成那个编码器。去掉 _force_utf8_console() 这条会红。
+    """
+    import os
+    import subprocess
+    import sys as _sys
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import sys; sys.path.insert(0, r'''%s''');"
+        "import app; app._force_utf8_console();"
+        "print('  因私出国（境）人员审批管理系统')" % repo
+    )
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252",
+           "POTMS_BASE": str(tmp_path / "base")}   # 别在仓库里落下 .secret_key
+    r = subprocess.run([_sys.executable, "-c", code], env=env,
+                       capture_output=True)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    assert "因私出国" in r.stdout.decode("utf-8", "replace")

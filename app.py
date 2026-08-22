@@ -152,7 +152,32 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _force_utf8_console() -> None:
+    """把 stdout / stderr 固定为 UTF-8，避免中文输出把进程打死。
+
+    Windows 上 stdout 一旦不是控制台——重定向到文件（`POTMS.exe > log.txt`）、
+    注册成服务、被别的进程接管管道——Python 就改按系统 ANSI 代码页编码。
+    非简体中文的区域设置（英文 Windows 是 cp1252）编不出启动横幅里的中文，
+    print 直接抛 UnicodeEncodeError，程序**启动即崩**，而且崩在写日志这件事上，
+    日志里往往什么也留不下。
+
+    只设 PYTHONUTF8 / PYTHONIOENCODING 不管用：PyInstaller 冻结后的解释器
+    不读 PYTHON* 环境变量，所以必须在代码里定死。
+
+    errors="replace" 是最后一道保险：真碰上编不出的字符就显示问号，
+    不能让一行日志把整个服务带走。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        # --noconsole / pythonw 下 stdout 可能是 None
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
 if __name__ == "__main__":
+    _force_utf8_console()  # 必须在第一次 print 之前
     app = create_app()
 
     host = os.environ.get("POTMS_HOST", "127.0.0.1")

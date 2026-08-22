@@ -128,10 +128,16 @@ jobs:
           --exclude-module cryptography
           app.py
 
-      # 真起进程打一次 HTTP。三件事一起验：
+      # 真起进程打一次 HTTP。四件事一起验：
       #   1. exe 能起来（hidden-import 齐全，waitress 能加载）；
       #   2. 模板打进去了且能渲染（--add-data templates）；
-      #   3. 静态文件打进去了（--add-data static）。
+      #   3. 静态文件打进去了（--add-data static）；
+      #   4. stdout 被重定向时中文横幅不会把进程打死。
+      # 第 4 条是这条工作流第一次跑就抓到的真 bug：runner 是 en-US，stdout 一
+      # 重定向 Python 就按 cp1252 编码，横幅里的中文抛 UnicodeEncodeError，exe
+      # 启动即崩。修在 app.py 的 _force_utf8_console()——PyInstaller 冻结后的
+      # 解释器不读 PYTHON* 环境变量，光设 PYTHONUTF8 是没用的。这里刻意**不设**
+      # 那两个变量，好让这一步继续替那个修复守着。
       # POTMS_BASE 把 data.db / .secret_key 引到单独目录，不落在 dist 里，
       # 免得混进上传的产物。
       - name: 冒烟（启动 exe 并请求登录页与静态资源）
@@ -145,12 +151,6 @@ jobs:
           $env:POTMS_BASE = Join-Path $PWD 'smoke-data'
           $env:POTMS_HOST = '127.0.0.1'
           $env:POTMS_PORT = '5000'
-          # app.py 启动时往 stdout 打中文横幅。stdout 一旦被重定向（这里重定向到
-          # 文件，做成 Windows 服务时同理），Python 就改用系统 ANSI 代码页编码；
-          # runner 是 en-US，即 cp1252，编不出中文会直接抛 UnicodeEncodeError 把
-          # 进程带走。开 UTF-8 模式绕开。这是打包版的一个真实隐患，不是 CI 的特例。
-          $env:PYTHONUTF8 = '1'
-          $env:PYTHONIOENCODING = 'utf-8'
           $proc = Start-Process -FilePath $exe -WorkingDirectory $PWD -PassThru `
                     -RedirectStandardOutput $out -RedirectStandardError $err
 
