@@ -290,3 +290,45 @@ def test_signature_still_stored_when_switched_off(c, monkeypatch):
     sig = db.execute("SELECT return_sign_image FROM cert_issuance WHERE id=1").fetchone()[0]
     db.close()
     assert sig and sig.startswith(b"\x89PNG")
+
+
+# ---------------------------------------------------------------------------
+# 批量打印（四个业务列表都有，此前独缺证件领用）
+# ---------------------------------------------------------------------------
+def test_batch_print_issuance(c):
+    """批量打印要出真内容：单位来自 JOIN，证件种类要是中文，签名按行取图。
+
+    单条打印早就支持 issuance，缺的只是批量那条路——export.py 的 table_map 里
+    没有 issuance，命中的是「不支持的打印类型」分支。
+
+    第二条不挂出行记录：同一出行下不允许并存两条未归还的领用记录。
+    """
+    _issue(c)
+    _issue(c, travel_id="", cert_types="02", cert_nos="C87654321", issue_date="20260721")
+    html = c.get("/print/batch/issuance?ids=1,2").get_data(as_text=True)
+
+    assert "因私出国（境）证件领用登记表" in html
+    assert "共 2 条" in html
+    assert "总部" in html                       # work_unit 来自 JOIN personnel_filing
+    assert "因私护照" in html                    # 代码 → 中文，不是裸的 '01'
+    assert "往来港澳通行证" in html
+    assert "E12345678" in html and "C87654321" in html
+    # 签名按行取图（<img src=".../signature.png">），不是把 BLOB 塞进页面
+    assert "/issuance/1/signature.png" in html
+    assert "/issuance/2/signature.png" in html
+
+
+def test_batch_print_issuance_shows_return_and_void(c):
+    """归还签名与作废状态都要出现在批量打印上——这是归档件，不能只印半截。"""
+    _issue(c)
+    c.post("/issuance/1/return",
+           data={"csrf_token": _tok(c), "return_date": "20260810", "sign_png": _PNG_DATA_URL},
+           follow_redirects=True)
+    _issue(c, travel_id="", issue_date="20260722")
+    c.post("/issuance/2/void",
+           data={"csrf_token": _tok(c), "void_reason": "登记错误"}, follow_redirects=True)
+
+    html = c.get("/print/batch/issuance?ids=1,2").get_data(as_text=True)
+    assert "kind=return" in html      # 归还签名图
+    assert "20260810" in html
+    assert "已归还" in html and "已作废" in html

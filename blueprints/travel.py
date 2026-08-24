@@ -131,6 +131,34 @@ _REQUIRED_A = ["个人申请报告", "审批表"]
 _REQUIRED_B = ["个人申请报告", "审批表", "同意申办函"]
 
 
+def _file_type_order_sql(col: str = "a.file_type") -> str:
+    """把附件类型排成办件顺序（个人申请报告 → 审批表 → 同意申办函）的 CASE 表达式。
+
+    这三个中文词按任何排序规则（拼音、笔画、UTF-8 码位）都排不出办件顺序，
+    只能显式指定。次序直接取自 _REQUIRED_B——那里已经定义了必备附件的先后，
+    再手抄一份迟早两边漂移。表里出现的其它类型统一排在最后。
+    """
+    whens = " ".join(f"WHEN '{t}' THEN {i}" for i, t in enumerate(_REQUIRED_B, start=1))
+    return f"CASE {col} {whens} ELSE {len(_REQUIRED_B) + 1} END"
+
+
+# 附件总览的排序方式。
+#
+# batch（默认）：先把同一条出行申请的附件聚成一组，组间与「出国明细」列表同序
+# （created_at DESC），组内按办件顺序。此前只按 uploaded_at 排，一旦有过补传，
+# 那条申请的附件就会被别人的插在中间，翻起来对不上人。
+#
+# uploaded：保留原来的按上传时间倒序，找「最近传了什么」时更顺手。
+#
+# 两种都以 a.id 收尾：uploaded_at 是 CURRENT_TIMESTAMP，只精确到秒，同一次提交
+# 上传的多个文件时间戳完全相同，没有兜底列的话它们之间的先后在 SQL 层面是未定义的。
+_ATT_SORTS = {
+    "batch": f"ORDER BY t.created_at DESC, t.id DESC, {_file_type_order_sql()}, a.id",
+    "uploaded": "ORDER BY a.uploaded_at DESC, a.id",
+}
+_ATT_SORT_DEFAULT = "batch"
+
+
 @travel_bp.route("/travel/attachments")
 @login_required
 def attachments() -> ResponseReturnValue:
@@ -138,6 +166,10 @@ def attachments() -> ResponseReturnValue:
     type_filter = request.args.get("file_type", "").strip()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
+    # 白名单取值，不把查询串直接拼进 SQL
+    sort = request.args.get("sort", "").strip()
+    if sort not in _ATT_SORTS:
+        sort = _ATT_SORT_DEFAULT
 
     base = (
         "SELECT a.id, a.file_name, a.file_type, a.file_size, a.uploaded_at, "
@@ -158,7 +190,7 @@ def attachments() -> ResponseReturnValue:
     if date_to:
         base += " AND date(a.uploaded_at) <= ?"
         params.append(date_to)
-    base += " ORDER BY a.uploaded_at DESC"
+    base += " " + _ATT_SORTS[sort]
 
     pg = list_all(base, tuple(params))  # 全量下发，前端按视口窗口化分页
 
@@ -185,7 +217,7 @@ def attachments() -> ResponseReturnValue:
     return render_template(
         "travel/attachments.html",
         items=pg, search=search, type_filter=type_filter,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, sort=sort,
         missing=missing, type_counts=type_counts, total_att=total_att,
         types=["个人申请报告", "审批表", "同意申办函"],
     )

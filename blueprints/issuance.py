@@ -35,6 +35,9 @@ CERT_NO_FIELD = {
     "03": "tw_pass_no",
 }
 
+# 列表筛选里「待核实」的取值。真实种类代码是 01/02/03，不会撞。
+CERT_TYPE_PENDING = "pending"
+
 # PNG 魔数（防止前端传入非图片内容）
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 # 单张签名上限：正常裁剪后 5–20KB，留足余量仍可拦住异常大图
@@ -103,7 +106,11 @@ def build_filters(args, ids=None):
         where += " AND i.status = ?"
         params.append(status)
     cert_type = args.get("cert_type", "").strip()
-    if cert_type:
+    if cert_type == CERT_TYPE_PENDING:
+        # 历史回填里判不出种类的那批，cert_types 为空。上面那句 LIKE 对空值恒不
+        # 匹配（'' 拼出来是 ',,'），所以单开一条——不能筛出来，这批待办就没法收口。
+        where += " AND (i.cert_types IS NULL OR i.cert_types = '')"
+    elif cert_type:
         where += " AND (',' || i.cert_types || ',') LIKE ?"
         params.append(f"%,{cert_type},%")
     date_from = args.get("date_from", "").strip()
@@ -220,7 +227,8 @@ def view(iss_id) -> ResponseReturnValue:
     row = _get_or_404(iss_id)
     travel = _travel_brief(row["travel_id"]) if row["travel_id"] else None
     return render_template("issuance/view.html", item=row, travel=travel,
-                           type_labels=_types_label(row["cert_types"]))
+                           type_labels=_types_label(row["cert_types"]),
+                           can_fix=can_fix_cert_types(row))
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +314,60 @@ def void(iss_id) -> ResponseReturnValue:
 
 
 # ---------------------------------------------------------------------------
+# 更正证件种类（仅限无签名的记录）
+# ---------------------------------------------------------------------------
+def can_fix_cert_types(row) -> bool:
+    """只有**没有签名**的记录允许改证件种类。
+
+    模块约束是「签名一经保存不可编辑」，因为签名签的就是「我领了这几样证件」，
+    事后改种类会让那个签名名不副实——那种记录只能作废重录。
+
+    但历史回填行本来就没有签名（老库里根本没采集过），作废重录这条路也走不通：
+    新建领用默认强制手写签名，而历史记录压根没有签名可采。不给它们一个更正入口，
+    订正迁移标出来的「待核实」就成了永远填不上的死数据。
+
+    判据用「无签名」而不是「备注是回填串」：放宽模式（POTMS_REQUIRE_SIGNATURE=0）
+    下手工登记的记录同样没有签名，同样没有会被推翻的凭证，一并适用。
+    """
+    return not row["sign_image"]
+
+
+@issuance_bp.route("/issuance/<int:iss_id>/cert-types", methods=["POST"])
+@login_required
+def fix_cert_types(iss_id) -> ResponseReturnValue:
+    row = _get_or_404(iss_id)
+    if not can_fix_cert_types(row):
+        flash("该记录已有领用人签名，证件种类不可更改；如登记有误请作废后重新登记。", "warning")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
+
+    types = [t for t in request.form.getlist("cert_types") if t.strip()]
+    invalid = [t for t in types if t not in CERT_NO_FIELD]
+    if invalid:
+        flash(f"无效的证件种类代码：{'、'.join(invalid)}。", "danger")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
+    if not types:
+        flash("请至少勾选一种证件种类。", "danger")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
+
+    before = row_snapshot("cert_issuance", iss_id)
+    db = get_db()
+    # 备注里「待核实 / 按护照推定」这类字样已经不成立，一并清掉；人工核定的结果
+    # 不该继续挂着机器推断的说明。
+    remarks = "历史数据回填（证件种类已人工核定，无签名）" \
+        if (row["remarks"] or "").startswith("历史数据回填") else row["remarks"]
+    db.execute(
+        "UPDATE cert_issuance SET cert_types=?, remarks=?, updated_at=CURRENT_TIMESTAMP "
+        "WHERE id=?", (",".join(types), remarks, iss_id))
+    db.commit()
+    log_action("update", "cert_issuance", iss_id,
+               detail=f"更正证件种类：{row['holder_name']}，"
+                      f"{_types_label(row['cert_types'])} → {_types_label(','.join(types))}",
+               before=before, after=row_snapshot("cert_issuance", iss_id))
+    flash("证件种类已更正。", "success")
+    return redirect(url_for("issuance.view", iss_id=iss_id))
+
+
+# ---------------------------------------------------------------------------
 # 签名图片服务
 # ---------------------------------------------------------------------------
 @issuance_bp.route("/issuance/<int:iss_id>/signature.png")
@@ -349,13 +411,17 @@ def _travel_brief(travel_id):
 
 
 def _types_label(codes: str) -> str:
-    """'01,02' → '因私护照、往来港澳通行证'"""
+    """'01,02' → '因私护照、往来港澳通行证'；空值 → '待核实'。
+
+    空值只可能来自历史回填里判不出种类的那批。打印件与日志上不能是个空格子——
+    看的人分不清是「没有证件」还是「漏填了」，写明待核实才是实情。
+    """
     out = []
     for c in (codes or "").split(","):
         c = c.strip()
         if c:
             out.append(get_dict_value("cert_type", c) or c)
-    return "、".join(out)
+    return "、".join(out) if out else "待核实"
 
 
 def _sync_travel_dates(travel_id) -> None:

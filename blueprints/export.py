@@ -222,6 +222,23 @@ def batch_print(print_type) -> ResponseReturnValue:
         return redirect(request.referrer or url_for("dashboard.index"))
 
     db = get_db()
+    placeholders = ",".join("?" for _ in ids)
+
+    # 证件领用单开一条：它要 JOIN 备案表取单位，还要逐行把证件种类代码换成中文，
+    # 塞不进下面那个「表名 → 标题」的映射。
+    if print_type == "issuance":
+        from blueprints.issuance import _types_label
+        rows = [
+            dict(r, cert_type_label=_types_label(r["cert_types"]))
+            for r in db.execute(
+                "SELECT i.*, pf.work_unit FROM cert_issuance i "
+                "JOIN personnel_filing pf ON i.personnel_filing_id = pf.id "
+                f"WHERE i.id IN ({placeholders}) ORDER BY i.id", ids).fetchall()
+        ]
+        return render_template("export/batch_print.html",
+                               title="因私出国（境）证件领用登记表",
+                               rows=rows, mode="issuance", total=len(rows))
+
     table_map = {
         "filing": ("personnel_filing", "因私事出国（境）人员登记备案表"),
         "certificate": ("certificates", "因私出国（境）备案人员证照登记表"),
@@ -234,7 +251,6 @@ def batch_print(print_type) -> ResponseReturnValue:
         return redirect(url_for("dashboard.index"))
 
     table, title = table_map[print_type]
-    placeholders = ",".join("?" for _ in ids)
     rows = db.execute(
         f"SELECT * FROM {table} WHERE id IN ({placeholders}) ORDER BY id", ids
     ).fetchall()

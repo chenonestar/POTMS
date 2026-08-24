@@ -96,6 +96,71 @@ def init_db():
     db.close()
 
 
+# ---------------------------------------------------------------------------
+# 历史领用记录的证件种类推断
+# ---------------------------------------------------------------------------
+# 证照登记表用三个独立字段存三种证件，与证件种类字典的对应关系。
+# utils/helpers.py 里的 cert_type_map 用的是同一套映射，两处改动须同步。
+_CERT_TYPE_COLUMNS = (("01", "passport_no"), ("02", "hm_pass_no"), ("03", "tw_pass_no"))
+
+# 「地点、证照」是自由文本（如「美国-护照」「香港/港澳通行证」）。只认**证件名称**，
+# 不认地名——「香港」既可能持港澳通行证也可能持护照过境，拿地名猜会猜错。
+# 顺序即优先级：先长后短，免得「大陆居民往来台湾通行证」被「护照」之外的短词抢走。
+_CERT_NAME_HINTS = (
+    ("03", ("大陆居民往来台湾", "台湾通行证", "台胞证")),
+    ("02", ("往来港澳", "港澳通行证")),
+    ("01", ("护照",)),
+)
+
+# 回填记录的备注。三个串互不相同，订正迁移靠「备注是否还是旧串」判断是否已处理，
+# 改完备注下次启动自然扫不到，不需要额外的版本表。
+BACKFILL_REMARK_LEGACY = "历史数据回填（证件种类按护照推定，无签名）"
+BACKFILL_REMARK_INFERRED = "历史数据回填（证件种类据证照登记推定，无签名）"
+BACKFILL_REMARK_PENDING = "历史数据回填（证件种类待核实，无签名）"
+
+
+def infer_cert_type(db, personnel_filing_id, cert_no, destination_passport) -> str:
+    """推断一条历史出行记录用的是哪种证件，判不出返回空串。
+
+    原先一律记作因私护照（'01'）。这是个**主动编造**的答案：往来港澳通行证、
+    台湾通行证都被写成护照，而领用凭证是要归档的，错的种类比空着更糟。
+
+    三级判据，从硬到软：
+
+    1. 出行记录上的证件号码对上证照登记表的哪一列 —— 号码是唯一的，这条最硬；
+    2. 「地点、证照」里出现的证件名称 —— 号码没填时的退路；
+    3. 该人在证照登记表里只登记了一种证件 —— 那就只能是它。
+
+    三条都不成立时返回空串（例如三本证都有、出行记录没填号码、文字里也没写
+    证件名）。此时数据里确实没有信息，宁可留空标「待核实」让人来补，
+    也不替他猜一个。
+    """
+    row = db.execute(
+        "SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "
+        "WHERE personnel_filing_id = ?", (personnel_filing_id,)).fetchone()
+    held = list(row) if row else [None, None, None]
+
+    # ① 证件号匹配
+    no = (cert_no or "").strip()
+    if no:
+        for (code, _col), v in zip(_CERT_TYPE_COLUMNS, held):
+            if v and v.strip() == no:
+                return code
+
+    # ② 「地点、证照」里的证件名称
+    text = destination_passport or ""
+    for code, keywords in _CERT_NAME_HINTS:
+        if any(k in text for k in keywords):
+            return code
+
+    # ③ 该人只登记了一种证件
+    owned = [code for (code, _col), v in zip(_CERT_TYPE_COLUMNS, held) if v and v.strip()]
+    if len(owned) == 1:
+        return owned[0]
+
+    return ""
+
+
 def run_migrations():
     """轻量迁移：为已存在的数据库补齐新增字段（幂等）"""
     db = sqlite3.connect(Config.DATABASE)
@@ -200,15 +265,67 @@ def run_migrations():
             "  AND NOT EXISTS (SELECT 1 FROM cert_issuance c WHERE c.travel_id = t.id)"
         ).fetchall()
         for tid, pfid, nm, idn, pno, cdate, rdate, op in legacy_issue:
+            dest = db.execute(
+                "SELECT destination_passport FROM travel_details WHERE id = ?", (tid,)).fetchone()
+            ctype = infer_cert_type(db, pfid, pno, dest[0] if dest else "")
             db.execute(
                 "INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, "
                 "cert_types, cert_nos, issue_date, issuer, return_date, return_operator, status, "
-                "remarks, operator) VALUES (?, ?, ?, ?, '01', ?, ?, ?, ?, ?, ?, ?, ?)",
-                (tid, pfid, nm or "", idn or "", pno or "", cdate,
+                "remarks, operator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (tid, pfid, nm or "", idn or "", ctype, pno or "", cdate,
                  op or "system", rdate or None, (op or "system") if rdate else None,
                  "returned" if rdate else "issued",
-                 "历史数据回填（证件种类按护照推定，无签名）", op or "system"))
+                 BACKFILL_REMARK_INFERRED if ctype else BACKFILL_REMARK_PENDING,
+                 op or "system"))
         if legacy_issue:
+            db.commit()
+
+        # 订正上一版回填留下的错标。
+        #
+        # 上面那段回填曾经把 cert_types 一律写成 '01'（因私护照），实际可能是往来
+        # 港澳通行证或大陆居民往来台湾通行证。而回填带幂等守卫（travel_id 已有记录
+        # 就跳过），光把上面改对，**对已经回填过的库毫无作用**——错的行会一直躺着。
+        #
+        # 判据卡死在回填自己产的行上：备注是那句原文，且没有签名。手工登记的记录
+        # 有签名、备注也不同，碰不到。改完备注即失配，下次启动自然跳过。
+        #
+        # 注：判不出的行 cert_types 置空。五版共用同一个 data.db，另外四版目前会把
+        # 空值显示成空白（不报错）——待它们各自补上「待核实」呈现。
+        stale = db.execute(
+            "SELECT c.id, c.personnel_filing_id, c.cert_nos, c.travel_id "
+            "FROM cert_issuance c WHERE c.remarks = ? AND c.sign_image IS NULL",
+            (BACKFILL_REMARK_LEGACY,)).fetchall()
+        if stale:
+            # 动的是业务记录，先留一份改动前的快照。create_app 里的每日备份排在
+            # 迁移之后，等它就晚了。
+            try:
+                from utils.backup import run_daily_backup
+                run_daily_backup(force=True)
+            except Exception:
+                pass
+            fixed = pending = 0
+            for cid, pfid, cnos, tid in stale:
+                dest = db.execute(
+                    "SELECT destination_passport FROM travel_details WHERE id = ?",
+                    (tid,)).fetchone() if tid else None
+                ctype = infer_cert_type(db, pfid, cnos, dest[0] if dest else "")
+                db.execute(
+                    "UPDATE cert_issuance SET cert_types = ?, remarks = ?, "
+                    "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (ctype,
+                     BACKFILL_REMARK_INFERRED if ctype else BACKFILL_REMARK_PENDING,
+                     cid))
+                if ctype:
+                    fixed += 1
+                else:
+                    pending += 1
+            # 直接写日志表：log_action 依赖 Flask 的应用上下文与 request，
+            # 迁移跑在那之外。
+            db.execute(
+                "INSERT INTO operation_logs (operator, action, target_type, detail) "
+                "VALUES ('system', 'migrate', 'cert_issuance', ?)",
+                (f"订正历史回填的证件种类：共 {len(stale)} 条，"
+                 f"据证照登记推定 {fixed} 条，待核实 {pending} 条",))
             db.commit()
 
         # 回填历史出行记录的起止日期

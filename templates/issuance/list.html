@@ -5,6 +5,7 @@
     <h4><i class="bi bi-vector-pen"></i> 证件领用登记</h4>
     <div>
         <a href="{{ url_for('issuance.new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增领用</a>
+        <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('issuance')"><i class="bi bi-printer"></i> 批量打印</button>
         <div class="dropdown d-inline-block ms-1">
             <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
             <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
@@ -37,6 +38,7 @@
                 {% for o in dict_opts('cert_type') %}
                 <option value="{{ o.code }}" {{ 'selected' if cert_type_filter == o.code }}>{{ o.value }}</option>
                 {% endfor %}
+                <option value="pending" {{ 'selected' if cert_type_filter == 'pending' }}>待核实（历史回填未判定）</option>
             </select>
         </div>
         <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_from" placeholder="领用起始 YYYYMMDD" value="{{ date_from }}"></div>
@@ -73,6 +75,10 @@
             {% for label in row.cert_type_labels %}
             <span class="badge bg-light text-dark border">{{ label }}</span>
             {% endfor %}
+            {# 历史回填里判不出种类的：空白单元格会被当成漏渲染，明确标出来才好收口 #}
+            {% if not row.cert_type_labels %}
+            <span class="badge bg-warning text-dark">待核实</span>
+            {% endif %}
         </td>
         <td><small>{{ row.cert_nos or '-' }}</small></td>
         <td>{{ row.issue_date }}</td>

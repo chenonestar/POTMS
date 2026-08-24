@@ -39,6 +39,11 @@
         <div class="col-md-2"><select class="form-select form-select-sm" name="file_type"><option value="">全部类型</option>{% for t in types %}<option value="{{ t }}" {{ 'selected' if type_filter == t }}>{{ t }}</option>{% endfor %}</select></div>
         <div class="col-md-2"><label class="form-label mb-0 small text-muted">上传从</label><input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}"></div>
         <div class="col-md-2"><label class="form-label mb-0 small text-muted">至</label><input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}"></div>
+        <div class="col-md-2"><label class="form-label mb-0 small text-muted">排序</label>
+            <select class="form-select form-select-sm" name="sort" onchange="this.form.submit()">
+                <option value="batch" {{ 'selected' if sort == 'batch' }}>按出国批次（同一申请聚在一起）</option>
+                <option value="uploaded" {{ 'selected' if sort == 'uploaded' }}>按上传时间</option>
+            </select></div>
         <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('travel.attachments') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
     </form>
 </div></div>
