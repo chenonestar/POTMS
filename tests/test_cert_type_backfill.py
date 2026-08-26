@@ -222,9 +222,10 @@ def test_correction_rejected_on_signed_record(client):
 
 
 def test_correction_rejects_invalid_and_empty(client):
-    """非法代码与空选都要挡回，不能把记录改成一个更烂的状态。"""
+    """非法代码、空选、多选都要挡回，不能把记录改成一个更烂的状态。"""
     for data, msg in (({"cert_types": "99"}, "无效的证件种类代码"),
-                      ({}, "请至少勾选一种证件种类")):
+                      ({}, "请选择证件种类"),
+                      ({"cert_types": ["01", "02"]}, "只能领用一本证件")):
         r = client.post("/issuance/6/cert-types",
                         data={"csrf_token": _tok(client), **data}, follow_redirects=True)
         assert msg in r.get_data(as_text=True)

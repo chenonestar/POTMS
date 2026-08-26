@@ -120,7 +120,7 @@
                 {% set picked = ',' ~ (item.cert_types or '') ~ ',' %}
                 {% for o in dict_opts('cert_type') %}
                 <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="cert_types" value="{{ o.code }}" id="fx{{ o.code }}"
+                    <input class="form-check-input" type="radio" name="cert_types" value="{{ o.code }}" id="fx{{ o.code }}"
                            {{ 'checked' if (',' ~ o.code ~ ',') in picked }}>
                     <label class="form-check-label" for="fx{{ o.code }}">{{ o.value }}</label>
                 </div>

@@ -17,7 +17,7 @@
 
 <div class="form-section">
     <h5>领用人</h5>
-    <p class="text-muted small mb-2">选择备案人员后，姓名 / 身份证号自动带入；勾选证件种类后自动填入已登记的证件号码。</p>
+    <p class="text-muted small mb-2">选择备案人员后，姓名 / 身份证号自动带入；选定证件种类后自动填入已登记的证件号码。</p>
     <div class="row g-3">
         <div class="col-md-5">
             <label class="form-label">搜索备案人员</label>
@@ -56,7 +56,7 @@
     <h5>领用证件</h5>
     <div class="row g-3">
         <div class="col-md-6">
-            <label class="form-label required">证件种类（可多选）</label>
+            <label class="form-label required">证件种类</label>
             <div>
                 {# 逗号包裹后做子串判断，而不是 split()：gonja 解析
                    (a or '').split(',') 时不认括号，会当成 a or (''.split(',')) 而炸。
@@ -64,7 +64,7 @@
                 {% set picked = ',' ~ (data.cert_types | default('', true)) ~ ',' %}
                 {% for o in dict_opts('cert_type') %}
                 <div class="form-check">
-                    <input class="form-check-input cert-type" type="checkbox" name="cert_types" value="{{ o.code }}" id="ct{{ o.code }}"
+                    <input class="form-check-input cert-type" type="radio" name="cert_types" value="{{ o.code }}" id="ct{{ o.code }}" required
                            {{ 'checked' if (',' ~ o.code ~ ',') in picked }}>
                     <label class="form-check-label" for="ct{{ o.code }}">{{ o.value }}</label>
                 </div>
@@ -72,8 +72,8 @@
             </div>
         </div>
         <div class="col-md-6">
-            <label class="form-label">证件号码 <span class="text-muted">(按勾选种类自动带入，可修改)</span></label>
-            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="多本证件以顿号分隔">
+            <label class="form-label">证件号码 <span class="text-muted">(按所选种类自动带入，可修改)</span></label>
+            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="选择证件种类后自动带入">
             <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。</div>
         </div>
     </div>
@@ -114,16 +114,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var idEl = document.getElementById('holderIdNo');
     var nosEl = document.getElementById('certNos');
 
-    // 勾选的证件种类 → 拼出对应号码
+    // 选定的证件种类 → 带出对应号码（一次申请一本证，单选）
     function syncCertNos() {
         var o = sel.options[sel.selectedIndex];
         if (!o || !o.value) return;
-        var picked = [];
-        document.querySelectorAll('.cert-type:checked').forEach(function (cb) {
-            var no = o.getAttribute('data-cert' + cb.value);
-            if (no) picked.push(no);
-        });
-        nosEl.value = picked.join('、');
+        var cb = document.querySelector('.cert-type:checked');
+        nosEl.value = cb ? (o.getAttribute('data-cert' + cb.value) || '') : '';
     }
 
     function fillPerson() {

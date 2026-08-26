@@ -197,7 +197,7 @@ def new() -> ResponseReturnValue:
         )
         db.commit()
         iss_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        _sync_travel_dates(data["travel_id"])
+        _sync_travel_derived(data["travel_id"])
         log_action("create", "cert_issuance", iss_id,
                    detail=f"证件领用登记：{data['holder_name']}，{_types_label(data['cert_types'])}",
                    after=row_snapshot("cert_issuance", iss_id))
@@ -277,7 +277,7 @@ def do_return(iss_id) -> ResponseReturnValue:
              operator_name(), iss_id),
         )
         db.commit()
-        _sync_travel_dates(row["travel_id"])
+        _sync_travel_derived(row["travel_id"])
         log_action("update", "cert_issuance", iss_id,
                    detail=f"证件归还登记：{row['holder_name']}，归还日期 {return_date}",
                    before=before, after=row_snapshot("cert_issuance", iss_id))
@@ -311,7 +311,7 @@ def void(iss_id) -> ResponseReturnValue:
         "UPDATE cert_issuance SET status='voided', void_reason=?, updated_at=CURRENT_TIMESTAMP "
         "WHERE id=?", (reason, iss_id))
     db.commit()
-    _sync_travel_dates(row["travel_id"])
+    _sync_travel_derived(row["travel_id"])
     log_action("void", "cert_issuance", iss_id,
                detail=f"领用记录作废：{row['holder_name']}，原因：{reason}",
                before=before, after=row_snapshot("cert_issuance", iss_id))
@@ -352,7 +352,11 @@ def fix_cert_types(iss_id) -> ResponseReturnValue:
         flash(f"无效的证件种类代码：{'、'.join(invalid)}。", "danger")
         return redirect(url_for("issuance.view", iss_id=iss_id))
     if not types:
-        flash("请至少勾选一种证件种类。", "danger")
+        flash("请选择证件种类。", "danger")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
+    if len(types) > 1:
+        # 与新建同一条规则：一次出国申请只领一本证
+        flash("一次出国申请只能领用一本证件。", "danger")
         return redirect(url_for("issuance.view", iss_id=iss_id))
 
     before = row_snapshot("cert_issuance", iss_id)
@@ -447,11 +451,19 @@ def _types_label(codes: str) -> str:
     return "、".join(out) if out else "待核实"
 
 
-def _sync_travel_dates(travel_id) -> None:
-    """把领用/归还日期回写到出行表（派生字段，本模块为唯一写入方）。
+def _sync_travel_derived(travel_id) -> None:
+    """把领用/归还日期与证件号码回写到出行表（派生字段，本模块为唯一写入方）。
 
-    取该出行下**未作废**记录中最早的领用日期与最晚的归还日期；
+    日期：取该出行下**未作废**记录中最早的领用日期与最晚的归还日期；
     若全部作废或无记录，则清空，使逾期告警口径与领用记录始终一致。
+
+    证件号码：一次申请一本证，所以该出行下所有未作废记录说的都是同一本；
+    取最后一条的号码。号码原先是出行表单上手填的，与领用记录各写各的，
+    打印件上「证件号码」和「证件领用日期」两个格子可能来自不同的证件。
+    现在跟日期一样降级为派生——有领用记录就以领用记录为准。
+
+    **不清空**号码：路径B（做证）没有领用记录，那一栏是系统里唯一的来源，
+    手填的值必须保留；领用记录全部作废时也保留，那仍是当时用的号码。
     """
     if not travel_id:
         return
@@ -468,7 +480,22 @@ def _sync_travel_dates(travel_id) -> None:
     db.execute(
         "UPDATE travel_details SET passport_collect_date=?, passport_return_date=? WHERE id=?",
         (collect, ret, travel_id))
+    nos = db.execute(
+        "SELECT cert_nos FROM cert_issuance WHERE travel_id = ? AND status != 'voided' "
+        "  AND cert_nos IS NOT NULL AND cert_nos != '' ORDER BY id DESC LIMIT 1",
+        (travel_id,)).fetchone()
+    if nos:
+        db.execute("UPDATE travel_details SET passport_no=? WHERE id=?", (nos["cert_nos"], travel_id))
     db.commit()
+
+
+def travel_has_issuance(travel_id) -> bool:
+    """该出行是否已有未作废的领用记录——有的话证件号码由领用记录派生，表单只读。"""
+    if not travel_id:
+        return False
+    return get_db().execute(
+        "SELECT 1 FROM cert_issuance WHERE travel_id = ? AND status != 'voided' LIMIT 1",
+        (travel_id,)).fetchone() is not None
 
 
 def _extract_form(form):

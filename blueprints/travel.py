@@ -358,6 +358,12 @@ def edit(travel_id) -> ResponseReturnValue:
         before = row_snapshot("travel_details", travel_id)
         t_start, t_end = parse_travel_range(data["travel_dates"])
         data["travel_dates"] = format_travel_range(t_start, t_end) or data["travel_dates"]
+        # 有领用记录时证件号码也是派生的（由领用记录回写），表单上那一栏是只读的。
+        # 只读字段照样会随表单提交，伪造的 POST 更是想填什么填什么，所以这里
+        # 直接沿用库里的既有值，不采信提交上来的。路径B 没有领用记录，
+        # 那一栏是系统里唯一的来源，仍按提交值写入。
+        from blueprints.issuance import travel_has_issuance
+        passport_no = row["passport_no"] if travel_has_issuance(travel_id) else data["passport_no"]
         db.execute(
             # 证件领用/归还日期为派生字段，由证件领用模块维护，此处不覆盖
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
@@ -369,7 +375,7 @@ def edit(travel_id) -> ResponseReturnValue:
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
-                t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
+                t_start, t_end, data["approval_date"], data["need_new_passport"], passport_no,
                 data["actual_return_date"], data["operator"], travel_id,
             ),
         )
@@ -387,12 +393,14 @@ def edit(travel_id) -> ResponseReturnValue:
         "SELECT * FROM attachments WHERE travel_id = ? ORDER BY uploaded_at", (travel_id,)
     ).fetchall()
 
+    from blueprints.issuance import travel_has_issuance
     return render_template(
         "travel/form.html",
         data=dict(row),
         editing=True,
         travel_id=travel_id,
         attachments=attachments,
+        cert_no_derived=travel_has_issuance(travel_id),
     )
 
 
@@ -598,6 +606,27 @@ def _validate_form(data: dict) -> list[str]:
 
     # 证件领用日期原在此校验必填，现已迁移至证件领用模块（须手写签名后登记），
     # 出行表单不再收集该字段。
+
+    # 一本可用的证都没有，却说不做证——这条记录本身就是错的。
+    #
+    # 「够不够用」判不了：系统不知道这趟要用哪种证（明细表只有「地点、证照」
+    # 那段自由文本），有港澳通行证但要去美国这类情形只能靠经办人自己看。
+    # 但「一本都没有」是可判的，而且无论去哪都不可能有证用，属于硬错误。
+    #
+    # 「有证」要算有效期：一本过期护照等于没有。证照登记里填了号码就必须填
+    # 有效日期，所以这个判断的数据一定在。
+    if data.get("need_new_passport") == "否" and data.get("personnel_filing_id"):
+        today = datetime.now().strftime("%Y%m%d")
+        usable = get_db().execute(
+            # 一个人可能有多条证照记录（历史遗留），任意一条里有在有效期内的证就算数
+            "SELECT 1 FROM certificates WHERE personnel_filing_id = ? AND ("
+            "  (passport_no  IS NOT NULL AND passport_no  != '' AND passport_expiry  >= ?) OR"
+            "  (hm_pass_no   IS NOT NULL AND hm_pass_no   != '' AND hm_pass_expiry   >= ?) OR"
+            "  (tw_pass_no   IS NOT NULL AND tw_pass_no   != '' AND tw_pass_expiry   >= ?)) LIMIT 1",
+            (data["personnel_filing_id"], today, today, today)).fetchone()
+        if not usable:
+            errors.append(
+                "该备案人员名下没有在有效期内的出入境证件，「是否做证」应为「是」。")
 
     return errors
 

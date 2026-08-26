@@ -98,6 +98,11 @@ def logged_in(app_client):
                "residence,political_status,work_unit,position_or_title,supervisor_unit,tag,informed,"
                "status,operator) VALUES (1,'张','三','男','19900101','110101199001012133','X','群众',"
                "'局','科员','主管','新增','否','active','admin')")
+    # 名下有一本在有效期内的护照：出国明细里「是否做证＝否」要求确有可用证件，
+    # 否则那条记录本身就是错的（人没有证却说不用做证）。
+    db.execute("INSERT INTO certificates (personnel_filing_id,unit,department,name,"
+               "passport_no,passport_expiry,passport_submit_date,operator) "
+               "VALUES (1,'局','科','张三','E12345678','20351231','20250101','admin')")
     db.commit()
     db.close()
     r = _login(c, "admin123")
