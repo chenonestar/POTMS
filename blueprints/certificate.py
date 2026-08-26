@@ -89,6 +89,15 @@ def new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
+        # 一人一行：三种证件是同一行上的三组列，本来就装得下一个人的全部证件。
+        # 需求文档写明「一行为一人」，但此前代码从未拦过，现实里很容易变成
+        # 「没找到原记录就又建一条」——于是同一个人两个编辑入口，到期预警报两遍，
+        # 想改护照有效期还得先点进去看哪条里有护照。
+        dup_id = _existing_cert_id(data.get("personnel_filing_id"))
+        if dup_id:
+            errors.append(
+                f"该备案人员已有证照记录（#{dup_id}）。三类证件登记在同一条记录上，"
+                f"请直接编辑那一条，不要新建。")
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -175,6 +184,11 @@ def edit(cert_id) -> ResponseReturnValue:
         log_action("update", "certificate", cert_id,
                    before=before, after=row_snapshot("certificates", cert_id))
         flash("证照信息已更新。", "success")
+        # 换发新证时最容易漏的一步：号码换了，有效期或上交日期还留着旧证的。
+        # 台账是到期预警与「有没有可用证件」校验的唯一依据，日期不准这两样都会失灵。
+        # 号码变化是换发的确切信号，此时提醒一次，成本为零。
+        for changed in _renewed_labels(before, data):
+            flash(f"{changed}号码已变更：请确认有效日期与上交日期同步更新为新证的。", "warning")
         return redirect(url_for("certificate.list"))
 
     return render_template("certificate/form.html", data=dict(row), editing=True, cert_id=cert_id)
@@ -212,6 +226,38 @@ def _extract_form(form):
     }
 
 
+# 三类证件的号码 / 有效期 / 上交日期字段，与中文名。多处遍历共用一份。
+CERT_SLOTS = (
+    ("普通护照", "passport_no", "passport_expiry", "passport_submit_date"),
+    ("往来港澳通行证", "hm_pass_no", "hm_pass_expiry", "hm_pass_submit_date"),
+    ("大陆居民往来台湾通行证", "tw_pass_no", "tw_pass_expiry", "tw_pass_submit_date"),
+)
+
+
+def _existing_cert_id(personnel_filing_id):
+    """该备案人员是否已有证照记录；有则返回其 id。"""
+    if not personnel_filing_id:
+        return None
+    row = get_db().execute(
+        "SELECT id FROM certificates WHERE personnel_filing_id = ? ORDER BY id LIMIT 1",
+        (personnel_filing_id,)).fetchone()
+    return row["id"] if row else None
+
+
+def _renewed_labels(before: dict, after: dict) -> list[str]:
+    """哪几类证件的号码发生了变化（旧号码非空且与新号码不同）。
+
+    只认「换发」：从空到有是首次登记，不提醒；改回空是注销，也不提醒。
+    """
+    out = []
+    for label, no_f, _exp, _sub in CERT_SLOTS:
+        old = ((before or {}).get(no_f) or "").strip()
+        new = ((after or {}).get(no_f) or "").strip()
+        if old and new and old != new:
+            out.append(label)
+    return out
+
+
 def _validate_form(data: dict) -> list[str]:
     errors = []
     errors += check_required(data, [
@@ -225,11 +271,7 @@ def _validate_form(data: dict) -> list[str]:
     ])
 
     # 填写证件号时，有效日期与上交日期均为必填
-    for no_field, exp_field, sub_field, label in [
-        ("passport_no", "passport_expiry", "passport_submit_date", "护照"),
-        ("hm_pass_no", "hm_pass_expiry", "hm_pass_submit_date", "港澳通行证"),
-        ("tw_pass_no", "tw_pass_expiry", "tw_pass_submit_date", "台湾通行证"),
-    ]:
+    for label, no_field, exp_field, sub_field in CERT_SLOTS:
         if data.get(no_field):
             if not data.get(exp_field):
                 errors.append(f"填写{label}证件号时，有效日期为必填。")

@@ -135,10 +135,21 @@ def infer_cert_type(db, personnel_filing_id, cert_no, destination_passport) -> s
     证件名）。此时数据里确实没有信息，宁可留空标「待核实」让人来补，
     也不替他猜一个。
     """
-    row = db.execute(
-        "SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "
-        "WHERE personnel_filing_id = ?", (personnel_filing_id,)).fetchone()
-    held = list(row) if row else [None, None, None]
+    # 遍历该人**所有**证照记录合并三个槽位，不能只取一条。
+    #
+    # 需求文档说证照登记「一行为一人」，但代码从未拦过重复，现实里很容易出现
+    # 「先登记了护照，过一阵办了港澳通行证时没找到原记录，又新建了一条」。
+    # 只取第一条会连着踩空三级判据：第①级拿不到港澳号码所以对不上，第③级
+    # 又因为那条里「只有护照」而自信地答出 01——**给出一个错误答案，比判不出
+    # 更糟**，恰恰是这个函数当初要纠正的毛病。
+    # utils/helpers.py 的 cert_type_map 本来就是跨行合并的，此处与之对齐。
+    held = [None, None, None]
+    for row in db.execute(
+            "SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "
+            "WHERE personnel_filing_id = ? ORDER BY id", (personnel_filing_id,)).fetchall():
+        for i, v in enumerate(row):
+            if held[i] is None and v and str(v).strip():
+                held[i] = v
 
     # ① 证件号匹配
     no = (cert_no or "").strip()
