@@ -12,8 +12,39 @@ jobs:
   test:
     name: 测试（Linux）
     runs-on: ubuntu-latest
+    outputs:
+      own_changes: ${{ steps.scope.outputs.own }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # 要与推送前的提交比对改动范围
+
+      # database.py 在触发路径里，是为了守住 Schema.cs 与源头同步——那是**测试**
+      # 关切。但只改了 Python 版时，本版代码一个字没动，重打一份一模一样的
+      # Windows 包没有意义。这里判断本次改动有没有落到本版自己的目录，
+      # 没有就只跑校验与测试，跳过打包。
+      - name: 判断本次改动是否涉及本版
+        id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "own=true" >> "$GITHUB_OUTPUT"; echo "非 push 事件，照常打包"; exit 0
+          fi
+          # 新分支首推时 before 是全零；force push 后旧提交也可能取不到
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "own=true" >> "$GITHUB_OUTPUT"; echo "取不到基线提交，保守起见照常打包"; exit 0
+          fi
+          changed=$(git diff --name-only "$BEFORE" "$AFTER")
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(potms-dotnet/|\.github/workflows/build-dotnet\.yml$)'; then
+            echo "own=true" >> "$GITHUB_OUTPUT"; echo "本版有改动，打包"
+          else
+            echo "own=false" >> "$GITHUB_OUTPUT"; echo "本版无改动（多半只动了 database.py），跳过打包"
+          fi
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -35,6 +66,9 @@ jobs:
   build-windows:
     name: 构建 Windows 自包含包
     needs: test
+    # 只动了 database.py 时不重打包——本版代码没变，产物会和上次一模一样。
+    # 发版走 release.yml，那条无论如何都会把五版一起构建。
+    if: needs.test.outputs.own_changes == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

@@ -546,7 +546,7 @@
         </table>
 
         <div class="footnote">
-            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。<strong>填写某类证件号时，其"有效日期"与"上交日期"均为必填。</strong>系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。
+            <strong>📌 设计要点：</strong>一人可同时持有多类证件，表格采用"一行为一人"的三证横向排列布局。无某类证件则留空。<strong>填写某类证件号时，其"有效日期"与"上交日期"均为必填。</strong>系统须支持按证件有效期<strong>到期预警</strong>（如到期前30天提醒）。<br><strong>一人一行为强制约束</strong>：新建时若该备案人员已有证照记录则拒绝，须编辑既有那一条把其它类证件加进去——同一人多条记录会导致到期预警重复、编辑入口不唯一。<br><strong>换发新证</strong>：直接覆盖原记录对应的一组列（号码 / 有效日期 / 上交日期），不新增记录。本表是"当前持有什么证"的台账，不是持证流水账；历史由两条链承担——用过的证留在出行与领用记录里（各存号码快照），换发动作留在操作日志的变更前后快照里。号码变化时系统会提醒同步更新有效日期与上交日期，避免台账日期停留在旧证上导致预警失灵。
         </div>
     </div>
 </section>
@@ -611,11 +611,11 @@
                 <tr><td>类别</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>出国/出境类别（字典维护）</td></tr>
                 <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>统一格式 YYYY/MM/DD-YYYY/MM/DD（如 2026/08/01-2026/08/11），前端固定掩码输入；历史数据自动转换</td></tr>
                 <tr><td>批准日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>审批通过后回填</td></tr>
-                <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证</td></tr>
-                <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>已登记证件可下拉选取，做证新号手输；若"是否做证"为是，证件办好后补录</td></tr>
-                <tr><td>证件领用日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>路径A时必填</td></tr>
+                <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证。<strong>校验</strong>：该备案人员名下没有任何在有效期内的出入境证件时，只能填「是」（系统不判断证件种类是否匹配目的地，如持港澳通行证赴美，须由经办人自行判断）</td></tr>
+                <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td><strong>派生字段</strong>：已办理证件领用的，由领用记录回写并置为只读，与领用凭证同源；路径B（做证）无领用记录，此栏为系统内唯一来源，拿到证后回本页手工补录</td></tr>
+                <tr><td>证件领用日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td><strong>派生字段</strong>：由《证件领用》模块登记后自动带入，出行表单不收集</td></tr>
                 <tr><td>实际回国日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国（境）实际日期；作为"10个工作日交回证件"的起算日，留空则以计划出行结束日计</td></tr>
-                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>证件实际交回保管日期；填写即视为已归还，空表示尚未归还</td></tr>
+                <tr><td>证件归还日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td><strong>派生字段</strong>：由《证件领用》模块归还登记后自动带入；空表示尚未归还。路径B（做证）无领用记录，以「新证是否已登记进证照台账」判断是否已交回</td></tr>
                 <tr><td>行程状态</td><td>ENUM('normal','cancelled')</td><td><span class="badge opt">选填</span></td><td>正常 / 取消行程，默认正常</td></tr>
                 <tr><td>取消日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>取消行程时记录；作为"5个工作日交回证件"的起算日</td></tr>
                 <tr><td>附件</td><td>FILE</td><td><span class="badge must">必填</span></td><td>PDF扫描件（支持多文件上传）</td></tr>
@@ -635,6 +635,7 @@
             <li><strong>证照操作</strong>：已有证件→在《证件领用》模块办理领用登记（须领用人手写签名，见 5.4）；无证件→记录"同意申办函"信息及后续证件号码。</li>
             <li><strong>归档</strong>：信息填写完毕后直接保存归档，系统记录操作时间及操作人。</li>
             <li><strong>回国交证</strong>：登记备案人员回国（境）后，须在<strong>10个工作日内</strong>向证件管理部门交回因私出国（境）证件；管理员在明细详情中记录"实际回国日期"，并在《证件领用》模块办理<strong>归还登记</strong>（须归还人手写签名）。</li>
+            <li><strong>路径B 的证件首次上交</strong>：做证人员的新证由本人凭函向公安机关申办，不经保管处，故<strong>没有领用记录</strong>。回国交回后，须在《证照登记》中登记该证（号码 / 有效日期 / 上交日期，此时三项均已具备），此登记即视为「已交回」。<strong>逾期口径</strong>：做证 + 新证尚未登记进证照台账 + 超过交回时限，同样计入「证件逾期未交回」告警（回国后 10 个工作日 / 取消行程后 5 个工作日）。</li>
             <li><strong>取消行程</strong>：如行程取消，管理员在明细详情中点击"取消行程"并记录取消日期；已申领证件须于取消日起<strong>5个工作日内</strong>送回保管。取消后可"恢复行程"还原为正常状态。</li>
         </ol>
         <p style="margin-top:8px; color:var(--text-muted);">📌 所有审批环节在线下完成，系统仅作为<strong>信息登记与电子归档</strong>平台，不做线上审批流转。</p>
@@ -652,7 +653,8 @@
     <div class="card">
         <h4>功能要求</h4>
         <ul class="styled">
-            <li><strong>领用登记</strong>：记录领用人、证件种类（可多选：因私护照 / 往来港澳通行证 / 大陆居民往来台湾通行证）、证件号码、领用日期、经办人（发放人，取自登录账户），并采集<strong>领用人手写签名</strong>。可从出国明细记录一键带入人员与证件信息。</li>
+            <li><strong>前置约束</strong>：证件领用<strong>必须关联一条出国（境）申请</strong>，且领用人须为该申请的申请人；已取消行程的申请不可办理领用。同一条申请下不允许并存两条未归还的领用记录，但「领用 → 归还 → 再领用」（如行程推迟）允许。</li>
+            <li><strong>领用登记</strong>：记录领用人、证件种类（<strong>单选</strong>：因私护照 / 往来港澳通行证 / 大陆居民往来台湾通行证。一次出国申请只领用一本证件，需要多本请分别提交出国申请）、证件号码、领用日期、经办人（发放人，取自登录账户），并采集<strong>领用人手写签名</strong>。可从出国明细记录一键带入人员与证件信息。</li>
             <li><strong>归还登记</strong>：记录归还日期、经办人（接收人），并采集<strong>归还人手写签名</strong>。</li>
             <li><strong>作废重登</strong>：签名凭证一经保存<strong>不可修改</strong>；登记有误时须填写原因将记录<strong>作废</strong>，再重新登记。作废记录保留存档，但不计入在借统计。</li>
             <li><strong>查询与统计</strong>：列表支持按姓名/身份证号/证件号搜索，按状态（已领用/已归还/已作废）、证件种类、领用日期区间筛选，分页展示；仪表盘增设"已领用待归还""本月证件领用"统计卡片。</li>
