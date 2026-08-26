@@ -204,10 +204,16 @@ def new() -> ResponseReturnValue:
         flash("证件领用登记已保存。", "success")
         return redirect(url_for("issuance.view", iss_id=iss_id))
 
-    # GET：支持从出行记录跳转带入
+    # GET：领用必须挂在一条出国申请上。直接进本页（没带 travel_id）时，
+    # 先让经办人挑一条申请，挑完再进登记表单——而不是给个能填空的表单，
+    # 让人有机会登记出一条无主的领用记录。
     travel_id = request.args.get("travel_id", type=int)
     prefill: dict = {"issue_date": datetime.now().strftime("%Y%m%d")}
     travel = _travel_brief(travel_id)
+    if not travel:
+        if travel_id:
+            flash("指定的出国申请不存在。", "warning")
+        return render_template("issuance/pick_travel.html", travels=_eligible_travels())
     if travel:
         prefill.update({
             "travel_id": travel_id,
@@ -410,6 +416,23 @@ def _travel_brief(travel_id):
         "FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
 
 
+def _eligible_travels():
+    """可以办理领用的出国申请。
+
+    排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还
+    领用记录的申请（同一申请下不允许两本证同时在外——一次申请一本证）。
+    「领用 → 归还 → 再领用」仍然可以，因为已归还的记录不在排除之列。
+    """
+    return get_db().execute(
+        "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, "
+        "       t.approval_date, t.need_new_passport "
+        "FROM travel_details t "
+        "WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' "
+        "  AND NOT EXISTS (SELECT 1 FROM cert_issuance c "
+        "                  WHERE c.travel_id = t.id AND c.status = 'issued') "
+        "ORDER BY t.created_at DESC").fetchall()
+
+
 def _types_label(codes: str) -> str:
     """'01,02' → '因私护照、往来港澳通行证'；空值 → '待核实'。
 
@@ -466,6 +489,10 @@ def _extract_form(form):
 
 def _validate_form(data: dict) -> list[str]:
     errors = check_required(data, [
+        # 领用必须挂在一条出国申请上：证件是为某一次已批准的出行借出的，
+        # 没有申请就没有借出的理由。无主的领用记录还会掉出逾期告警——
+        # 告警按出行记录来算，挂不上申请的记录没人盯。
+        ("travel_id", "关联出国申请"),
         ("personnel_filing_id", "领用人（备案人员）"),
         ("holder_name", "领用人姓名"),
         ("cert_types", "领用证件种类"),
@@ -473,14 +500,28 @@ def _validate_form(data: dict) -> list[str]:
     ])
     errors += check_dates(data, [("issue_date", "领用日期")])
 
-    # 证件种类必须是字典内的合法代码
-    for c in (data.get("cert_types") or "").split(","):
-        if c and c not in CERT_NO_FIELD:
+    # 证件种类必须是字典内的合法代码。一次申请一本证，所以只能有一个。
+    codes = [c for c in (data.get("cert_types") or "").split(",") if c]
+    for c in codes:
+        if c not in CERT_NO_FIELD:
             errors.append(f"无效的证件种类代码：{c}。")
+    if len(codes) > 1:
+        errors.append("一次出国申请只能领用一本证件；需要多本请分别提交出国申请。")
 
-    # 同一出行下不允许重复的未归还领用记录
     if data.get("travel_id"):
         db = get_db()
+        tv = db.execute(
+            "SELECT personnel_filing_id, trip_status FROM travel_details WHERE id = ?",
+            (data["travel_id"],)).fetchone()
+        if not tv:
+            errors.append("关联的出国申请不存在。")
+        else:
+            if tv["trip_status"] == "cancelled":
+                errors.append("该出国申请已取消行程，不能办理证件领用。")
+            # 领用人必须就是申请人——证是为这条申请借的，不能借给别人
+            if str(tv["personnel_filing_id"]) != str(data.get("personnel_filing_id") or ""):
+                errors.append("领用人与该出国申请的申请人不一致。")
+        # 同一出行下不允许重复的未归还领用记录
         dup = db.execute(
             "SELECT id FROM cert_issuance WHERE travel_id = ? AND status = 'issued'",
             (data["travel_id"],)).fetchone()

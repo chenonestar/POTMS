@@ -238,6 +238,37 @@ def cert_overdue_deadline(row) -> str:
     return add_working_days(base, 10)
 
 
+def is_new_cert_overdue(row, today: str) -> bool:
+    """判断路径B（做证）的新办证件是否逾期未交回。
+
+    路径B 的人没有领用记录——证是他凭同意申办函自己去公安办的，从没进过保管处，
+    系统里没有「领用」这个动作可记。而 is_cert_overdue() 的第一道判据是
+    passport_collect_date 非空，那个字段由领用记录派生，路径B 永远是空，
+    于是**这类人整个掉出了逾期告警**。偏偏他们风险最高：那本证从办出来起
+    一直在本人手上，单位连见都没见过。
+
+    这里换一套判据：证件是否已经进入证照台账。台账里有，说明已交回收缴
+    （登记时上交日期是必填的）；台账里没有——号码都还没录，或录了但没入库——
+    就是还没交回。到期日沿用同一套算法（回国后 10 个工作日 / 取消后 5 个）。
+
+    row 需带 need_new_passport 与 cert_registered（由调用方查台账后置入）。
+    """
+    def _g(key):
+        try:
+            return row[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    if (_g("need_new_passport") or "") != "是":
+        return False
+    if _g("cert_registered"):
+        return False
+    deadline = cert_overdue_deadline(row)
+    if not deadline:
+        return False
+    return today > deadline
+
+
 def is_cert_overdue(row, today: str) -> bool:
     """
     判断某条出国明细是否「证件逾期未还」。

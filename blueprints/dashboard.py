@@ -8,7 +8,7 @@ from auth import login_required
 from database import get_db
 from utils.backup import run_daily_backup, latest_backup
 from utils.helpers import log_action
-from utils.validators import is_cert_overdue, cert_overdue_deadline
+from utils.validators import is_cert_overdue, is_new_cert_overdue, cert_overdue_deadline
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -82,6 +82,23 @@ def index() -> ResponseReturnValue:
     overdue = []
     for r in in_use_rows:
         if is_cert_overdue(r, today):
+            overdue.append({
+                "name": r["name"],
+                "deadline": cert_overdue_deadline(r),
+                "trip_status": r["trip_status"] or "normal",
+            })
+    # 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
+    # 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
+    # blueprints/travel.py:_registered_cert_travel_ids 与 is_new_cert_overdue。
+    from blueprints.travel import _registered_cert_travel_ids
+    registered = _registered_cert_travel_ids()
+    for r in db.execute(
+        "SELECT id, name, need_new_passport, actual_return_date, travel_end, "
+        "trip_status, cancel_date, passport_collect_date FROM travel_details "
+        "WHERE need_new_passport = '是' "
+        "  AND (passport_collect_date IS NULL OR passport_collect_date = '')"
+    ).fetchall():
+        if is_new_cert_overdue({**dict(r), "cert_registered": r["id"] in registered}, today):
             overdue.append({
                 "name": r["name"],
                 "deadline": cert_overdue_deadline(r),

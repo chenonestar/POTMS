@@ -13,7 +13,7 @@ from database import get_db
 from utils.helpers import log_action, list_all, get_dict_options, row_snapshot, operator_name
 from utils.validators import (parse_date_input, validate_date_format,
                               parse_travel_range, validate_travel_range, format_travel_range,
-                              is_cert_overdue, cert_overdue_deadline,
+                              is_cert_overdue, is_new_cert_overdue, cert_overdue_deadline,
                               check_required, check_dates, check_identity)
 from config import Config
 
@@ -71,8 +71,33 @@ def build_filters(args, ids=None):
     return where, tuple(params)
 
 
+def _registered_cert_travel_ids() -> set:
+    """做证的出行记录中，新证已经进入证照台账的那些 id。
+
+    判据是「明细表上补录的证件号码，出现在该人证照台账的三个号码槽之一」。
+    台账登记时上交日期是必填的，所以「在台账里」等价于「已交回收缴」。
+    号码没补录、或补录了但台账里没有，都算还没交回。
+
+    JOIN 而不是子查询取一条：一个人可能有多条证照记录（历史遗留），
+    只要**任意一条**里出现了这个号码就算数。
+    """
+    return {r[0] for r in get_db().execute(
+        "SELECT DISTINCT t.id FROM travel_details t "
+        "JOIN certificates c ON c.personnel_filing_id = t.personnel_filing_id "
+        "WHERE t.need_new_passport = '是' "
+        "  AND t.passport_no IS NOT NULL AND t.passport_no != '' "
+        "  AND t.passport_no IN (c.passport_no, c.hm_pass_no, c.tw_pass_no)"
+    ).fetchall()}
+
+
 def _overdue_ids() -> set:
-    """全量计算「证件逾期未还」记录的 id 集合（已领用 + 未归还 + 超工作日时限）。"""
+    """全量计算「证件逾期未交回」记录的 id 集合。
+
+    两类合并：
+    - 路径A：已领用 + 未归还 + 超工作日时限（判据在领用记录上）；
+    - 路径B：做证 + 新证尚未进入台账 + 超工作日时限（路径B 没有领用记录，
+      用老判据一条都抓不到，见 is_new_cert_overdue 的说明）。
+    """
     today = datetime.now().strftime("%Y%m%d")
     db = get_db()
     rows = db.execute(
@@ -81,7 +106,21 @@ def _overdue_ids() -> set:
         "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
         "AND (passport_return_date IS NULL OR passport_return_date = '')"
     ).fetchall()
-    return {r["id"] for r in rows if is_cert_overdue(r, today)}
+    ids = {r["id"] for r in rows if is_cert_overdue(r, today)}
+
+    registered = _registered_cert_travel_ids()
+    new_rows = db.execute(
+        "SELECT id, need_new_passport, actual_return_date, travel_end, "
+        "trip_status, cancel_date, passport_collect_date FROM travel_details "
+        "WHERE need_new_passport = '是'"
+    ).fetchall()
+    for r in new_rows:
+        # 已经走过领用流程的，归上面那套判据管，避免同一条记录被两边重复判定
+        if r["passport_collect_date"]:
+            continue
+        if is_new_cert_overdue({**dict(r), "cert_registered": r["id"] in registered}, today):
+            ids.add(r["id"])
+    return ids
 
 
 @travel_bp.route("/travel/")
@@ -99,12 +138,18 @@ def list() -> ResponseReturnValue:
 
     pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
-    # 标记逾期未还（已领用 + 未归还 + 超过工作日时限），并附带应还到期日
+    # 标记逾期未交回，并附带应还到期日。两类判据见 _overdue_ids 的说明：
+    # 路径A 看领用记录，路径B（做证、无领用记录）看新证是否已进入证照台账。
     today = datetime.now().strftime("%Y%m%d")
+    registered = _registered_cert_travel_ids()
     overdue_ids = set()
     deadlines = {}
     for row in pg["rows"]:
-        if is_cert_overdue(row, today):
+        late = is_cert_overdue(row, today)
+        if not late and not row["passport_collect_date"]:
+            late = is_new_cert_overdue(
+                {**dict(row), "cert_registered": row["id"] in registered}, today)
+        if late:
             overdue_ids.add(row["id"])
             deadlines[row["id"]] = cert_overdue_deadline(row)
 

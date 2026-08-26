@@ -144,6 +144,17 @@ def _tok(client):
     return _CSRF.search(client.get("/").get_data(as_text=True)).group(1)
 
 
+def _add_travel(tid: int):
+    """再造一条出国申请。领用必须挂申请，而同一申请下不能有两条未归还记录，
+    所以要造第二条领用就得先有第二条申请。"""
+    db = sqlite3.connect(Config.DATABASE)
+    db.execute("INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,"
+               "id_number,destination_passport,category,travel_dates,need_new_passport,operator) "
+               "VALUES (?,1,'总部','技术部','张三','科长',?,'香港/港澳通行证','01',"
+               "'2026/09/01-2026/09/05','否','admin')", (tid, _VALID_ID))
+    db.commit(); db.close()
+
+
 def _issue(client, **over):
     data = {"csrf_token": _tok(client), "travel_id": "1", "personnel_filing_id": "1",
             "holder_name": "张三", "id_number": _VALID_ID, "cert_types": "01",
@@ -301,10 +312,12 @@ def test_batch_print_issuance(c):
     单条打印早就支持 issuance，缺的只是批量那条路——export.py 的 table_map 里
     没有 issuance，命中的是「不支持的打印类型」分支。
 
-    第二条不挂出行记录：同一出行下不允许并存两条未归还的领用记录。
+    第二条另建一条出国申请：同一申请下不允许并存两条未归还的领用记录，
+    而领用又必须挂在申请上（一次申请一本证，多本就分多条申请）。
     """
     _issue(c)
-    _issue(c, travel_id="", cert_types="02", cert_nos="C87654321", issue_date="20260721")
+    _add_travel(2)
+    _issue(c, travel_id="2", cert_types="02", cert_nos="C87654321", issue_date="20260721")
     html = c.get("/print/batch/issuance?ids=1,2").get_data(as_text=True)
 
     assert "因私出国（境）证件领用登记表" in html
@@ -324,7 +337,8 @@ def test_batch_print_issuance_shows_return_and_void(c):
     c.post("/issuance/1/return",
            data={"csrf_token": _tok(c), "return_date": "20260810", "sign_png": _PNG_DATA_URL},
            follow_redirects=True)
-    _issue(c, travel_id="", issue_date="20260722")
+    # 第一条已归还，同一条申请可以再领一次（领用→归还→再领用）
+    _issue(c, issue_date="20260822")
     c.post("/issuance/2/void",
            data={"csrf_token": _tok(c), "void_reason": "登记错误"}, follow_redirects=True)
 
