@@ -75,7 +75,11 @@ public class IssuanceController {
             f.and("i.status = ?", status);
         }
         String certType = param(req, "cert_type", "");
-        if (!certType.isEmpty()) {
+        if (IssuanceOps.CERT_TYPE_PENDING.equals(certType)) {
+            // 历史回填里判不出种类的那批，cert_types 为空。下面那句 LIKE 对空值恒不
+            // 匹配（'' 拼出来是 ',,'），所以单开一条——不能筛出来，这批待办就没法收口。
+            f.and("(i.cert_types IS NULL OR i.cert_types = '')");
+        } else if (!certType.isEmpty()) {
             // cert_types 存的是逗号串，两侧补逗号后做包含匹配，避免 1 命中 01
             f.and("(',' || i.cert_types || ',') LIKE ?", "%," + certType + ",%");
         }
@@ -184,6 +188,8 @@ public class IssuanceController {
         model.addAttribute("item", row);
         model.addAttribute("travel", travelBrief(longOrNull(str(row.get("travel_id")))));
         model.addAttribute("typeLabels", IssuanceOps.typesLabel(db.jdbc(), str(row.get("cert_types"))));
+        model.addAttribute("canFix", IssuanceOps.canFixCertTypes(row));
+        model.addAttribute("certTypeOpts", Helpers.dictOptions(db.jdbc(), "cert_type"));
         model.addAttribute("issueSeal", seals.verify(db.jdbc(), id, "issue",
                 blob(row.get("sign_image")), str(row.get("sign_meta")), row));
         model.addAttribute("returnSeal", seals.verify(db.jdbc(), id, "return",
@@ -291,6 +297,74 @@ public class IssuanceController {
                 "领用记录作废：" + str(row.get("holder_name")) + "，原因：" + reason,
                 before, Helpers.rowSnapshot(db.jdbc(), "cert_issuance", id));
         Flash.info(req, "领用记录已作废，如需更正请重新登记。");
+        return "redirect:/issuance/" + id;
+    }
+
+    // =====================================================================
+    // 更正证件种类（仅限无签名的记录）
+    // =====================================================================
+
+    /**
+     * 人工更正历史回填的证件种类。
+     *
+     * <p>没有这个入口，「判不出就留空」等于制造一批永远填不上的死数据：新建强制签名，
+     * 回填行没有签名也无从重录，只能就地更正。判据见
+     * {@link IssuanceOps#canFixCertTypes}。
+     */
+    @PostMapping("/issuance/{id}/cert-types")
+    public String fixCertTypes(@PathVariable long id, HttpServletRequest req) {
+        var row = one(id);
+        if (row == null) {
+            Flash.danger(req, "记录不存在。");
+            return "redirect:/issuance";
+        }
+        if (!IssuanceOps.canFixCertTypes(row)) {
+            Flash.warning(req, "该记录已有领用人签名，证件种类不可更改；如登记有误请作废后重新登记。");
+            return "redirect:/issuance/" + id;
+        }
+
+        List<String> picked = new ArrayList<>();
+        String[] raw = req.getParameterValues("cert_types");
+        if (raw != null) {
+            for (String t : raw) {
+                if (t != null && !t.isBlank()) {
+                    picked.add(t.trim());
+                }
+            }
+        }
+        for (String c : picked) {
+            if (!IssuanceOps.CERT_NO_FIELD.containsKey(c)) {
+                Flash.danger(req, "无效的证件种类代码：" + c + "。");
+                return "redirect:/issuance/" + id;
+            }
+        }
+        if (picked.isEmpty()) {
+            Flash.danger(req, "请选择证件种类。");
+            return "redirect:/issuance/" + id;
+        }
+        // 与新建同一条规则：一次出国申请只领一本证
+        if (picked.size() > 1) {
+            Flash.danger(req, "一次出国申请只能领用一本证件。");
+            return "redirect:/issuance/" + id;
+        }
+
+        var before = Helpers.rowSnapshot(db.jdbc(), "cert_issuance", id);
+        // 备注里「待核实 / 按护照推定」这类字样已经不成立，一并清掉；
+        // 人工核定的结果不该继续挂着机器推断的说明。
+        String remarks = str(row.get("remarks"));
+        if (remarks.startsWith("历史数据回填")) {
+            remarks = "历史数据回填（证件种类已人工核定，无签名）";
+        }
+        String joined = String.join(",", picked);
+        String oldLabel = IssuanceOps.typesLabel(db.jdbc(), str(row.get("cert_types")));
+        String newLabel = IssuanceOps.typesLabel(db.jdbc(), joined);
+        db.jdbc().update("UPDATE cert_issuance SET cert_types=?, remarks=?, "
+                + "updated_at=CURRENT_TIMESTAMP WHERE id=?", joined, remarks, id);
+        Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
+                "update", "cert_issuance", id,
+                "更正证件种类：" + str(row.get("holder_name")) + "，" + oldLabel + " → " + newLabel,
+                before, Helpers.rowSnapshot(db.jdbc(), "cert_issuance", id));
+        Flash.success(req, "证件种类已更正。");
         return "redirect:/issuance/" + id;
     }
 

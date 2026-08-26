@@ -16,10 +16,30 @@ public final class IssuanceOps {
             "02", "hm_pass_no",
             "03", "tw_pass_no");
 
-    /** {@code "01,02"} → {@code "因私护照、往来港澳通行证"}。 */
+    /**
+     * 列表筛选里表示「历史回填判不出种类」的伪代码。
+     *
+     * <p>不是字典值：这批记录的 cert_types 就是空串，只是需要一个能筛出它们的入口，
+     * 否则这批待办没法收口。
+     */
+    public static final String CERT_TYPE_PENDING = "pending";
+
+    /**
+     * 该记录的证件种类可否人工更正。
+     *
+     * <p>判据只有一条：没有领用人签名。签名签的就是「我领了这几样」，改了就名不副实，
+     * 那种情况只能作废后重新登记。历史回填行本来就没有签名，也无从重录（新建强制签名），
+     * 只能就地更正。
+     */
+    public static boolean canFixCertTypes(Map<String, Object> row) {
+        Object img = row.get("sign_image");
+        return img == null || (img instanceof byte[] b && b.length == 0);
+    }
+
+    /** {@code "01,02"} → {@code "因私护照、往来港澳通行证"}；空串（待核实）显式标出。 */
     public static String typesLabel(JdbcTemplate jdbc, String codes) {
         if (codes == null || codes.isBlank()) {
-            return "";
+            return "待核实";
         }
         List<String> out = new ArrayList<>();
         for (String c : codes.split(",")) {

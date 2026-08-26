@@ -32,6 +32,7 @@
             <div class="col-md-2"><select class="form-select form-select-sm" name="cert_type">
                 <option value="">证件种类</option>
                 @for(var o : certTypeOpts)<option value="${o.code()}" selected="${Fmt.is(certTypeFilter, o.code())}">${o.value()}</option>@endfor
+                <option value="pending" selected="${Fmt.is(certTypeFilter, "pending")}">待核实（历史回填未判定）</option>
             </select></div>
             <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_from" placeholder="领用起 YYYYMMDD" value="${dateFrom}"></div>
             <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_to" placeholder="领用止 YYYYMMDD" value="${dateTo}"></div>
@@ -55,7 +56,9 @@
                     <td>${Fmt.s(r, "issue_date")}</td>
                     <td>${Fmt.s(r, "holder_name")}</td>
                     <td title="${Fmt.s(r, "work_unit")}">${Fmt.s(r, "work_unit")}</td>
-                    <td>${typeLabels.getOrDefault(id, "")}</td>
+                    <%-- 历史回填里判不出种类的：空白单元格会被当成漏渲染，明确标出来才好收口 --%>
+                    <td>@if(Fmt.s(r, "cert_types").isEmpty())<span class="badge bg-warning text-dark">待核实</span>
+                        @else${typeLabels.getOrDefault(id, "")}@endif</td>
                     <td>${Fmt.s(r, "cert_nos", "-")}</td>
                     <td>
                         @if("issued".equals(st))<span class="badge bg-primary">已领用</span>

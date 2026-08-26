@@ -277,6 +277,7 @@ public class Db {
     private void backfillIssuance() {
         var rows = jdbc.queryForList(
                 "SELECT t.id, t.personnel_filing_id, t.name, t.id_number, t.passport_no, "
+                + "       t.destination_passport, "
                 + "       t.passport_collect_date, t.passport_return_date, t.operator "
                 + "FROM travel_details t "
                 + "WHERE t.passport_collect_date IS NOT NULL AND t.passport_collect_date != '' "
@@ -286,17 +287,162 @@ public class Db {
             String op = str(r.get("operator"), "system");
             String rdate = str(r.get("passport_return_date"), "");
             boolean returned = !rdate.isEmpty();
+            String ctype = inferCertType(jdbc,
+                    ((Number) r.get("personnel_filing_id")).longValue(),
+                    str(r.get("passport_no"), ""), str(r.get("destination_passport"), ""));
             jdbc.update("INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, "
                     + "id_number, cert_types, cert_nos, issue_date, issuer, return_date, "
                     + "return_operator, status, remarks, operator) "
-                    + "VALUES (?, ?, ?, ?, '01', ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     r.get("id"), r.get("personnel_filing_id"),
                     str(r.get("name"), ""), str(r.get("id_number"), ""),
-                    str(r.get("passport_no"), ""), r.get("passport_collect_date"), op,
+                    ctype, str(r.get("passport_no"), ""), r.get("passport_collect_date"), op,
                     returned ? rdate : null, returned ? op : null,
                     returned ? "returned" : "issued",
-                    "历史数据回填（证件种类按护照推定，无签名）", op);
+                    ctype.isEmpty() ? BACKFILL_REMARK_PENDING : BACKFILL_REMARK_INFERRED, op);
         }
+        correctLegacyCertTypes();
+    }
+
+    /** 证件种类代码 → 证照登记表里对应的号码列。 */
+    public static final String[][] CERT_TYPE_COLUMNS = {
+        {"01", "passport_no"}, {"02", "hm_pass_no"}, {"03", "tw_pass_no"},
+    };
+
+    /**
+     * 「地点、证照」自由文本里的证件名称关键字。
+     *
+     * <p>只认<b>证件名</b>不认地名——「香港」既可能持港澳通行证也可能持护照过境，
+     * 拿地名猜会猜错。顺序即优先级：先长后短。
+     */
+    private static final String[][] CERT_NAME_HINTS = {
+        {"03", "大陆居民往来台湾", "台湾通行证", "台胞证"},
+        {"02", "往来港澳", "港澳通行证"},
+        {"01", "护照"},
+    };
+
+    /**
+     * 回填记录的备注。三个串互不相同，订正迁移靠「备注是否还是旧串」判断是否已处理，
+     * 改完备注下次启动自然扫不到，不需要额外的版本表。
+     */
+    public static final String BACKFILL_REMARK_LEGACY = "历史数据回填（证件种类按护照推定，无签名）";
+    public static final String BACKFILL_REMARK_INFERRED = "历史数据回填（证件种类据证照登记推定，无签名）";
+    public static final String BACKFILL_REMARK_PENDING = "历史数据回填（证件种类待核实，无签名）";
+
+    /**
+     * 推断一条历史出行记录用的是哪种证件，判不出返回空串。
+     *
+     * <p>原先一律记作因私护照（'01'）。这是个<b>主动编造</b>的答案：往来港澳通行证、
+     * 台湾通行证都被写成护照，而领用凭证是要归档的，错的种类比空着更糟。
+     *
+     * <p>三级判据，从硬到软：①出行记录上的证件号码对上证照登记表的哪一列（号码唯一，
+     * 最硬）；②「地点、证照」里出现的证件名称；③该人在证照登记表里只登记了一种证件。
+     * 三条都不成立时返回空串，宁可留空标「待核实」让人来补，也不替他猜一个。
+     *
+     * <p>遍历该人<b>所有</b>证照记录合并三个槽位，不能只取一条：需求文档说证照登记
+     * 「一行为一人」，但现实里很容易出现「先登记了护照，过一阵办了港澳通行证时没找到
+     * 原记录，又新建了一条」。只看第一条会连着踩空三级判据，最后自信地答出错误答案。
+     */
+    public static String inferCertType(JdbcTemplate jdbc, long personnelFilingId,
+                                       String certNo, String destinationPassport) {
+        String[] held = new String[3];
+        for (var row : jdbc.queryForList(
+                "SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "
+                + "WHERE personnel_filing_id = ? ORDER BY id", personnelFilingId)) {
+            String[] vals = {
+                str(row.get("passport_no"), ""), str(row.get("hm_pass_no"), ""),
+                str(row.get("tw_pass_no"), ""),
+            };
+            for (int i = 0; i < 3; i++) {
+                if (held[i] == null && !vals[i].trim().isEmpty()) {
+                    held[i] = vals[i].trim();
+                }
+            }
+        }
+
+        // ① 证件号匹配
+        String no = certNo == null ? "" : certNo.trim();
+        if (!no.isEmpty()) {
+            for (int i = 0; i < 3; i++) {
+                if (no.equals(held[i])) {
+                    return CERT_TYPE_COLUMNS[i][0];
+                }
+            }
+        }
+
+        // ② 「地点、证照」里的证件名称
+        String text = destinationPassport == null ? "" : destinationPassport;
+        for (String[] hint : CERT_NAME_HINTS) {
+            for (int k = 1; k < hint.length; k++) {
+                if (text.contains(hint[k])) {
+                    return hint[0];
+                }
+            }
+        }
+
+        // ③ 该人只登记了一种证件
+        int owned = -1;
+        int count = 0;
+        for (int i = 0; i < 3; i++) {
+            if (held[i] != null) {
+                owned = i;
+                count++;
+            }
+        }
+        return count == 1 ? CERT_TYPE_COLUMNS[owned][0] : "";
+    }
+
+    /**
+     * 订正上一版回填留下的错标。
+     *
+     * <p>上面那段回填曾经把 cert_types 一律写成 '01'（因私护照），实际可能是往来港澳
+     * 通行证或大陆居民往来台湾通行证。而回填带幂等守卫（travel_id 已有记录就跳过），
+     * 光把上面改对，<b>对已经回填过的库毫无作用</b>——错的行会一直躺着。
+     *
+     * <p>判据卡死在回填自己产的行上：备注是那句原文，且没有签名。手工登记的记录
+     * 有签名、备注也不同，碰不到。改完备注即失配，下次启动自然跳过。
+     */
+    private void correctLegacyCertTypes() {
+        var stale = jdbc.queryForList(
+                "SELECT c.id, c.personnel_filing_id, c.cert_nos, c.travel_id "
+                + "FROM cert_issuance c WHERE c.remarks = ? AND c.sign_image IS NULL",
+                BACKFILL_REMARK_LEGACY);
+        if (stale.isEmpty()) {
+            return;
+        }
+        // 动的是业务记录，先留一份改动前的快照。每日备份排在迁移之后，等它就晚了。
+        com.potms.service.Backup.runDaily(cfg, true);
+
+        int fixed = 0;
+        int pending = 0;
+        for (var r : stale) {
+            Object tid = r.get("travel_id");
+            String dest = "";
+            if (tid != null) {
+                var t = jdbc.queryForList(
+                        "SELECT destination_passport FROM travel_details WHERE id = ?", tid);
+                if (!t.isEmpty()) {
+                    dest = str(t.get(0).get("destination_passport"), "");
+                }
+            }
+            String ctype = inferCertType(jdbc,
+                    ((Number) r.get("personnel_filing_id")).longValue(),
+                    str(r.get("cert_nos"), ""), dest);
+            if (ctype.isEmpty()) {
+                pending++;
+            } else {
+                fixed++;
+            }
+            jdbc.update("UPDATE cert_issuance SET cert_types = ?, remarks = ?, "
+                    + "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    ctype, ctype.isEmpty() ? BACKFILL_REMARK_PENDING : BACKFILL_REMARK_INFERRED,
+                    r.get("id"));
+        }
+        // 直接写日志表：logAction 依赖请求上下文，迁移跑在那之外。
+        jdbc.update("INSERT INTO operation_logs (operator, action, target_type, detail) "
+                + "VALUES ('system', 'migrate', 'cert_issuance', ?)",
+                "订正历史回填的证件种类：共 " + stale.size() + " 条，据证照登记推定 "
+                + fixed + " 条，待核实 " + pending + " 条");
     }
 
     /** 引导「人事主管单位」字典：把已有记录中的去重值补入字典（幂等）。 */

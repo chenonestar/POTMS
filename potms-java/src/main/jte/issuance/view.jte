@@ -4,6 +4,8 @@
 @param Map<String, Object> item
 @param Map<String, Object> travel
 @param String typeLabels
+@param boolean canFix
+@param java.util.List<com.potms.web.Helpers.DictOption> certTypeOpts
 @param com.potms.service.SealStore.Status issueSeal
 @param com.potms.service.SealStore.Status returnSeal
 !{long id = Fmt.n(item, "id"); String st = Fmt.s(item, "status");}
@@ -43,7 +45,10 @@
                 </p></div>
             </div>
             <div class="row mt-2">
-                <div class="col-md-4"><label class="text-muted">证件种类</label><p>${typeLabels}</p></div>
+                <div class="col-md-4"><label class="text-muted">证件种类</label><p>
+                    @if(Fmt.s(item, "cert_types").isEmpty())<span class="badge bg-warning text-dark">待核实</span>
+                    @else${typeLabels}@endif
+                </p></div>
                 <div class="col-md-4"><label class="text-muted">证件号码</label><p>${Fmt.s(item, "cert_nos", "-")}</p></div>
                 <div class="col-md-2"><label class="text-muted">领用日期</label><p>${Fmt.s(item, "issue_date")}</p></div>
                 <div class="col-md-2"><label class="text-muted">发放人</label><p>${Fmt.s(item, "issuer")}</p></div>
@@ -129,6 +134,31 @@
             换用有资质 CA 签发的证书只需调整配置，业务数据不受影响。
         @endif
     </div>
+
+    <%-- 更正证件种类：只对无签名的记录开放。有签名的记录改种类会让签名名不副实，
+         那种情况只能作废重录——但历史回填行本来就没有签名，也无从重录（新建强制签名）。 --%>
+    @if(canFix)
+        <div class="card mb-4 no-print">
+            <div class="card-header"><i class="bi bi-pencil-square"></i> 更正证件种类</div>
+            <div class="card-body">
+                <p class="text-muted small">本记录无手写签名（历史回填或放宽模式登记），可直接更正证件种类。已签名的记录不可更改。</p>
+                <form method="POST" action="/issuance/${id}/cert-types" class="row g-2 align-items-end">
+                    <input type="hidden" name="csrf_token" value="${ctx.csrfToken()}">
+                    <div class="col-md-6">
+                        @for(var o : certTypeOpts)
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="cert_types"
+                                       value="${o.code()}" id="fx${o.code()}"
+                                       checked="${Fmt.is(Fmt.s(item, "cert_types"), o.code())}">
+                                <label class="form-check-label" for="fx${o.code()}">${o.value()}</label>
+                            </div>
+                        @endfor
+                    </div>
+                    <div class="col-auto"><button type="submit" class="btn btn-outline-primary">保存更正</button></div>
+                </form>
+            </div>
+        </div>
+    @endif
 
     @if(!"voided".equals(st))
         <div class="card mb-4 no-print">

@@ -33,7 +33,16 @@
         </div></div>
     </div>
     <div class="row g-3 mt-1">
-        <div class="col-md-3"><label class="form-label text-muted small">证件种类</label><div>@Model.TypeLabels</div></div>
+        <div class="col-md-3"><label class="form-label text-muted small">证件种类</label><div>
+            @if (string.IsNullOrWhiteSpace(it.CertTypes))
+            { <span class="badge bg-warning text-dark">待核实</span> }
+            else
+            { @Model.TypeLabels }
+            @if (Model.CanFix)
+            {
+                <button type="button" class="btn btn-sm btn-link p-0 ms-1" data-bs-toggle="modal" data-bs-target="#certTypeModal">更正</button>
+            }
+        </div></div>
         <div class="col-md-3"><label class="form-label text-muted small">证件号码</label><div>@(string.IsNullOrEmpty(it.CertNos) ? "-" : it.CertNos)</div></div>
         <div class="col-md-3"><label class="form-label text-muted small">领用日期</label><div>@it.IssueDate</div></div>
         <div class="col-md-3"><label class="form-label text-muted small">经办人</label><div>@it.Issuer</div></div>
@@ -93,6 +102,35 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-danger">确认作废</button>
+                </div>
+            </form>
+        </div></div>
+    </div>
+}
+
+@* 更正证件种类：只对无签名的记录开放。有签名的记录改种类会让签名名不副实，
+   那种情况只能作废重录——但历史回填行本来就没有签名，也无从重录（新建强制签名）。 *@
+@if (Model.CanFix)
+{
+    <div class="modal fade" id="certTypeModal" tabindex="-1">
+        <div class="modal-dialog"><div class="modal-content">
+            <form method="post" asp-page-handler="CertTypes">
+                <div class="modal-header"><h5 class="modal-title">更正证件种类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p class="text-muted small">本记录无手写签名（历史回填或放宽模式登记），可直接更正证件种类。已签名的记录不可更改。</p>
+                    @foreach (var o in Model.CertTypeOptions)
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="certTypes" value="@o.Code"
+                                   id="fx@(o.Code)" checked="@(it.CertTypes == o.Code)">
+                            <label class="form-check-label" for="fx@(o.Code)">@o.Value</label>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
                 </div>
             </form>
         </div></div>

@@ -26,10 +26,16 @@ public class IndexModel(Db db, Flash flash) : AppPageModel(flash)
         f.Like("(i.holder_name LIKE {0} OR i.id_number LIKE {1} OR i.cert_nos LIKE {2})", q["search"], 3);
         var st = q["status"].ToString();
         if (st is "issued" or "returned" or "voided") f.Eq("i.status", st);
-        var ct = q["certType"].ToString();
-        if (!string.IsNullOrWhiteSpace(ct))
+        var ct = q["certType"].ToString().Trim();
+        if (ct == IssuanceOps.CertTypePending)
         {
-            f.Params.Add("ct", $"%,{ct.Trim()},%");
+            // 历史回填里判不出种类的那批，cert_types 为空。下面那句 LIKE 对空值恒不
+            // 匹配（'' 拼出来是 ',,'），所以单开一条——不能筛出来，这批待办就没法收口。
+            f.Raw("(i.cert_types IS NULL OR i.cert_types = '')");
+        }
+        else if (!string.IsNullOrWhiteSpace(ct))
+        {
+            f.Params.Add("ct", $"%,{ct},%");
             f.Raw("(',' || i.cert_types || ',') LIKE @ct");
         }
         f.Cmp("i.issue_date", ">=", q["dateFrom"]);
