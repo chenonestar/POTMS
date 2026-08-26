@@ -33,7 +33,13 @@ const CERT_NO_FIELD: &[(&str, &str)] = &[
 ];
 
 /// 列表/导出共用：JOIN 备案表以排除孤儿行（延续既有数据完整性口径）
-const BASE_SELECT: &str = "SELECT i.*, pf.work_unit AS work_unit \
+///
+/// 签名位图存的是 BLOB，而 query_maps 把所有 BLOB 一律转成 JSON null
+/// （value_ref_to_json 里 `ValueRef::Blob(_) => Value::Null`），行 map 里的
+/// sign_image 因此恒为空——模板写 `{% if item.sign_image %}` 就永远不成立，
+/// 签了名也显示「无签名」。所以在 SQL 里另算两个布尔列供模板与守卫判断。
+const BASE_SELECT: &str = "SELECT i.*, pf.work_unit AS work_unit, \
+     (i.sign_image IS NOT NULL) AS has_sign, (i.return_sign_image IS NOT NULL) AS has_return_sign \
      FROM cert_issuance i \
      JOIN personnel_filing pf ON i.personnel_filing_id = pf.id \
      WHERE 1=1";
@@ -56,7 +62,11 @@ pub fn issuance_filters(q: &F, ids: &[i64]) -> (String, Vec<SqlValue>) {
         params.push(T(status.into()));
     }
     let ct = q.get("cert_type").map(|x| x.trim()).unwrap_or("");
-    if !ct.is_empty() {
+    if ct == CERT_TYPE_PENDING {
+        // 历史回填里判不出种类的那批，cert_types 为空。下面那句 LIKE 对空值恒不
+        // 匹配（'' 拼出来是 ',,'），所以单开一条——不能筛出来，这批待办就没法收口。
+        where_.push_str(" AND (i.cert_types IS NULL OR i.cert_types = '')");
+    } else if !ct.is_empty() {
         where_.push_str(" AND (',' || i.cert_types || ',') LIKE ?");
         params.push(T(format!("%,{ct},%")));
     }
@@ -242,8 +252,11 @@ pub async fn view(State(st): State<St>, headers: HeaderMap, uri: Uri,
     };
     match row {
         None => not_found(&st, req),
-        Some(r) => page(&st, &mut req, "issuance/view.html",
-                        json!({"item": r, "travel": travel, "type_labels": labels})),
+        Some(r) => {
+            let can_fix = can_fix_cert_types(&r);
+            page(&st, &mut req, "issuance/view.html",
+                 json!({"item": r, "travel": travel, "type_labels": labels, "can_fix": can_fix}))
+        }
     }
 }
 
@@ -396,6 +409,83 @@ pub async fn void(State(st): State<St>, headers: HeaderMap, uri: Uri,
     redirect(&st, &req, "issuance.view", &[("iss_id".to_string(), iss_id.to_string())])
 }
 
+/// 更正证件种类。仅限无签名的记录，判据见 can_fix_cert_types。
+///
+/// 用 Vec<(String, String)> 而不是 HashMap 收表单：同名字段在 HashMap 里只会
+/// 留下最后一个，多选就被静默吃掉了——那正是本模块建表单时踩过的坑。
+pub async fn fix_cert_types(State(st): State<St>, headers: HeaderMap, uri: Uri,
+                            Path(iss_id): Path<i64>,
+                            Form(pairs): Form<Vec<(String, String)>>) -> Response {
+    let mut req = Req::new(&st, &headers, &uri);
+    if let Some(r) = require_login(&st, &mut req) {
+        return r;
+    }
+    let back = |req: &Req| redirect(&st, req, "issuance.view",
+                                    &[("iss_id".to_string(), iss_id.to_string())]);
+    let form = flatten(&pairs);
+    if !csrf_check(&req, &form) {
+        flash(&mut req, "表单已过期，请重试。", "danger");
+        return back(&req);
+    }
+    let row = {
+        let conn = st.db.lock().unwrap();
+        get_issuance(&conn, iss_id)
+    };
+    let Some(row) = row else { return not_found(&st, req) };
+    if !can_fix_cert_types(&row) {
+        flash(&mut req, "该记录已有领用人签名，证件种类不可更改；如登记有误请作废后重新登记。",
+              "warning");
+        return back(&req);
+    }
+
+    let types: Vec<String> = pairs.iter()
+        .filter(|(k, _)| k.as_str() == "cert_types")
+        .map(|(_, v)| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect();
+    if let Some(bad) = types.iter().find(|t| !CERT_NO_FIELD.iter().any(|(c, _)| *c == t.as_str())) {
+        flash(&mut req, &format!("无效的证件种类代码：{bad}。"), "danger");
+        return back(&req);
+    }
+    if types.is_empty() {
+        flash(&mut req, "请选择证件种类。", "danger");
+        return back(&req);
+    }
+    if types.len() > 1 {
+        // 与新建同一条规则：一次出国申请只领一本证
+        flash(&mut req, "一次出国申请只能领用一本证件。", "danger");
+        return back(&req);
+    }
+
+    {
+        let conn = st.db.lock().unwrap();
+        let before = helpers::row_snapshot(&conn, "cert_issuance", iss_id);
+        // 备注里「待核实 / 按护照推定」这类字样已经不成立，一并清掉；
+        // 人工核定的结果不该继续挂着机器推断的说明。
+        let old_remarks = helpers::row_str(&row, "remarks");
+        let remarks = if old_remarks.starts_with("历史数据回填") {
+            "历史数据回填（证件种类已人工核定，无签名）".to_string()
+        } else {
+            old_remarks
+        };
+        let joined = types.join(",");
+        let old_label = types_label(&conn, &helpers::row_str(&row, "cert_types"));
+        let new_label = types_label(&conn, &joined);
+        let _ = conn.execute(
+            "UPDATE cert_issuance SET cert_types=?, remarks=?, \
+             updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            rusqlite::params![&joined, &remarks, iss_id],
+        );
+        let after = helpers::row_snapshot(&conn, "cert_issuance", iss_id);
+        let detail = format!("更正证件种类：{}，{old_label} → {new_label}",
+                             helpers::row_str(&row, "holder_name"));
+        helpers::log_action(&conn, &req.sess.username(), &req.ip, "update", "cert_issuance",
+                            Some(iss_id), &detail, before, after);
+    }
+    flash(&mut req, "证件种类已更正。", "success");
+    back(&req)
+}
+
 /// 输出签名位图。kind=return 取归还签名，否则取领用签名。
 pub async fn signature_png(State(st): State<St>, headers: HeaderMap, uri: Uri,
                            Path(iss_id): Path<i64>) -> Response {
@@ -440,7 +530,10 @@ fn not_found(st: &St, mut req: Req) -> Response {
 
 fn get_issuance(conn: &rusqlite::Connection, iss_id: i64) -> Option<db::Row> {
     db::query_one(conn,
-        "SELECT i.*, pf.work_unit FROM cert_issuance i \
+        "SELECT i.*, pf.work_unit, \
+         (i.sign_image IS NOT NULL) AS has_sign, \
+         (i.return_sign_image IS NOT NULL) AS has_return_sign \
+         FROM cert_issuance i \
          JOIN personnel_filing pf ON i.personnel_filing_id = pf.id WHERE i.id = ?",
         &[I(iss_id)])
 }
@@ -454,17 +547,39 @@ fn travel_brief(conn: &rusqlite::Connection, travel_id: Option<i64>) -> Option<d
          FROM travel_details WHERE id = ?", &[I(id)])
 }
 
-/// 把 "01,02" 转成 "因私护照、往来港澳通行证"。
+/// 列表筛选里「待核实」的取值。真实种类代码是 01/02/03，不会撞。
+pub const CERT_TYPE_PENDING: &str = "pending";
+
+/// 把 "01,02" 转成 "因私护照、往来港澳通行证"；空值转成「待核实」。
+///
+/// 空值只可能来自历史回填里判不出种类的那批。打印件与日志上不能是个空格子——
+/// 看的人分不清是「没有证件」还是「漏填了」，写明待核实才是实情。
 pub fn types_label(conn: &rusqlite::Connection, codes: &str) -> String {
-    codes.split(',')
+    let out: Vec<String> = codes.split(',')
         .map(str::trim)
         .filter(|c| !c.is_empty())
         .map(|c| {
             let v = helpers::get_dict_value(conn, "cert_type", c);
             if v.is_empty() { c.to_string() } else { v }
         })
-        .collect::<Vec<_>>()
-        .join("、")
+        .collect();
+    if out.is_empty() { "待核实".to_string() } else { out.join("、") }
+}
+
+/// 只有**没有签名**的记录允许改证件种类。
+///
+/// 模块约束是「签名一经保存不可编辑」——签名签的就是「我领了这几样证件」，
+/// 事后改种类会让那个签名名不副实，那种记录只能作废重录。
+///
+/// 但历史回填行本来就没有签名（老库里根本没采集过），作废重录这条路也走不通：
+/// 新建领用默认强制手写签名，而历史记录压根没有签名可采。不给它们一个更正入口，
+/// 订正迁移标出来的「待核实」就成了永远填不上的死数据。
+///
+/// 判据用「无签名」而不是「备注是回填串」：放宽模式（POTMS_REQUIRE_SIGNATURE=0）
+/// 下手工登记的记录同样没有签名，同样没有会被推翻的凭证，一并适用。
+pub fn can_fix_cert_types(row: &serde_json::Value) -> bool {
+    // 不能看 sign_image：BLOB 在行 map 里恒为 null，见 BASE_SELECT 上方的说明。
+    row.get("has_sign").and_then(|v| v.as_i64()).unwrap_or(0) == 0
 }
 
 /// 把领用/归还日期回写到出行表（派生字段，本模块为唯一写入方）。
@@ -717,6 +832,251 @@ AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
              VALUES (1,1,'总部','办公室','史迪威','处级','110101199001012133','德国','因私',\
                 '2026/09/01-2026/09/10','admin');",
         ).unwrap();
+    }
+
+    /// 在 App 的库里造一条判不出种类的回填记录，返回其 id。
+    fn seed_pending(app: &App) -> i64 {
+        let conn = app.db.lock().unwrap();
+        conn.execute(
+            "INSERT INTO cert_issuance (travel_id,personnel_filing_id,holder_name,id_number,\
+                cert_types,cert_nos,issue_date,issuer,status,remarks,operator) \
+             VALUES (1,1,'待核实某','110101199001012133','','','20260225','admin','issued',?,'admin')",
+            rusqlite::params![crate::db::BACKFILL_REMARK_PENDING]).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    /// 详情页要能显示已采集的签名图。
+    ///
+    /// query_maps 把所有 BLOB 一律转成 JSON null（value_ref_to_json 里
+    /// `ValueRef::Blob(_) => Value::Null`），所以行 map 里的 sign_image 恒为空，
+    /// 模板里 `{% if item.sign_image %}` 永远不成立——签了名也显示「无签名」。
+    #[tokio::test]
+    async fn view_shows_signature_when_present() {
+        let app = App::new();
+        assert_eq!(app.new_issuance(PNG_DATA_URL).await, StatusCode::SEE_OTHER);
+        let (_, body) = app.get("/issuance/1").await;
+        assert!(body.contains("signature.png"),
+                "详情页没有显示签名图，实际内容：{}", &body[..body.len().min(1200)]);
+        assert!(!body.contains("无签名（历史数据回填）"),
+                "明明有签名，却显示成「无签名」");
+    }
+
+    #[tokio::test]
+    async fn pending_shown_and_filterable() {
+        let app = App::new();
+        seed_pending(&app);
+
+        let (_, body) = app.get("/issuance/?cert_type=pending").await;
+        assert!(body.contains("待核实某"), "待核实筛选没有筛出该记录");
+        assert!(body.contains("待核实"), "列表上没有「待核实」徽章");
+
+        // 现有筛选是 (','||cert_types||',') LIKE '%,01,%'，对空值恒不匹配；
+        // 筛不出来这批待办就没法收口。
+        let (_, body) = app.get("/issuance/?cert_type=01").await;
+        assert!(!body.contains("待核实某"), "按 01 筛选不该出现待核实的记录");
+    }
+
+    #[tokio::test]
+    async fn pending_row_can_be_corrected() {
+        let app = App::new();
+        let id = seed_pending(&app);
+
+        let (status, _) = app.post(&format!("/issuance/{id}/cert-types"),
+                                   &[("cert_types", "02")]).await;
+        assert_eq!(status, StatusCode::SEE_OTHER);
+
+        let conn = app.db.lock().unwrap();
+        let (ct, rm): (String, String) = conn.query_row(
+            "SELECT cert_types, remarks FROM cert_issuance WHERE id=?",
+            [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(ct, "02");
+        assert!(rm.contains("人工核定"), "备注应改为人工核定，得到 {rm}");
+    }
+
+    #[tokio::test]
+    async fn correction_rejected_on_signed_record() {
+        let app = App::new();
+        let id = seed_pending(&app);
+        {
+            let conn = app.db.lock().unwrap();
+            conn.execute("UPDATE cert_issuance SET sign_image=? WHERE id=?",
+                         rusqlite::params![&b"\x89PNG"[..], id]).unwrap();
+        }
+        app.post(&format!("/issuance/{id}/cert-types"), &[("cert_types", "02")]).await;
+
+        let conn = app.db.lock().unwrap();
+        let ct: String = conn.query_row("SELECT cert_types FROM cert_issuance WHERE id=?",
+                                        [id], |r| r.get(0)).unwrap();
+        assert_eq!(ct, "", "有签名的记录不该被改动");
+    }
+
+    #[tokio::test]
+    async fn correction_rejects_invalid_empty_and_multi() {
+        let app = App::new();
+        let id = seed_pending(&app);
+        let path = format!("/issuance/{id}/cert-types");
+
+        for (label, fields) in [
+            ("非法代码", vec![("cert_types", "99")]),
+            ("空选", vec![]),
+            ("多选", vec![("cert_types", "01"), ("cert_types", "02")]),
+        ] {
+            app.post(&path, &fields).await;
+            let conn = app.db.lock().unwrap();
+            let ct: String = conn.query_row("SELECT cert_types FROM cert_issuance WHERE id=?",
+                                            [id], |r| r.get(0)).unwrap();
+            assert_eq!(ct, "", "{label} 应被挡回，但记录被改成了 {ct}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 历史回填的证件种类：三级推断 / 存量订正 / 待核实呈现 / 人工更正
+    //
+    // 原先回填一律把 cert_types 写成 '01'（因私护照）——往来港澳通行证、大陆居民
+    // 往来台湾通行证全被标成护照。领用凭证是要归档的，错的种类比空着更糟。
+    // -----------------------------------------------------------------------
+
+    /// 造一个「升级前」的库：出行表已有领用日期。
+    /// with_issuance=true 时先塞入错标的领用记录，模拟已被老版本回填过的存量库。
+    fn seed_legacy(conn: &rusqlite::Connection, with_issuance: bool) {
+        // (姓名, certificates 填哪一列, 证件号, 出行表填的号, 「地点、证照」, 应判出)
+        let cases: [(&str, &str, &str, &str, &str, &str); 5] = [
+            ("张三", "passport_no", "E12345678", "E12345678", "美国-护照", "01"),
+            ("李四", "hm_pass_no", "C87654321", "C87654321", "香港", "02"),
+            ("王五", "tw_pass_no", "T11112222", "T11112222", "台湾", "03"),
+            ("赵六", "hm_pass_no", "C40000001", "", "澳门/港澳通行证", "02"),
+            ("孙七", "passport_no", "E55556666", "", "泰国", "01"),
+        ];
+        for (i, (name, slot, no, tno, dest, _want)) in cases.iter().enumerate() {
+            let id = (i + 1) as i64;
+            conn.execute(
+                "INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,id_number,\
+                    residence,political_status,work_unit,position_or_title,supervisor_unit,operator) \
+                 VALUES (?,?,'','男','19900101','110101199001012133','浙江杭州市西湖区',\
+                    '群众','总部','处级','人事处','admin')",
+                rusqlite::params![id, name]).unwrap();
+            conn.execute(
+                &format!("INSERT INTO certificates (personnel_filing_id,unit,department,name,{slot},\
+                    operator) VALUES (?,'总部','技术部',?,?,'admin')"),
+                rusqlite::params![id, name, no]).unwrap();
+            conn.execute(
+                "INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,\
+                    id_number,destination_passport,category,travel_dates,need_new_passport,\
+                    passport_no,passport_collect_date,operator) \
+                 VALUES (?,?,'总部','技术部',?,'处级','110101199001012133',?,'因私',\
+                    '2026/03/01-2026/03/10','否',?,'20260225','admin')",
+                rusqlite::params![id, id, name, dest, tno]).unwrap();
+            if with_issuance {
+                conn.execute(
+                    "INSERT INTO cert_issuance (id,travel_id,personnel_filing_id,holder_name,\
+                        id_number,cert_types,cert_nos,issue_date,issuer,status,remarks,operator) \
+                     VALUES (?,?,?,?,'110101199001012133','01',?,'20260225','admin','issued',?,'admin')",
+                    rusqlite::params![id, id, id, name, tno, crate::db::BACKFILL_REMARK_LEGACY],
+                ).unwrap();
+            }
+        }
+    }
+
+    fn stored_types(conn: &rusqlite::Connection) -> std::collections::HashMap<String, String> {
+        crate::db::query_maps(conn, "SELECT holder_name, cert_types FROM cert_issuance", &[])
+            .iter()
+            .map(|r| (crate::helpers::row_str(r, "holder_name"),
+                      crate::helpers::row_str(r, "cert_types")))
+            .collect()
+    }
+
+    fn fresh_conn() -> rusqlite::Connection {
+        let tmp = std::env::temp_dir().join(format!(
+            "potms-bf-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        unsafe { std::env::set_var("POTMS_BASE", &tmp) };
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::init_schema(&conn);
+        crate::db::seed_data(&conn);
+        // cert_issuance 是在迁移里建的，不在基础 schema 里。先空跑一次把表建出来
+        // （此时还没有出行记录，回填无事可做），造完数据再跑一次才是被测的那一趟。
+        crate::db::run_migrations(&conn);
+        conn
+    }
+
+    const WANT: [(&str, &str); 5] =
+        [("张三", "01"), ("李四", "02"), ("王五", "03"), ("赵六", "02"), ("孙七", "01")];
+
+    #[test]
+    fn backfill_infers_real_cert_type() {
+        let conn = fresh_conn();
+        seed_legacy(&conn, false);
+        crate::db::run_migrations(&conn);
+        let got = stored_types(&conn);
+        for (name, want) in WANT {
+            assert_eq!(got.get(name).map(String::as_str), Some(want), "{name} 的证件种类");
+        }
+    }
+
+    #[test]
+    fn correction_fixes_existing_rows_and_is_idempotent() {
+        let conn = fresh_conn();
+        seed_legacy(&conn, true);
+        // 前置条件：全是错的
+        assert!(stored_types(&conn).values().all(|v| v == "01"));
+
+        // 光改回填没用——回填有幂等守卫，存量错标行不会被重算。必须有独立的订正。
+        crate::db::run_migrations(&conn);
+        let got = stored_types(&conn);
+        for (name, want) in WANT {
+            assert_eq!(got.get(name).map(String::as_str), Some(want), "{name} 的证件种类");
+        }
+
+        // 跑第二、三遍必须什么都不做。只比对结果不够：备注若没换掉，每次启动都会
+        // 重跑、重复备份、重复写日志，而结果恰好相同，比对不出来。直接数日志条数。
+        crate::db::run_migrations(&conn);
+        crate::db::run_migrations(&conn);
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM operation_logs WHERE action='migrate' \
+             AND target_type='cert_issuance'", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1, "订正跑了 3 次，日志攒了 {n} 条——幂等守卫没生效");
+    }
+
+    #[test]
+    fn correction_never_touches_signed_records() {
+        let conn = fresh_conn();
+        seed_legacy(&conn, true);
+        // 把李四那条伪装成「有签名但备注恰好也是旧串」的极端情形
+        conn.execute("UPDATE cert_issuance SET sign_image = ? WHERE holder_name = '李四'",
+                     rusqlite::params![&b"\x89PNG"[..]]).unwrap();
+        crate::db::run_migrations(&conn);
+        let got = stored_types(&conn);
+        assert_eq!(got.get("李四").map(String::as_str), Some("01"), "有签名的记录不该被订正改动");
+        assert_eq!(got.get("王五").map(String::as_str), Some("03"), "无签名的记录应照常订正");
+    }
+
+    #[test]
+    fn undeterminable_marked_pending() {
+        let conn = fresh_conn();
+        // 三本证都有、出行表没填号码、文字里也没写证件名——数据里确实没有信息
+        conn.execute(
+            "INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,id_number,\
+                residence,political_status,work_unit,position_or_title,supervisor_unit,operator) \
+             VALUES (9,'周','八','男','19900101','110101199001012133','浙江杭州市西湖区',\
+                '群众','总部','处级','人事处','admin')", []).unwrap();
+        conn.execute(
+            "INSERT INTO certificates (personnel_filing_id,unit,department,name,\
+                passport_no,hm_pass_no,tw_pass_no,operator) \
+             VALUES (9,'总部','技术部','周八','E9','C9','T9','admin')", []).unwrap();
+        conn.execute(
+            "INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,\
+                id_number,destination_passport,category,travel_dates,need_new_passport,\
+                passport_collect_date,operator) \
+             VALUES (9,9,'总部','技术部','周八','处级','110101199001012133','新加坡','因私',\
+                '2026/03/01-2026/03/10','否','20260225','admin')", []).unwrap();
+        crate::db::run_migrations(&conn);
+
+        assert_eq!(stored_types(&conn).get("周八").map(String::as_str), Some(""),
+                   "判不出的应留空，不替他猜一个");
+        let rm: String = conn.query_row(
+            "SELECT remarks FROM cert_issuance WHERE holder_name='周八'", [], |r| r.get(0)).unwrap();
+        assert_eq!(rm, crate::db::BACKFILL_REMARK_PENDING);
     }
 
     #[tokio::test]

@@ -45,7 +45,11 @@ func buildIssuanceFilters(q map[string]string, ids []string) (string, []interfac
 		where += " AND i.status = ?"
 		params = append(params, strings.TrimSpace(q["status"]))
 	}
-	if t := strings.TrimSpace(q["cert_type"]); t != "" {
+	if t := strings.TrimSpace(q["cert_type"]); t == certTypePending {
+		// 历史回填里判不出种类的那批，cert_types 为空。下面那句 LIKE 对空值恒不
+		// 匹配（'' 拼出来是 ',,'），所以单开一条——不能筛出来，这批待办就没法收口。
+		where += " AND (i.cert_types IS NULL OR i.cert_types = '')"
+	} else if t != "" {
 		where += " AND (',' || i.cert_types || ',') LIKE ?"
 		params = append(params, "%,"+t+",%")
 	}
@@ -158,6 +162,7 @@ func handleIssuanceView(w http.ResponseWriter, r *http.Request) {
 		"item":        row,
 		"travel":      travelBrief(rowStr(row, "travel_id")),
 		"type_labels": certTypesLabel(rowStr(row, "cert_types")),
+		"can_fix":     canFixCertTypes(row),
 	})
 }
 
@@ -247,6 +252,61 @@ func handleIssuanceVoid(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, "issuance.view", map[string]string{"iss_id": issID})
 }
 
+// handleIssuanceFixCertTypes 更正证件种类。仅限无签名的记录，判据见 canFixCertTypes。
+func handleIssuanceFixCertTypes(w http.ResponseWriter, r *http.Request) {
+	row := issuanceOr404(w, r)
+	if row == nil {
+		return
+	}
+	issID := rowStr(row, "id")
+	back := func(msg, level string) {
+		flashMsg(w, r, msg, level)
+		redirect(w, r, "issuance.view", map[string]string{"iss_id": issID})
+	}
+	if !canFixCertTypes(row) {
+		back("该记录已有领用人签名，证件种类不可更改；如登记有误请作废后重新登记。", "warning")
+		return
+	}
+
+	var types []string
+	for _, t := range r.PostForm["cert_types"] {
+		if t = strings.TrimSpace(t); t != "" {
+			types = append(types, t)
+		}
+	}
+	for _, t := range types {
+		if _, ok := certNoField[t]; !ok {
+			back("无效的证件种类代码："+t+"。", "danger")
+			return
+		}
+	}
+	if len(types) == 0 {
+		back("请选择证件种类。", "danger")
+		return
+	}
+	if len(types) > 1 {
+		// 与新建同一条规则：一次出国申请只领一本证
+		back("一次出国申请只能领用一本证件。", "danger")
+		return
+	}
+
+	before := rowSnapshot("cert_issuance", toInt64(issID))
+	// 备注里「待核实 / 按护照推定」这类字样已经不成立，一并清掉；
+	// 人工核定的结果不该继续挂着机器推断的说明。
+	remarks := rowStr(row, "remarks")
+	if strings.HasPrefix(remarks, "历史数据回填") {
+		remarks = "历史数据回填（证件种类已人工核定，无签名）"
+	}
+	joined := strings.Join(types, ",")
+	db.Exec("UPDATE cert_issuance SET cert_types=?, remarks=?, "+
+		"updated_at=CURRENT_TIMESTAMP WHERE id=?", joined, remarks, issID)
+	logAction(r, "update", "cert_issuance", toInt64(issID),
+		fmt.Sprintf("更正证件种类：%s，%s → %s", rowStr(row, "holder_name"),
+			certTypesLabel(rowStr(row, "cert_types")), certTypesLabel(joined)),
+		before, rowSnapshot("cert_issuance", toInt64(issID)))
+	back("证件种类已更正。", "success")
+}
+
 // handleIssuanceSignature 输出签名位图。kind=return 取归还签名，否则取领用签名。
 func handleIssuanceSignature(w http.ResponseWriter, r *http.Request) {
 	col := "sign_image"
@@ -304,7 +364,30 @@ func certTypesLabel(codes string) string {
 			out = append(out, c)
 		}
 	}
+	if len(out) == 0 {
+		// 空值只可能来自历史回填里判不出种类的那批。打印件与日志上不能是个空格子——
+		// 看的人分不清是「没有证件」还是「漏填了」，写明待核实才是实情。
+		return "待核实"
+	}
 	return strings.Join(out, "、")
+}
+
+// certTypePending 列表筛选里「待核实」的取值。真实种类代码是 01/02/03，不会撞。
+const certTypePending = "pending"
+
+// canFixCertTypes 只有**没有签名**的记录允许改证件种类。
+//
+// 模块约束是「签名一经保存不可编辑」——签名签的就是「我领了这几样证件」，
+// 事后改种类会让那个签名名不副实，那种记录只能作废重录。
+//
+// 但历史回填行本来就没有签名（老库里根本没采集过），作废重录这条路也走不通：
+// 新建领用默认强制手写签名，而历史记录压根没有签名可采。不给它们一个更正入口，
+// 订正迁移标出来的「待核实」就成了永远填不上的死数据。
+//
+// 判据用「无签名」而不是「备注是回填串」：放宽模式（POTMS_REQUIRE_SIGNATURE=0）
+// 下手工登记的记录同样没有签名，同样没有会被推翻的凭证，一并适用。
+func canFixCertTypes(row Row) bool {
+	return row["sign_image"] == nil
 }
 
 // syncTravelDates 把领用/归还日期回写到出行表（派生字段，本模块为唯一写入方）。

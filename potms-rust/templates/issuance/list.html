@@ -37,6 +37,7 @@
                 {% for o in dict_opts('cert_type') %}
                 <option value="{{ o.code }}" {{ 'selected' if cert_type_filter == o.code }}>{{ o.value }}</option>
                 {% endfor %}
+                <option value="pending" {{ 'selected' if cert_type_filter == 'pending' }}>待核实（历史回填未判定）</option>
             </select>
         </div>
         <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_from" placeholder="领用起始 YYYYMMDD" value="{{ date_from }}"></div>
@@ -70,6 +71,10 @@
             {# 标签由后端算好再下发，模板只负责摆：字符串 split 在 Jinja2 / gonja /
                minijinja 三家的写法与可用性各不相同（minijinja 干脆没有），
                而三版模板要逐字一致。字典查询本来也不该留在视图层。 #}
+            {# 历史回填里判不出种类的：空白单元格会被当成漏渲染，明确标出来才好收口 #}
+            {% if not row.cert_type_labels %}
+            <span class="badge bg-warning text-dark">待核实</span>
+            {% endif %}
             {% for label in row.cert_type_labels %}
             <span class="badge bg-light text-dark border">{{ label }}</span>
             {% endfor %}
@@ -79,7 +84,7 @@
         <td>{{ row.return_date or '-' }}</td>
         <td>{{ row.issuer }}</td>
         <td>
-            {% if row.sign_image %}
+            {% if row.has_sign %}
             <img src="{{ url_for('issuance.signature', iss_id=row.id) }}" alt="签名" style="height:28px;">
             {% else %}<span class="text-muted small">无</span>{% endif %}
         </td>

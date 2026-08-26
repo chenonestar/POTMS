@@ -28,6 +28,7 @@ var endpointRoutes = map[string]string{
 	"issuance.view":          "/issuance/{iss_id}",
 	"issuance.do_return":     "/issuance/{iss_id}/return",
 	"issuance.void":          "/issuance/{iss_id}/void",
+	"issuance.fix_cert_types": "/issuance/{iss_id}/cert-types",
 	"issuance.signature":     "/issuance/{iss_id}/signature.png",
 	"export.issuance_export": "/export/issuance",
 	"dashboard.index":        "/", "dashboard.backup_now": "/backup/now",

@@ -266,6 +266,7 @@ pub fn build_app(state: St) -> Router {
         .route("/issuance/:iss_id/return",
                get(handlers_issuance::return_get).post(handlers_issuance::return_post))
         .route("/issuance/:iss_id/void", post(handlers_issuance::void))
+        .route("/issuance/:iss_id/cert-types", post(handlers_issuance::fix_cert_types))
         .route("/issuance/:iss_id/signature.png", get(handlers_issuance::signature_png))
         .route("/export/issuance", get(handlers_export::issuance_export))
         .route("/static/*path", get(static_handler))

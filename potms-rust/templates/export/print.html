@@ -138,13 +138,13 @@
 <div class="sig-block">
     <div class="sig-item" style="text-align:center;">
         <div class="sig-label">领用人签名</div>
-        {% if row.sign_image %}
+        {% if row.has_sign %}
         <img src="{{ url_for('issuance.signature', iss_id=row.id) }}" alt="领用人签名" style="height:60px;">
         {% else %}<span class="sig-line"></span>{% endif %}
     </div>
     <div class="sig-item" style="text-align:center;">
         <div class="sig-label">归还人签名</div>
-        {% if row.return_sign_image %}
+        {% if row.has_return_sign %}
         <img src="{{ url_for('issuance.signature', iss_id=row.id, kind='return') }}" alt="归还人签名" style="height:60px;">
         {% else %}<span class="sig-line"></span>{% endif %}
     </div>

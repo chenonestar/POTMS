@@ -189,6 +189,7 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /issuance/{iss_id}", handleIssuanceView)
 	mux.HandleFunc("/issuance/{iss_id}/return", handleIssuanceReturn)
 	mux.HandleFunc("POST /issuance/{iss_id}/void", handleIssuanceVoid)
+	mux.HandleFunc("POST /issuance/{iss_id}/cert-types", handleIssuanceFixCertTypes)
 	mux.HandleFunc("GET /issuance/{iss_id}/signature.png", handleIssuanceSignature)
 	mux.HandleFunc("GET /export/issuance", handleExportIssuance)
 

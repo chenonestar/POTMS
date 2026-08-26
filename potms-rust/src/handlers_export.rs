@@ -85,7 +85,10 @@ pub async fn print_view(State(st): State<St>, headers: HeaderMap, uri: Uri, Path
         let conn = st.db.lock().unwrap();
         // 领用单要 JOIN 备案表拿单位，并把证件种类代码转成中文
         let row = if print_type == "issuance" {
-            db::query_one(&conn, "SELECT i.*, pf.work_unit FROM cert_issuance i \
+            db::query_one(&conn, "SELECT i.*, pf.work_unit, \
+             (i.sign_image IS NOT NULL) AS has_sign, \
+             (i.return_sign_image IS NOT NULL) AS has_return_sign \
+             FROM cert_issuance i \
                  JOIN personnel_filing pf ON i.personnel_filing_id = pf.id WHERE i.id = ?", &[I(id)])
         } else {
             db::query_one(&conn, &format!("SELECT * FROM {} WHERE id = ?", spec.0), &[I(id)])

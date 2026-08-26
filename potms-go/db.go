@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -238,6 +239,95 @@ func runMigrations() {
 	backfillLegacyIssuance()
 }
 
+// certTypeColumns 证件种类代码 → 证照登记表里对应的号码列。
+// helpers.go 的 certTypeMap 用的是同一套映射，两处改动须同步。
+var certTypeColumns = [3]struct{ code, col string }{
+	{"01", "passport_no"}, {"02", "hm_pass_no"}, {"03", "tw_pass_no"},
+}
+
+// certNameHints 「地点、证照」自由文本里的证件名称关键字。
+// 只认**证件名**不认地名——「香港」既可能持港澳通行证也可能持护照过境，拿地名猜会猜错。
+// 顺序即优先级：先长后短。
+var certNameHints = []struct {
+	code     string
+	keywords []string
+}{
+	{"03", []string{"大陆居民往来台湾", "台湾通行证", "台胞证"}},
+	{"02", []string{"往来港澳", "港澳通行证"}},
+	{"01", []string{"护照"}},
+}
+
+// 回填记录的备注。三个串互不相同，订正迁移靠「备注是否还是旧串」判断是否已处理，
+// 改完备注下次启动自然扫不到，不需要额外的版本表。
+const (
+	backfillRemarkLegacy   = "历史数据回填（证件种类按护照推定，无签名）"
+	backfillRemarkInferred = "历史数据回填（证件种类据证照登记推定，无签名）"
+	backfillRemarkPending  = "历史数据回填（证件种类待核实，无签名）"
+)
+
+// inferCertType 推断一条历史出行记录用的是哪种证件，判不出返回空串。
+//
+// 原先一律记作因私护照（'01'）。这是个**主动编造**的答案：往来港澳通行证、
+// 台湾通行证都被写成护照，而领用凭证是要归档的，错的种类比空着更糟。
+//
+// 三级判据，从硬到软：
+//  1. 出行记录上的证件号码对上证照登记表的哪一列 —— 号码唯一，这条最硬；
+//  2. 「地点、证照」里出现的证件名称 —— 号码没填时的退路；
+//  3. 该人在证照登记表里只登记了一种证件 —— 那就只能是它。
+//
+// 三条都不成立时返回空串，宁可留空标「待核实」让人来补，也不替他猜一个。
+//
+// 遍历该人**所有**证照记录合并三个槽位，不能只取一条：需求文档说证照登记
+// 「一行为一人」，但现实里很容易出现「先登记了护照，过一阵办了港澳通行证时
+// 没找到原记录，又新建了一条」。只看第一条会连着踩空三级判据，最后自信地
+// 答出一个错误答案。
+func inferCertType(personnelFilingID interface{}, certNo, destinationPassport string) string {
+	var held [3]string
+	rows, err := queryMaps(
+		"SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "+
+			"WHERE personnel_filing_id = ? ORDER BY id", personnelFilingID)
+	if err == nil {
+		for _, r := range rows {
+			for i, c := range certTypeColumns {
+				if held[i] == "" {
+					held[i] = strings.TrimSpace(rowStr(r, c.col))
+				}
+			}
+		}
+	}
+
+	// ① 证件号匹配
+	if no := strings.TrimSpace(certNo); no != "" {
+		for i, c := range certTypeColumns {
+			if held[i] != "" && held[i] == no {
+				return c.code
+			}
+		}
+	}
+
+	// ② 「地点、证照」里的证件名称
+	for _, h := range certNameHints {
+		for _, kw := range h.keywords {
+			if strings.Contains(destinationPassport, kw) {
+				return h.code
+			}
+		}
+	}
+
+	// ③ 该人只登记了一种证件
+	owned := ""
+	count := 0
+	for i, c := range certTypeColumns {
+		if held[i] != "" {
+			owned, count = c.code, count+1
+		}
+	}
+	if count == 1 {
+		return owned
+	}
+	return ""
+}
+
 // backfillLegacyIssuance 把「出行表上已有领用日期、却没有领用记录」的历史数据
 // 补成一条领用记录（无签名）。幂等：仅对尚无领用记录的 travel_id 回填。
 //
@@ -246,6 +336,7 @@ func runMigrations() {
 func backfillLegacyIssuance() {
 	rows, err := queryMaps(
 		"SELECT t.id, t.personnel_filing_id, t.name, t.id_number, t.passport_no, " +
+			"t.destination_passport, " +
 			"t.passport_collect_date, t.passport_return_date, t.operator " +
 			"FROM travel_details t " +
 			"WHERE t.passport_collect_date IS NOT NULL AND t.passport_collect_date != '' " +
@@ -268,15 +359,66 @@ func backfillLegacyIssuance() {
 		if rdate != "" {
 			retDate = rdate
 		}
+		ctype := inferCertType(r["personnel_filing_id"], rowStr(r, "passport_no"),
+			rowStr(r, "destination_passport"))
+		remark := backfillRemarkPending
+		if ctype != "" {
+			remark = backfillRemarkInferred
+		}
 		db.Exec(
 			"INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, "+
 				"cert_types, cert_nos, issue_date, issuer, return_date, return_operator, status, "+
-				"remarks, operator) VALUES (?, ?, ?, ?, '01', ?, ?, ?, ?, ?, ?, ?, ?)",
+				"remarks, operator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			r["id"], r["personnel_filing_id"], rowStr(r, "name"), rowStr(r, "id_number"),
-			rowStr(r, "passport_no"), rowStr(r, "passport_collect_date"), op,
-			retDate, retOp, status,
-			"历史数据回填（证件种类按护照推定，无签名）", op)
+			ctype, rowStr(r, "passport_no"), rowStr(r, "passport_collect_date"), op,
+			retDate, retOp, status, remark, op)
 	}
+
+	correctLegacyCertTypes()
+}
+
+// correctLegacyCertTypes 订正上一版回填留下的错标。
+//
+// 上面那段回填曾经把 cert_types 一律写成 '01'（因私护照），实际可能是往来港澳
+// 通行证或大陆居民往来台湾通行证。而回填带幂等守卫（travel_id 已有记录就跳过），
+// 光把上面改对，**对已经回填过的库毫无作用**——错的行会一直躺着。
+//
+// 判据卡死在回填自己产的行上：备注是那句原文，且没有签名。手工登记的记录有签名、
+// 备注也不同，碰不到。改完备注即失配，下次启动自然跳过。
+func correctLegacyCertTypes() {
+	stale, err := queryMaps(
+		"SELECT c.id, c.personnel_filing_id, c.cert_nos, c.travel_id "+
+			"FROM cert_issuance c WHERE c.remarks = ? AND c.sign_image IS NULL",
+		backfillRemarkLegacy)
+	if err != nil || len(stale) == 0 {
+		return
+	}
+	// 动的是业务记录，先留一份改动前的快照。每日备份排在迁移之后，等它就晚了。
+	runDailyBackup(true)
+
+	fixed, pending := 0, 0
+	for _, r := range stale {
+		dest := ""
+		if r["travel_id"] != nil {
+			dest = rowStr(queryOne(
+				"SELECT destination_passport FROM travel_details WHERE id = ?", r["travel_id"]),
+				"destination_passport")
+		}
+		ctype := inferCertType(r["personnel_filing_id"], rowStr(r, "cert_nos"), dest)
+		remark := backfillRemarkPending
+		if ctype != "" {
+			remark, fixed = backfillRemarkInferred, fixed+1
+		} else {
+			pending++
+		}
+		db.Exec("UPDATE cert_issuance SET cert_types = ?, remarks = ?, "+
+			"updated_at = CURRENT_TIMESTAMP WHERE id = ?", ctype, remark, r["id"])
+	}
+	// 直接写日志表：logAction 依赖请求上下文，迁移跑在那之外。
+	db.Exec("INSERT INTO operation_logs (operator, action, target_type, detail) "+
+		"VALUES ('system', 'migrate', 'cert_issuance', ?)",
+		fmt.Sprintf("订正历史回填的证件种类：共 %d 条，据证照登记推定 %d 条，待核实 %d 条",
+			len(stale), fixed, pending))
 }
 
 // addColumn 幂等地补一列：列已存在就什么都不做。
