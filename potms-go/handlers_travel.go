@@ -96,12 +96,16 @@ func handleTravelList(w http.ResponseWriter, r *http.Request) {
 
 	today := nowLocalYMD()
 	var overdueIDs []interface{}
-	deadlines := map[string]string{}
 	for _, row := range pg.Rows {
 		if isCertOverdue(row, today) {
-			id := toInt64(row["id"])
-			overdueIDs = append(overdueIDs, id)
-			deadlines[itoa(id)] = certOverdueDeadline(row)
+			overdueIDs = append(overdueIDs, toInt64(row["id"]))
+			// 到期日直接挂在行上，而不是另下发一个 id → 到期日的 map。
+			//
+			// 原先下发的是 map[string]string（键是 itoa(id)），模板里却写
+			// deadlines[row.id]——row.id 是 int64，gonja 不支持用整数键索引 map，
+			// 一旦真有人逾期，这一句就渲染失败，整个出国明细列表 500。
+			// 而在此之前没人逾期过，这个分支从来没被执行到，测试也就一直是绿的。
+			row["overdue_deadline"] = certOverdueDeadline(row)
 		}
 	}
 	render(w, r, "travel/list.html", Row{
@@ -109,7 +113,7 @@ func handleTravelList(w http.ResponseWriter, r *http.Request) {
 		"category_filter": q["category"], "need_passport_filter": q["need_new_passport"],
 		"passport_status": q["passport_status"],
 		"date_from":       q["date_from"], "date_to": q["date_to"],
-		"overdue_ids": overdueIDs, "deadlines": deadlines,
+		"overdue_ids":   overdueIDs,
 		"category_opts": rowsIface(getDictOptions("travel_category")),
 	})
 }

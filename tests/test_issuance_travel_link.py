@@ -199,3 +199,34 @@ def test_path_b_shows_on_dashboard(c):
     html = c.get("/").get_data(as_text=True)
     # 逾期卡片上的数字：路径A 未领用，所以此刻只有路径B 一条
     assert re.search(r'text-danger">\s*1\s*</div>', html), "仪表盘逾期计数没算上路径B"
+
+
+# ---------------------------------------------------------------------------
+# 逾期分支的页面渲染
+# ---------------------------------------------------------------------------
+def test_travel_list_renders_overdue_branch(c):
+    """出国明细列表的「逾期未还」提示块要真能渲染，且应还到期日不为空。
+
+    五版里这个分支此前只有函数级覆盖（_overdue_ids），没有一条走到页面渲染。
+    代价是 Go 版带着一个到 2026-08-26 才引爆的故障——gonja 索引不了整数键的 map，
+    模板里 deadlines[row.id] 一旦真有人逾期就渲染失败、整页 500；Rust 版同一处
+    静默渲染成空，页面上是「应还: )」。本版的 deadlines 是真字典、键是 int，
+    Jinja2 取得到，但同样得有用例钉住。
+    """
+    _post_issue(c)                                     # 路径A：已领未还且已逾期
+    html = c.get("/travel/").get_data(as_text=True)
+    assert "逾期" in html
+    assert "路径A张三" in html
+
+    # 「应还」两个字在模板里是死的，光查它不够——必须确认后面真跟着日期
+    i = html.index("应还")
+    after = html[i + 2:].lstrip(" :：")
+    assert after[:8].isdigit(), f"应还到期日为空，实际渲染：「应还{after[:40]}」"
+
+
+def test_travel_list_overdue_filter_renders(c):
+    """按逾期筛选也要能筛出来并正常渲染。"""
+    _post_issue(c)
+    html = c.get("/travel/?passport_status=overdue").get_data(as_text=True)
+    assert "路径A张三" in html
+    assert "路径B李四" in html          # 做证未交回，同样应计入

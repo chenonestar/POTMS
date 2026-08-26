@@ -35,7 +35,7 @@
 </div></div>
 
 {% if overdue_ids %}
-<div class="alert alert-danger d-flex align-items-center"><i class="bi bi-exclamation-triangle-fill me-2"></i><div>以下人员证件逾期未还：{% for row in items.rows %}{% if row.id in overdue_ids %}<strong>{{ row.name }}</strong> (应还: {{ deadlines[row.id] }}){% if row.trip_status == 'cancelled' %}·取消行程{% endif %} &nbsp;{% endif %}{% endfor %}</div></div>
+<div class="alert alert-danger d-flex align-items-center"><i class="bi bi-exclamation-triangle-fill me-2"></i><div>以下人员证件逾期未还：{% for row in items.rows %}{% if row.id in overdue_ids %}<strong>{{ row.name }}</strong> (应还: {{ row.overdue_deadline }}){% if row.trip_status == 'cancelled' %}·取消行程{% endif %} &nbsp;{% endif %}{% endfor %}</div></div>
 {% endif %}
 
 <div class="table-card"><div class="table-responsive">
@@ -56,7 +56,7 @@
         <td>{% if row.trip_status == 'cancelled' %}<span class="badge bg-warning text-dark">取消行程</span>{% else %}<span class="badge bg-light text-secondary">正常</span>{% endif %}</td>
         <td>{{ row.need_new_passport }}</td>
         <td>{{ row.passport_collect_date or '-' }}</td>
-        <td class="{{ 'text-danger fw-bold' if row.id in overdue_ids }}">{% if row.id in overdue_ids %}逾期⚠（应还 {{ deadlines[row.id] }}）{% else %}{{ row.passport_return_date or '-' }}{% endif %}</td>
+        <td class="{{ 'text-danger fw-bold' if row.id in overdue_ids }}">{% if row.id in overdue_ids %}逾期⚠（应还 {{ row.overdue_deadline }}）{% else %}{{ row.passport_return_date or '-' }}{% endif %}</td>
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('travel.view', travel_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
             <a href="{{ url_for('export.print_view', print_type='travel', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>

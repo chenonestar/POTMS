@@ -428,6 +428,11 @@ class PageSmokeTest {
             throw new IllegalStateException("应用未能在 60 秒内就绪，日志见 " + dir.resolve("app.log"));
         }
 
+        /** 应用的数据目录——直接往 data.db 里造数时用（HTTP 造不出的形态，如逾期记录）。 */
+        Path dataDir() {
+            return dir;
+        }
+
         HttpResponse<String> get(String path) throws IOException, InterruptedException {
             var req = HttpRequest.newBuilder(URI.create(base + path))
                     .header("Cookie", cookie).GET().build();

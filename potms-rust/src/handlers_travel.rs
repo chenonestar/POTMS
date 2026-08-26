@@ -82,18 +82,26 @@ pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respons
     if let Some(r) = require_login(&st, &mut req) { return r; }
     let q = query_args(&req.query);
     let today = helpers::now_local_ymd(st.cfg.tz_offset_hours);
-    let (items, mut overdue_ids, mut deadlines) = {
+    let (mut items, mut overdue_ids) = {
         let conn = st.db.lock().unwrap();
         let (w, p) = travel_filters(&conn, &q, &[], &today);
         let items = helpers::list_all(&conn, &format!("SELECT * FROM travel_details WHERE 1=1{w} ORDER BY created_at DESC"), &p);
-        (items, vec![], serde_json::Map::new())
+        (items, vec![])
     };
-    if let Some(rows) = items.get("rows").and_then(|v| v.as_array()) {
-        for row in rows {
+    // 到期日直接挂在行上，而不是另下发一个 id → 到期日的 map。
+    //
+    // 原先下发的 map 键是 id.to_string()，模板里却写 deadlines[row.id]——row.id
+    // 是整数，minijinja 查不到这个键，返回 undefined 并**静默渲染成空**，
+    // 页面上就成了「应还: )」。Go 版同一处更直接，gonja 索引不了整数键，直接 500。
+    // 两边都是同一个毛病：键的类型对不上。挂在行上就没有查表这一步了。
+    if let Some(rows) = items.get_mut("rows").and_then(|v| v.as_array_mut()) {
+        for row in rows.iter_mut() {
             if helpers::is_cert_overdue(row, &today) {
-                let id = helpers::row_i64(row, "id");
-                overdue_ids.push(json!(id));
-                deadlines.insert(id.to_string(), json!(helpers::cert_overdue_deadline(row)));
+                overdue_ids.push(json!(helpers::row_i64(row, "id")));
+                let dl = helpers::cert_overdue_deadline(row);
+                if let Some(obj) = row.as_object_mut() {
+                    obj.insert("overdue_deadline".into(), json!(dl));
+                }
             }
         }
     }
@@ -105,7 +113,7 @@ pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respons
         "passport_status": q.get("passport_status").cloned().unwrap_or_default(),
         "date_from": q.get("date_from").cloned().unwrap_or_default(),
         "date_to": q.get("date_to").cloned().unwrap_or_default(),
-        "overdue_ids": overdue_ids, "deadlines": deadlines,
+        "overdue_ids": overdue_ids,
         "category_opts": category_opts,
     });
     page(&st, &mut req, "travel/list.html", data)
@@ -477,4 +485,95 @@ pub async fn att_delete(State(st): State<St>, headers: HeaderMap, uri: Uri, Path
 
 fn vform_json(d: &VForm) -> serde_json::Value {
     serde_json::to_value(d).unwrap_or(json!({}))
+}
+
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    /// 「证件逾期未还」分支此前从未被渲染过。用相对今天的日期造数据，
+    /// 让它永远处于逾期状态，不依赖运行的是哪一天。
+    fn ymd_days_ago(n: i64) -> String {
+        let t = time::OffsetDateTime::now_utc() - time::Duration::days(n);
+        format!("{:04}{:02}{:02}", t.year(), t.month() as u8, t.day())
+    }
+
+    struct App {
+        router: axum::Router,
+        cookie: String,
+    }
+
+    impl App {
+        fn new() -> App {
+            let tmp = std::env::temp_dir().join(format!(
+                "potms-travel-{}-{:?}", std::process::id(), std::thread::current().id()));
+            let _ = std::fs::remove_dir_all(&tmp);
+            std::fs::create_dir_all(&tmp).unwrap();
+            unsafe { std::env::set_var("POTMS_BASE", &tmp) };
+            let cfg = crate::config::Config::load();
+
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            crate::db::init_schema(&conn);
+            crate::db::run_migrations(&conn);
+            crate::db::seed_data(&conn);
+            let ago = ymd_days_ago(90);
+            conn.execute(
+                "INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,id_number,\
+                    residence,political_status,work_unit,position_or_title,supervisor_unit,operator) \
+                 VALUES (1,'逾','期某','男','19900101','110101199001012133','浙江杭州市西湖区',\
+                    '群众','总部','处级','人事处','admin')", []).unwrap();
+            conn.execute(
+                "INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,\
+                    id_number,destination_passport,category,travel_dates,travel_start,travel_end,\
+                    need_new_passport,actual_return_date,passport_collect_date,operator) \
+                 VALUES (1,1,'总部','办公室','逾期某','处级','110101199001012133','德国','因私',\
+                    ?1,?2,?3,'否',?4,?5,'admin')",
+                rusqlite::params![format!("{ago}-{ago}"), &ago, &ago, &ago, ymd_days_ago(120)],
+            ).unwrap();
+
+            let db: crate::render::Db = std::sync::Arc::new(std::sync::Mutex::new(conn));
+            let env = crate::render::build_env(db.clone(), cfg.clone());
+            let state: crate::St = std::sync::Arc::new(crate::AppState {
+                db, env, cfg: cfg.clone(), lockout: crate::session::Lockout::default(),
+            });
+            let mut sess = crate::session::Session::default();
+            sess.login("admin", "");
+            let cookie = sess.to_cookie(&cfg.secret_key);
+            let cookie = cookie.split(';').next().unwrap().to_string();
+            App { router: crate::build_app(state), cookie }
+        }
+
+        async fn get(&self, path: &str) -> (StatusCode, String) {
+            let req = Request::builder().uri(path)
+                .header("Cookie", &self.cookie)
+                .body(Body::empty()).unwrap();
+            let res = self.router.clone().oneshot(req).await.unwrap();
+            let status = res.status();
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            (status, String::from_utf8_lossy(&bytes).into_owned())
+        }
+    }
+
+    #[tokio::test]
+    async fn travel_list_renders_overdue_branch() {
+        let app = App::new();
+        let (status, body) = app.get("/travel/").await;
+        assert_eq!(status, StatusCode::OK, "/travel/ → {status}\n{}",
+                   &body[..body.len().min(600)]);
+        assert!(body.contains("逾期未还"), "页面上没有逾期提示块");
+        assert!(body.contains("逾期某"), "逾期提示块里没有列出该人员");
+        // 只查「应还」这两个字不够——deadlines 取不到值时它照样在，后面跟的是空。
+        // 必须确认真印出了一个 8 位日期。为一条断言引依赖不值当，用标准库切。
+        let after: String = body
+            .split("应还")
+            .skip(1)
+            .map(|seg| seg.trim_start_matches([':', ' ']).chars().take(8).collect::<String>())
+            .find(|d: &String| d.len() == 8 && d.chars().all(|c| c.is_ascii_digit()))
+            .unwrap_or_default();
+        let ctx: String = body.split("应还").nth(1).unwrap_or("").chars().take(60).collect();
+        assert!(!after.is_empty(), "应还到期日为空，实际渲染：「应还{ctx}」");
+    }
 }
