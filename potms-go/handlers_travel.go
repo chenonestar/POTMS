@@ -4,6 +4,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -173,6 +174,41 @@ func handleTravelList(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 // 附件总览
 // ---------------------------------------------------------------------------
+// fileTypeOrderSQL 把附件类型排成办件顺序（个人申请报告 → 审批表 → 同意申办函）
+// 的 CASE 表达式。
+//
+// 这三个中文词按任何排序规则（拼音、笔画、UTF-8 码位）都排不出办件顺序，只能显式
+// 指定。次序直接取自 requiredAttB——那里已经定义了必备附件的先后，再手抄一份迟早
+// 两边漂移。表里出现的其它类型统一排在最后。
+func fileTypeOrderSQL(col string) string {
+	var sb strings.Builder
+	sb.WriteString("CASE " + col)
+	for i, t := range requiredAttB {
+		sb.WriteString(fmt.Sprintf(" WHEN '%s' THEN %d", t, i+1))
+	}
+	sb.WriteString(fmt.Sprintf(" ELSE %d END", len(requiredAttB)+1))
+	return sb.String()
+}
+
+// attSorts 附件总览的排序方式。
+//
+// batch（默认）：先把同一条出行申请的附件聚成一组，组间与「出国明细」列表同序
+// （created_at DESC），组内按办件顺序。此前只按 uploaded_at 排，一旦有过补传，
+// 那条申请的附件就会被别人的插在中间，翻起来对不上人。
+//
+// uploaded：保留原来的按上传时间倒序，找「最近传了什么」时更顺手。
+//
+// 两种都以 a.id 收尾：uploaded_at 是 CURRENT_TIMESTAMP，只精确到秒，同一次提交
+// 上传的多个文件时间戳完全相同，没有兜底列的话它们之间的先后在 SQL 层面是未定义的。
+func attSorts() map[string]string {
+	return map[string]string{
+		"batch":    "ORDER BY t.created_at DESC, t.id DESC, " + fileTypeOrderSQL("a.file_type") + ", a.id",
+		"uploaded": "ORDER BY a.uploaded_at DESC, a.id",
+	}
+}
+
+const attSortDefault = "batch"
+
 func handleTravelAttachments(w http.ResponseWriter, r *http.Request) {
 	q := queryArgs(r)
 	base := "SELECT a.id, a.file_name, a.file_type, a.file_size, a.uploaded_at, " +
@@ -196,7 +232,13 @@ func handleTravelAttachments(w http.ResponseWriter, r *http.Request) {
 		base += " AND date(a.uploaded_at) <= ?"
 		params = append(params, v)
 	}
-	pg := listAll(base+" ORDER BY a.uploaded_at DESC", params...)
+	// 白名单取值，不把查询串直接拼进 SQL
+	sorts := attSorts()
+	sort := strings.TrimSpace(q["sort"])
+	if _, ok := sorts[sort]; !ok {
+		sort = attSortDefault
+	}
+	pg := listAll(base+" "+sorts[sort], params...)
 
 	// 缺件检查
 	travels, _ := queryMaps("SELECT id, name, unit, need_new_passport FROM travel_details ORDER BY created_at DESC")
@@ -233,7 +275,7 @@ func handleTravelAttachments(w http.ResponseWriter, r *http.Request) {
 	render(w, r, "travel/attachments.html", Row{
 		"items": pg.pageMap(), "search": q["search"], "type_filter": q["file_type"],
 		"date_from": q["date_from"], "date_to": q["date_to"],
-		"missing": rowsIface(missing), "type_counts": typeCounts,
+		"missing": rowsIface(missing), "type_counts": typeCounts, "sort": sort,
 		"total_att": countQuery("SELECT COUNT(*) FROM attachments"),
 		"types":     []interface{}{"个人申请报告", "审批表", "同意申办函"},
 	})

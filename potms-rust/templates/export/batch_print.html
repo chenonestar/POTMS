@@ -101,6 +101,29 @@
     {% endfor %}
     </tbody>
 </table>
+
+{% elif mode == 'issuance' %}
+<table>
+    <thead><tr><th>单位</th><th>领用人</th><th>身份证号</th><th>证件种类</th><th>证件号码</th><th>领用日期</th><th>经办人（发放）</th><th>领用人签名</th><th>归还日期</th><th>经办人（接收）</th><th>归还人签名</th><th>状态</th><th>备注</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td>{{ r.work_unit }}</td><td>{{ r.holder_name }}</td><td>{{ r.id_number or '' }}</td>
+        {# 种类标签由后端算好再下发：字符串 split 在 Jinja2 / gonja / minijinja
+           三家的写法与可用性各不相同（minijinja 干脆没有），这类逻辑不留在模板里。 #}
+        <td>{{ r.cert_type_label }}</td><td>{{ r.cert_nos or '' }}</td>
+        <td>{{ r.issue_date }}</td><td>{{ r.issuer }}</td>
+        {# 签名按行取图，不往页面里塞 BLOB。has_sign 由 SQL 算出：query_maps 把所有
+           BLOB 转成 JSON null，直接判 sign_image 永远为假。 #}
+        <td>{% if r.has_sign %}<img src="{{ url_for('issuance.signature', iss_id=r.id) }}" alt="领用人签名" style="height:32px;">{% endif %}</td>
+        <td>{{ r.return_date or '' }}</td><td>{{ r.return_operator or '' }}</td>
+        <td>{% if r.has_return_sign %}<img src="{{ url_for('issuance.signature', iss_id=r.id) }}?kind=return" alt="归还人签名" style="height:32px;">{% endif %}</td>
+        <td>{% if r.status == 'issued' %}已领用{% elif r.status == 'returned' %}已归还{% else %}已作废{% endif %}</td>
+        <td>{{ r.remarks or '' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
 {% endif %}
 
 <p class="meta">打印日期：<span id="pd"></span>　｜　共 {{ total }} 条记录</p>

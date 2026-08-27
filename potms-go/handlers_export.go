@@ -136,15 +136,36 @@ func handleBatchPrint(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "dashboard.index", nil)
 		return
 	}
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	// 证件领用单开一条：它要 JOIN 备案表取单位，还要逐行把证件种类代码换成中文，
+	// 塞不进下面那个「表名 → 标题」的映射。
+	if printType == "issuance" {
+		rows, _ := queryMaps(
+			"SELECT i.*, pf.work_unit FROM cert_issuance i "+
+				"JOIN personnel_filing pf ON i.personnel_filing_id = pf.id "+
+				"WHERE i.id IN ("+placeholders(len(ids))+") ORDER BY i.id", args...)
+		for _, row := range rows {
+			row["cert_type_label"] = certTypesLabel(rowStr(row, "cert_types"))
+			// BLOB 不往页面里塞，模板按行取图，这里只标记有没有
+			row["has_sign"] = row["sign_image"] != nil
+			row["has_return_sign"] = row["return_sign_image"] != nil
+		}
+		render(w, r, "export/batch_print.html", Row{
+			"title": "因私出国（境）证件领用登记表", "rows": rowsIface(rows),
+			"mode": "issuance", "total": len(rows),
+		})
+		return
+	}
+
 	spec, ok := printTables[printType]
 	if !ok {
 		flashMsg(w, r, "不支持的打印类型。", "danger")
 		redirect(w, r, "dashboard.index", nil)
 		return
-	}
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		args[i] = id
 	}
 	rows, _ := queryMaps("SELECT * FROM "+spec[0]+" WHERE id IN ("+placeholders(len(ids))+") ORDER BY id", args...)
 	render(w, r, "export/batch_print.html", Row{

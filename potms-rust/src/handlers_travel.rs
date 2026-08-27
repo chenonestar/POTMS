@@ -143,6 +143,40 @@ pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respons
     page(&st, &mut req, "travel/list.html", data)
 }
 
+/// 把附件类型排成办件顺序（个人申请报告 → 审批表 → 同意申办函）的 CASE 表达式。
+///
+/// 这三个中文词按任何排序规则（拼音、笔画、UTF-8 码位）都排不出办件顺序，只能显式
+/// 指定。次序直接取自 `ATT_CATEGORIES`——那里已经按办件顺序定义了三类附件，再手抄
+/// 一份迟早两边漂移。表里出现的其它类型统一排在最后。
+fn file_type_order_sql(col: &str) -> String {
+    let mut out = format!("CASE {col}");
+    for (i, (_, label)) in ATT_CATEGORIES.iter().enumerate() {
+        out.push_str(&format!(" WHEN '{label}' THEN {}", i + 1));
+    }
+    out.push_str(&format!(" ELSE {} END", ATT_CATEGORIES.len() + 1));
+    out
+}
+
+/// 附件总览的排序方式，白名单取值。
+///
+/// batch（默认）：先把同一条出行申请的附件聚成一组，组间与「出国明细」列表同序
+/// （created_at DESC），组内按办件顺序。此前只按 uploaded_at 排，一旦有过补传，
+/// 那条申请的附件就会被别人的插在中间，翻起来对不上人。
+///
+/// uploaded：保留原来的按上传时间倒序，找「最近传了什么」时更顺手。
+///
+/// 两种都以 a.id 收尾：uploaded_at 是 CURRENT_TIMESTAMP，只精确到秒，同一次提交
+/// 上传的多个文件时间戳完全相同，没有兜底列的话它们之间的先后在 SQL 层面是未定义的。
+fn att_order_by(sort: &str) -> String {
+    match sort {
+        "uploaded" => "ORDER BY a.uploaded_at DESC, a.id".to_string(),
+        _ => format!("ORDER BY t.created_at DESC, t.id DESC, {}, a.id",
+                     file_type_order_sql("a.file_type")),
+    }
+}
+
+const ATT_SORT_DEFAULT: &str = "batch";
+
 pub async fn attachments(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Response {
     let mut req = Req::new(&st, &headers, &uri);
     if let Some(r) = require_login(&st, &mut req) { return r; }
@@ -156,7 +190,11 @@ pub async fn attachments(State(st): State<St>, headers: HeaderMap, uri: Uri) -> 
         if let Some(ft) = q.get("file_type").map(|x| x.trim()).filter(|x| !x.is_empty()) { base.push_str(" AND a.file_type = ?"); p.push(T(ft.to_string())); }
         if let Some(d) = q.get("date_from").map(|x| x.trim()).filter(|x| !x.is_empty()) { base.push_str(" AND date(a.uploaded_at) >= ?"); p.push(T(d.to_string())); }
         if let Some(d) = q.get("date_to").map(|x| x.trim()).filter(|x| !x.is_empty()) { base.push_str(" AND date(a.uploaded_at) <= ?"); p.push(T(d.to_string())); }
-        let items = helpers::list_all(&conn, &format!("{base} ORDER BY a.uploaded_at DESC"), &p);
+        let sort = match q.get("sort").map(|x| x.trim()).unwrap_or("") {
+            "uploaded" => "uploaded",
+            _ => ATT_SORT_DEFAULT,
+        };
+        let items = helpers::list_all(&conn, &format!("{base} {}", att_order_by(sort)), &p);
 
         // 缺件检查
         let travels = db::query_maps(&conn, "SELECT id, name, unit, need_new_passport FROM travel_details ORDER BY created_at DESC", &[]);
@@ -181,6 +219,7 @@ pub async fn attachments(State(st): State<St>, headers: HeaderMap, uri: Uri) -> 
         let total = db::count(&conn, "SELECT COUNT(*) FROM attachments", &[]);
         json!({
             "items": items, "search": q.get("search").cloned().unwrap_or_default(),
+            "sort": sort,
             "type_filter": q.get("file_type").cloned().unwrap_or_default(),
             "date_from": q.get("date_from").cloned().unwrap_or_default(),
             "date_to": q.get("date_to").cloned().unwrap_or_default(),
@@ -606,6 +645,32 @@ mod tests {
             App { router: crate::build_app(state.clone()), cookie, csrf, db: state.db.clone() }
         }
 
+        /// 提交后跟随重定向再取落地页——flash 存在会话 cookie 里，本夹具的 cookie
+        /// 是固定的，不跟着响应更新，所以必须把响应里的 Set-Cookie 带到下一跳，
+        /// 否则提示信息永远看不到。
+        async fn post_then(&self, path: &str, fields: &[(&str, &str)], next: &str) -> String {
+            let mut body = format!("csrf_token={}", urlencoding::encode(&self.csrf));
+            for (k, val) in fields {
+                body.push('&');
+                body.push_str(&format!("{}={}", urlencoding::encode(k), urlencoding::encode(val)));
+            }
+            let req = Request::builder().method("POST").uri(path)
+                .header("Cookie", &self.cookie)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(Body::from(body)).unwrap();
+            let res = self.router.clone().oneshot(req).await.unwrap();
+            let cookie = res.headers().get(axum::http::header::SET_COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.split(';').next().unwrap_or("").to_string())
+                .unwrap_or_else(|| self.cookie.clone());
+            let req = Request::builder().uri(next)
+                .header("Cookie", cookie)
+                .body(Body::empty()).unwrap();
+            let res = self.router.clone().oneshot(req).await.unwrap();
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+
         async fn post(&self, path: &str, fields: &[(&str, &str)]) -> (StatusCode, String) {
             let mut body = format!("csrf_token={}", urlencoding::encode(&self.csrf));
             for (k, val) in fields {
@@ -963,5 +1028,131 @@ AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
         // 做证=是 时本来就没证，不该报这条
         let body = post_travel(&app, &[("need_new_passport", "是")]).await;
         assert!(!body.contains("没有在有效期内的出入境证件"), "做证=是 时不该校验名下证件");
+    }
+
+    // -----------------------------------------------------------------------
+    // 第 3 批：附件总览排序、证照一人一行 + 换发提醒
+    // -----------------------------------------------------------------------
+
+    /// 造两条申请各带两个附件，且刻意让上传时间交叉：申请 901 的附件一早一晚，
+    /// 申请 902 的夹在中间。按上传时间排会把 902 插进 901 中间；按批次排则各自聚拢。
+    fn seed_attachments(app: &App) {
+        for tid in [901, 902] {
+            app.exec(&format!(
+                "INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,\
+                    id_number,destination_passport,category,travel_dates,need_new_passport,operator) \
+                 VALUES ({tid},1,'总部','技术部','批次{tid}','科长','110101199001012133',\
+                    '美国/护照','因私','2026/03/01-2026/03/10','否','admin')"));
+        }
+        for (id, tid, ftype, up) in [
+            (9011, 901, "审批表", "2026-03-05 10:00:00"),        // 901 的第二件，先传
+            (9021, 902, "个人申请报告", "2026-03-06 10:00:00"),   // 902 的，夹在中间
+            (9012, 901, "个人申请报告", "2026-03-07 10:00:00"),   // 901 的第一件，后补传
+            (9022, 902, "审批表", "2026-03-08 10:00:00"),
+        ] {
+            app.exec(&format!(
+                "INSERT INTO attachments (id,travel_id,file_name,file_path,file_type,file_size,uploaded_at) \
+                 VALUES ({id},{tid},'f{id}.pdf','x.pdf','{ftype}',1024,'{up}')"));
+        }
+    }
+
+    /// 断言几个片段在页面上按给定顺序出现。
+    fn assert_order(body: &str, keys: &[&str], what: &str) {
+        let mut last = 0usize;
+        for k in keys {
+            let pos = body.find(k).unwrap_or_else(|| panic!("{what}：页面上没有 {k}"));
+            assert!(pos >= last, "{what}：{k} 出现得太早（{pos} < {last}）");
+            last = pos;
+        }
+    }
+
+    #[tokio::test]
+    async fn attachments_grouped_by_batch_by_default() {
+        let app = App::new();
+        seed_attachments(&app);
+        let (status, body) = app.get("/travel/attachments").await;
+        assert_eq!(status, StatusCode::OK, "/travel/attachments → {status}");
+        // 默认按批次：902 那组（created_at 更晚）整组在前，组内按办件顺序
+        assert_order(&body, &["f9021.pdf", "f9022.pdf", "f9012.pdf", "f9011.pdf"],
+                     "默认排序不是「按批次聚组 + 组内办件顺序」");
+    }
+
+    #[tokio::test]
+    async fn attachments_sort_by_uploaded_time() {
+        let app = App::new();
+        seed_attachments(&app);
+        let (_, body) = app.get("/travel/attachments?sort=uploaded").await;
+        assert_order(&body, &["f9022.pdf", "f9012.pdf", "f9021.pdf", "f9011.pdf"],
+                     "sort=uploaded 没有按上传时间倒序");
+        assert!(body.contains("value=\"uploaded\" selected"), "排序选择器没有回显 uploaded");
+    }
+
+    #[tokio::test]
+    async fn attachments_sort_falls_back_on_garbage() {
+        let app = App::new();
+        seed_attachments(&app);
+        // 白名单之外的取值不能拼进 SQL，退回默认排序而不是报错
+        let (status, body) = app.get("/travel/attachments?sort=a.id%3B%20DROP%20TABLE%20attachments").await;
+        assert_eq!(status, StatusCode::OK, "非法排序参数把页面打挂了");
+        assert!(body.contains("f9021.pdf"), "非法排序参数下附件列表为空");
+        assert!(app.count("SELECT COUNT(*) FROM attachments") > 0,
+                "attachments 表没了——排序参数被拼进了 SQL");
+    }
+
+    // ---- 证照一人一行 + 换发提醒 ----
+
+    /// 提交一条证照登记，over 覆盖默认字段。
+    async fn post_cert(app: &App, over: &[(&str, &str)]) -> (StatusCode, String) {
+        let mut fields: Vec<(&str, &str)> = vec![
+            ("personnel_filing_id", "1"), ("unit", "总部"), ("department", "技术部"),
+            ("name", "逾期某"), ("passport_no", "E20000001"),
+            ("passport_expiry", "20360101"), ("passport_submit_date", "20260101"),
+        ];
+        for (k, v) in over {
+            match fields.iter_mut().find(|(fk, _)| fk == k) {
+                Some(slot) => slot.1 = v,
+                None => fields.push((k, v)),
+            }
+        }
+        app.post("/certificate/new", &fields).await
+    }
+
+    #[tokio::test]
+    async fn certificate_one_row_per_person() {
+        let app = App::new();
+        // 备案人 1 先有一条证照
+        assert_eq!(post_cert(&app, &[]).await.0, StatusCode::SEE_OTHER, "首次登记应放行");
+        let (_, body) = post_cert(&app, &[("passport_no", "E30000003")]).await;
+        assert!(body.contains("已有证照记录"), "同一备案人员被允许建第二条证照记录");
+        assert_eq!(app.count("SELECT COUNT(*) FROM certificates WHERE personnel_filing_id = 1"), 1,
+                   "库里应仍只有 1 条证照记录");
+    }
+
+    #[tokio::test]
+    async fn certificate_renewal_warns_about_dates() {
+        let app = App::new();
+        assert_eq!(post_cert(&app, &[]).await.0, StatusCode::SEE_OTHER);
+        // 换发：只改号码，日期没跟着改
+        let body = app.post_then("/certificate/1/edit", &[
+            ("personnel_filing_id", "1"), ("unit", "总部"), ("department", "技术部"),
+            ("name", "逾期某"), ("passport_no", "E99999999"),
+            ("passport_expiry", "20360101"), ("passport_submit_date", "20260101"),
+        ], "/certificate/").await;
+        assert!(body.contains("号码已变更"), "换发后没有提醒同步日期");
+        assert!(body.contains("普通护照"), "提醒里没有说明是哪一类证件");
+    }
+
+    #[tokio::test]
+    async fn certificate_edit_without_number_change_is_quiet() {
+        let app = App::new();
+        assert_eq!(post_cert(&app, &[]).await.0, StatusCode::SEE_OTHER);
+        // 号码没动，只改了部门——不是换发，不该提醒
+        let body = app.post_then("/certificate/1/edit", &[
+            ("personnel_filing_id", "1"), ("unit", "总部"), ("department", "办公室"),
+            ("name", "逾期某"), ("passport_no", "E20000001"),
+            ("passport_expiry", "20360101"), ("passport_submit_date", "20260101"),
+        ], "/certificate/").await;
+        assert!(!body.contains("号码已变更"),
+                "号码没变也提醒了换发——这条提醒会被当成噪音，很快没人看");
     }
 }

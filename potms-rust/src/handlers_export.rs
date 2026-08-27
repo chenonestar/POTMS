@@ -118,6 +118,35 @@ pub async fn batch_print(State(st): State<St>, headers: HeaderMap, uri: Uri, Pat
     if let Some(r) = require_login(&st, &mut req) { return r; }
     let ids = selected_ids(&req.query);
     if ids.is_empty() { flash(&mut req, "请选择要打印的记录。", "warning"); return redirect(&st, &req, "dashboard.index", &[]); }
+    // 证件领用单开一条：它要 JOIN 备案表取单位，还要逐行把证件种类代码换成中文，
+    // 塞不进下面那个「表名 → 标题」的映射。
+    if print_type == "issuance" {
+        let rows = {
+            let conn = st.db.lock().unwrap();
+            let ph = vec!["?"; ids.len()].join(",");
+            let params: Vec<rusqlite::types::Value> = ids.iter().map(|i| I(*i)).collect();
+            let mut rows = db::query_maps(&conn, &format!(
+                "SELECT i.*, pf.work_unit, (i.sign_image IS NOT NULL) AS has_sign, \
+                        (i.return_sign_image IS NOT NULL) AS has_return_sign \
+                 FROM cert_issuance i \
+                 JOIN personnel_filing pf ON i.personnel_filing_id = pf.id \
+                 WHERE i.id IN ({ph}) ORDER BY i.id"), &params);
+            for row in rows.iter_mut() {
+                let label = crate::handlers_issuance::types_label(
+                    &conn, &crate::helpers::row_str(row, "cert_types"));
+                if let Some(obj) = row.as_object_mut() {
+                    obj.insert("cert_type_label".into(), json!(label));
+                }
+            }
+            rows
+        };
+        let total = rows.len();
+        return page(&st, &mut req, "export/batch_print.html", json!({
+            "title": "因私出国（境）证件领用登记表", "rows": rows,
+            "mode": "issuance", "total": total,
+        }));
+    }
+
     let spec = match print_spec(&print_type) { Some(s) => s, None => { flash(&mut req, "不支持的打印类型。", "danger"); return redirect(&st, &req, "dashboard.index", &[]); } };
     let rows = {
         let conn = st.db.lock().unwrap();

@@ -1312,4 +1312,49 @@ AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
         bad.insert("status".into(), "'; DROP TABLE".into());
         assert!(!issuance_filters(&bad, &[]).0.contains("status"));
     }
+
+    // -----------------------------------------------------------------------
+    // 第 3 批：批量打印入口与页面、证件种类单选
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn issuance_list_has_batch_print() {
+        let app = App::new();
+        let (_, body) = app.get("/issuance/").await;
+        assert!(body.contains("批量打印"), "领用列表缺少批量打印入口");
+        assert!(body.contains("batchPrint('issuance')"), "批量打印按钮没接上 issuance 类型");
+    }
+
+    #[tokio::test]
+    async fn batch_print_issuance_renders_rows() {
+        let app = App::new();
+        assert_eq!(app.new_issuance(PNG_DATA_URL).await, StatusCode::SEE_OTHER);
+        let (status, body) = app.get("/print/batch/issuance?ids=1").await;
+        assert_eq!(status, StatusCode::OK, "/print/batch/issuance → {status}");
+        for want in ["因私出国（境）证件领用登记表", "史迪威", "总部", "因私护照", "E1234567", "共 1 条记录"] {
+            assert!(body.contains(want), "批量打印页缺少「{want}」");
+        }
+        // 签名按行取图，不能把 BLOB 塞进页面
+        // 按行取图，不把 BLOB 塞进页面。minijinja 会把 url_for 的结果 HTML 转义
+        // （斜杠成了 &#x2f;），所以只查文件名那一段。
+        assert!(body.contains("signature.png"), "没有按行引用签名图");
+    }
+
+    #[tokio::test]
+    async fn batch_print_without_ids_is_rejected() {
+        let app = App::new();
+        let (status, _) = app.get("/print/batch/issuance").await;
+        assert_eq!(status, StatusCode::SEE_OTHER, "没选记录时应重定向");
+    }
+
+    #[tokio::test]
+    async fn issuance_form_uses_radio_for_cert_type() {
+        let app = App::new();
+        let (_, body) = app.get("/issuance/new?travel_id=1").await;
+        let i = body.find("name=\"cert_types\"").expect("表单上找不到证件种类控件");
+        let start = body[..i].rfind("<input").unwrap();
+        let tag = &body[start..i];
+        assert!(tag.contains("type=\"radio\""),
+                "证件种类仍是复选框——业务上一次申请只能领一本证：{tag}");
+    }
 }
