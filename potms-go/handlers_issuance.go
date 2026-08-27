@@ -131,7 +131,7 @@ func handleIssuanceNew(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		issID := lastInsertID(res)
-		syncTravelDates(data["travel_id"])
+		syncTravelDerived(data["travel_id"])
 		logAction(r, "create", "cert_issuance", issID,
 			fmt.Sprintf("证件领用登记：%s，%s", data["holder_name"], certTypesLabel(data["cert_types"])),
 			nil, rowSnapshot("cert_issuance", issID))
@@ -140,16 +140,23 @@ func handleIssuanceNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// GET：支持从出行记录跳转带入
+	// GET：领用必须挂在一条出国申请上。直接进本页（没带 travel_id）时，先让经办人
+	// 挑一条申请，挑完再进登记表单——而不是给个能填空的表单，让人有机会登记出一条
+	// 无主的领用记录。
 	travelID := r.URL.Query().Get("travel_id")
 	prefill := Row{"issue_date": time.Now().Format("20060102")}
 	travel := travelBrief(travelID)
-	if travel != nil {
-		prefill["travel_id"] = travelID
-		prefill["personnel_filing_id"] = travel["personnel_filing_id"]
-		prefill["holder_name"] = travel["name"]
-		prefill["id_number"] = travel["id_number"]
+	if travel == nil {
+		if strings.TrimSpace(travelID) != "" {
+			flashMsg(w, r, "指定的出国申请不存在。", "warning")
+		}
+		render(w, r, "issuance/pick_travel.html", Row{"travels": rowsIface(eligibleTravels())})
+		return
 	}
+	prefill["travel_id"] = travelID
+	prefill["personnel_filing_id"] = travel["personnel_filing_id"]
+	prefill["holder_name"] = travel["name"]
+	prefill["id_number"] = travel["id_number"]
 	render(w, r, "issuance/form.html", Row{"data": prefill, "travel": travel})
 }
 
@@ -209,7 +216,7 @@ func handleIssuanceReturn(w http.ResponseWriter, r *http.Request) {
 		db.Exec("UPDATE cert_issuance SET return_date=?, return_sign_image=?, return_sign_meta=?, "+
 			"return_operator=?, status='returned', updated_at=CURRENT_TIMESTAMP WHERE id=?",
 			returnDate, blob, cleanMeta(r.PostFormValue("sign_meta")), operatorName(r), issID)
-		syncTravelDates(rowStr(row, "travel_id"))
+		syncTravelDerived(rowStr(row, "travel_id"))
 		logAction(r, "update", "cert_issuance", toInt64(issID),
 			fmt.Sprintf("证件归还登记：%s，归还日期 %s", rowStr(row, "holder_name"), returnDate),
 			before, rowSnapshot("cert_issuance", toInt64(issID)))
@@ -244,7 +251,7 @@ func handleIssuanceVoid(w http.ResponseWriter, r *http.Request) {
 	before := rowSnapshot("cert_issuance", toInt64(issID))
 	db.Exec("UPDATE cert_issuance SET status='voided', void_reason=?, "+
 		"updated_at=CURRENT_TIMESTAMP WHERE id=?", reason, issID)
-	syncTravelDates(rowStr(row, "travel_id"))
+	syncTravelDerived(rowStr(row, "travel_id"))
 	logAction(r, "void", "cert_issuance", toInt64(issID),
 		fmt.Sprintf("领用记录作废：%s，原因：%s", rowStr(row, "holder_name"), reason),
 		before, rowSnapshot("cert_issuance", toInt64(issID)))
@@ -390,11 +397,19 @@ func canFixCertTypes(row Row) bool {
 	return row["sign_image"] == nil
 }
 
-// syncTravelDates 把领用/归还日期回写到出行表（派生字段，本模块为唯一写入方）。
+// syncTravelDerived 把领用/归还日期与证件号码回写到出行表（派生字段，本模块为唯一写入方）。
 //
-// 取该出行下**未作废**记录中最早的领用日期与最晚的归还日期；若全部作废或无记录，
-// 则清空，使逾期告警口径与领用记录始终一致。
-func syncTravelDates(travelID string) {
+// 日期：取该出行下**未作废**记录中最早的领用日期与最晚的归还日期；若全部作废或
+// 无记录，则清空，使逾期告警口径与领用记录始终一致。
+//
+// 证件号码：一次申请一本证，所以该出行下所有未作废记录说的都是同一本；取最后一条
+// 的号码。号码原先是出行表单上手填的，与领用记录各写各的，打印件上「证件号码」和
+// 「证件领用日期」两个格子可能来自不同的证件。现在跟日期一样降级为派生——有领用
+// 记录就以领用记录为准。
+//
+// **不清空**号码：路径B（做证）没有领用记录，那一栏是系统里唯一的来源，手填的值
+// 必须保留；领用记录全部作废时也保留，那仍是当时用的号码。
+func syncTravelDerived(travelID string) {
 	if strings.TrimSpace(travelID) == "" {
 		return
 	}
@@ -411,6 +426,40 @@ func syncTravelDates(travelID string) {
 	}
 	db.Exec("UPDATE travel_details SET passport_collect_date=?, passport_return_date=? WHERE id=?",
 		collect, ret, toInt64(travelID))
+	if nos := queryOne(
+		"SELECT cert_nos FROM cert_issuance WHERE travel_id = ? AND status != 'voided' "+
+			"  AND cert_nos IS NOT NULL AND cert_nos != '' ORDER BY id DESC LIMIT 1",
+		toInt64(travelID)); nos != nil {
+		db.Exec("UPDATE travel_details SET passport_no=? WHERE id=?",
+			rowStr(nos, "cert_nos"), toInt64(travelID))
+	}
+}
+
+// travelHasIssuance 该出行是否已有未作废的领用记录——有的话证件号码由领用记录派生，
+// 出行表单上那一栏是只读的。
+func travelHasIssuance(travelID int64) bool {
+	if travelID == 0 {
+		return false
+	}
+	return queryOne("SELECT 1 FROM cert_issuance WHERE travel_id = ? AND status != 'voided' LIMIT 1",
+		travelID) != nil
+}
+
+// eligibleTravels 可以办理领用的出国申请。
+//
+// 排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还领用
+// 记录的申请（同一申请下不允许两本证同时在外——一次申请一本证）。
+// 「领用 → 归还 → 再领用」仍然可以，因为已归还的记录不在排除之列。
+func eligibleTravels() []Row {
+	rows, _ := queryMaps(
+		"SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, " +
+			"       t.approval_date, t.need_new_passport " +
+			"FROM travel_details t " +
+			"WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' " +
+			"  AND NOT EXISTS (SELECT 1 FROM cert_issuance c " +
+			"                  WHERE c.travel_id = t.id AND c.status = 'issued') " +
+			"ORDER BY t.created_at DESC")
+	return rows
 }
 
 func extractIssuanceForm(r *http.Request) map[string]string {
@@ -437,6 +486,10 @@ func extractIssuanceForm(r *http.Request) map[string]string {
 
 func validateIssuanceForm(data map[string]string) []string {
 	errs := checkRequired(data, []fieldLabel{
+		// 领用必须挂在一条出国申请上：证件是为某一次已批准的出行借出的，没有申请
+		// 就没有借出的理由。无主的领用记录还会掉出逾期告警——告警按出行记录来算，
+		// 挂不上申请的记录没人盯。
+		{"travel_id", "关联出国申请"},
 		{"personnel_filing_id", "领用人（备案人员）"},
 		{"holder_name", "领用人姓名"},
 		{"cert_types", "领用证件种类"},
@@ -444,17 +497,35 @@ func validateIssuanceForm(data map[string]string) []string {
 	})
 	errs = append(errs, checkDates(data, []fieldLabel{{"issue_date", "领用日期"}})...)
 
-	// 证件种类必须是字典内的合法代码
+	// 证件种类必须是字典内的合法代码。一次申请一本证，所以只能有一个。
+	var codes []string
 	for _, c := range strings.Split(data["cert_types"], ",") {
 		if c != "" {
+			codes = append(codes, c)
 			if _, ok := certNoField[c]; !ok {
 				errs = append(errs, "无效的证件种类代码："+c+"。")
 			}
 		}
 	}
+	if len(codes) > 1 {
+		errs = append(errs, "一次出国申请只能领用一本证件；需要多本请分别提交出国申请。")
+	}
 
-	// 同一出行下不允许重复的未归还领用记录
 	if data["travel_id"] != "" {
+		tv := queryOne("SELECT personnel_filing_id, trip_status FROM travel_details WHERE id = ?",
+			toInt64(data["travel_id"]))
+		if tv == nil {
+			errs = append(errs, "关联的出国申请不存在。")
+		} else {
+			if rowStr(tv, "trip_status") == "cancelled" {
+				errs = append(errs, "该出国申请已取消行程，不能办理证件领用。")
+			}
+			// 领用人必须就是申请人——证是为这条申请借的，不能借给别人
+			if rowStr(tv, "personnel_filing_id") != data["personnel_filing_id"] {
+				errs = append(errs, "领用人与该出国申请的申请人不一致。")
+			}
+		}
+		// 同一出行下不允许重复的未归还领用记录
 		if dup := queryOne("SELECT id FROM cert_issuance WHERE travel_id = ? AND status = 'issued'",
 			toInt64(data["travel_id"])); dup != nil {
 			errs = append(errs, fmt.Sprintf(

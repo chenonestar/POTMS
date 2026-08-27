@@ -61,6 +61,17 @@ pub async fn index(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respon
                 overdue.push(json!({"name": helpers::row_str(row, "name"), "deadline": helpers::cert_overdue_deadline(row), "trip_status": ts}));
             }
         }
+        // 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
+        // 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
+        // helpers::registered_cert_travel_ids 与 is_new_cert_overdue。
+        let registered = helpers::registered_cert_travel_ids(&conn);
+        for row in &db::query_maps(&conn, "SELECT id, name, need_new_passport, actual_return_date, travel_end, trip_status, cancel_date, passport_collect_date FROM travel_details WHERE need_new_passport = '是' AND (passport_collect_date IS NULL OR passport_collect_date = '')", &[]) {
+            if helpers::is_new_cert_overdue(row, &today, &registered) {
+                let mut ts = helpers::row_str(row, "trip_status");
+                if ts.is_empty() { ts = "normal".into(); }
+                overdue.push(json!({"name": helpers::row_str(row, "name"), "deadline": helpers::cert_overdue_deadline(row), "trip_status": ts}));
+            }
+        }
         overdue.sort_by(|a, b| helpers::row_str(a, "deadline").cmp(&helpers::row_str(b, "deadline")));
 
         let cert_rows = db::query_maps(&conn, "SELECT name, passport_expiry, hm_pass_expiry, tw_pass_expiry FROM certificates", &[]);

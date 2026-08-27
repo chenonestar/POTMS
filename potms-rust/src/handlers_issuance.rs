@@ -140,16 +140,24 @@ pub async fn new_get(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Resp
     if let Some(r) = require_login(&st, &mut req) {
         return r;
     }
-    // 支持从出行记录跳转带入
-    let travel_id = query_args(&req.query)
-        .get("travel_id")
-        .and_then(|s| s.parse::<i64>().ok());
+    // 领用必须挂在一条出国申请上。直接进本页（没带 travel_id）时，先让经办人挑一条
+    // 申请，挑完再进登记表单——而不是给个能填空的表单，让人有机会登记出一条无主的
+    // 领用记录。
+    let raw_tid = query_args(&req.query).get("travel_id").cloned().unwrap_or_default();
+    let travel_id = raw_tid.parse::<i64>().ok();
     let mut prefill = json!({"issue_date": helpers::now_local_ymd(st.cfg.tz_offset_hours)});
     let travel = {
         let conn = st.db.lock().unwrap();
         travel_brief(&conn, travel_id)
     };
-    if let Some(t) = &travel {
+    let Some(t) = &travel else {
+        if !raw_tid.trim().is_empty() {
+            flash(&mut req, "指定的出国申请不存在。", "warning");
+        }
+        let travels = { let conn = st.db.lock().unwrap(); eligible_travels(&conn) };
+        return page(&st, &mut req, "issuance/pick_travel.html", json!({"travels": travels}));
+    };
+    {
         let m = prefill.as_object_mut().unwrap();
         m.insert("travel_id".into(), json!(travel_id));
         m.insert("personnel_filing_id".into(), json!(helpers::row_i64(t, "personnel_filing_id")));
@@ -220,7 +228,7 @@ pub async fn new_post(
             return redirect(&st, &req, "issuance.list", &[]);
         }
         let id = conn.last_insert_rowid();
-        sync_travel_dates(&conn, data.travel_id);
+        sync_travel_derived(&conn, data.travel_id);
         let after = helpers::row_snapshot(&conn, "cert_issuance", id);
         let detail = format!("证件领用登记：{}，{}",
                              data.holder_name, types_label(&conn, &data.cert_types));
@@ -352,7 +360,7 @@ pub async fn return_post(State(st): State<St>, headers: HeaderMap, uri: Uri,
             ],
         );
         let tid = helpers::row_i64(&row, "travel_id");
-        sync_travel_dates(&conn, if tid > 0 { Some(tid) } else { None });
+        sync_travel_derived(&conn, if tid > 0 { Some(tid) } else { None });
         let after = helpers::row_snapshot(&conn, "cert_issuance", iss_id);
         let detail = format!("证件归还登记：{}，归还日期 {return_date}",
                              helpers::row_str(&row, "holder_name"));
@@ -398,7 +406,7 @@ pub async fn void(State(st): State<St>, headers: HeaderMap, uri: Uri,
             rusqlite::params![reason, iss_id],
         );
         let tid = helpers::row_i64(&row, "travel_id");
-        sync_travel_dates(&conn, if tid > 0 { Some(tid) } else { None });
+        sync_travel_derived(&conn, if tid > 0 { Some(tid) } else { None });
         let after = helpers::row_snapshot(&conn, "cert_issuance", iss_id);
         let detail = format!("领用记录作废：{}，原因：{reason}",
                              helpers::row_str(&row, "holder_name"));
@@ -582,11 +590,19 @@ pub fn can_fix_cert_types(row: &serde_json::Value) -> bool {
     row.get("has_sign").and_then(|v| v.as_i64()).unwrap_or(0) == 0
 }
 
-/// 把领用/归还日期回写到出行表（派生字段，本模块为唯一写入方）。
+/// 把领用/归还日期与证件号码回写到出行表（派生字段，本模块为唯一写入方）。
 ///
-/// 取该出行下**未作废**记录中最早的领用日期与最晚的归还日期；若全部作废或无记录，
-/// 则清空，使逾期告警口径与领用记录始终一致。
-fn sync_travel_dates(conn: &rusqlite::Connection, travel_id: Option<i64>) {
+/// 日期：取该出行下**未作废**记录中最早的领用日期与最晚的归还日期；若全部作废或
+/// 无记录，则清空，使逾期告警口径与领用记录始终一致。
+///
+/// 证件号码：一次申请一本证，所以该出行下所有未作废记录说的都是同一本；取最后一条
+/// 的号码。号码原先是出行表单上手填的，与领用记录各写各的，打印件上「证件号码」和
+/// 「证件领用日期」两个格子可能来自不同的证件。现在跟日期一样降级为派生——有领用
+/// 记录就以领用记录为准。
+///
+/// **不清空**号码：路径B（做证）没有领用记录，那一栏是系统里唯一的来源，手填的值
+/// 必须保留；领用记录全部作废时也保留，那仍是当时用的号码。
+fn sync_travel_derived(conn: &rusqlite::Connection, travel_id: Option<i64>) {
     let Some(tid) = travel_id else { return };
     let agg = db::query_one(conn,
         "SELECT MIN(issue_date) AS c, \
@@ -602,6 +618,36 @@ fn sync_travel_dates(conn: &rusqlite::Connection, travel_id: Option<i64>) {
     let _ = conn.execute(
         "UPDATE travel_details SET passport_collect_date=?, passport_return_date=? WHERE id=?",
         rusqlite::params![collect, ret, tid]);
+    if let Some(row) = db::query_one(conn,
+        "SELECT cert_nos FROM cert_issuance WHERE travel_id = ? AND status != 'voided' \
+           AND cert_nos IS NOT NULL AND cert_nos != '' ORDER BY id DESC LIMIT 1", &[I(tid)]) {
+        let _ = conn.execute("UPDATE travel_details SET passport_no=? WHERE id=?",
+                             rusqlite::params![helpers::row_str(&row, "cert_nos"), tid]);
+    }
+}
+
+/// 该出行是否已有未作废的领用记录——有的话证件号码由领用记录派生，
+/// 出行表单上那一栏是只读的。
+pub fn travel_has_issuance(conn: &rusqlite::Connection, travel_id: i64) -> bool {
+    db::query_one(conn,
+        "SELECT 1 FROM cert_issuance WHERE travel_id = ? AND status != 'voided' LIMIT 1",
+        &[I(travel_id)]).is_some()
+}
+
+/// 可以办理领用的出国申请。
+///
+/// 排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还领用
+/// 记录的申请（同一申请下不允许两本证同时在外——一次申请一本证）。
+/// 「领用 → 归还 → 再领用」仍然可以，因为已归还的记录不在排除之列。
+fn eligible_travels(conn: &rusqlite::Connection) -> Vec<db::Row> {
+    db::query_maps(conn,
+        "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, \
+                t.approval_date, t.need_new_passport \
+         FROM travel_details t \
+         WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' \
+           AND NOT EXISTS (SELECT 1 FROM cert_issuance c \
+                           WHERE c.travel_id = t.id AND c.status = 'issued') \
+         ORDER BY t.created_at DESC", &[])
 }
 
 /// 领用表单的字段集合。cert_types 是一组同名 checkbox，只能从原始 pairs 里取。
@@ -667,7 +713,13 @@ fn validate(conn: &rusqlite::Connection, d: &IssuanceForm) -> Vec<String> {
     data.insert("cert_types".into(), d.cert_types.clone());
     data.insert("issue_date".into(), d.issue_date.clone());
 
+    data.insert("travel_id".into(), d.travel_id.map(|t| t.to_string()).unwrap_or_default());
+
     let mut errs = v::check_required(&data, &[
+        // 领用必须挂在一条出国申请上：证件是为某一次已批准的出行借出的，没有申请
+        // 就没有借出的理由。无主的领用记录还会掉出逾期告警——告警按出行记录来算，
+        // 挂不上申请的记录没人盯。
+        ("travel_id", "关联出国申请"),
         ("personnel_filing_id", "领用人（备案人员）"),
         ("holder_name", "领用人姓名"),
         ("cert_types", "领用证件种类"),
@@ -675,15 +727,32 @@ fn validate(conn: &rusqlite::Connection, d: &IssuanceForm) -> Vec<String> {
     ]);
     errs.extend(v::check_dates(&data, &[("issue_date", "领用日期")]));
 
-    // 证件种类必须是字典内的合法代码
-    for c in d.cert_types.split(',').filter(|c| !c.is_empty()) {
-        if !CERT_NO_FIELD.iter().any(|(code, _)| *code == c) {
+    // 证件种类必须是字典内的合法代码。一次申请一本证，所以只能有一个。
+    let codes: Vec<&str> = d.cert_types.split(',').filter(|c| !c.is_empty()).collect();
+    for c in &codes {
+        if !CERT_NO_FIELD.iter().any(|(code, _)| code == c) {
             errs.push(format!("无效的证件种类代码：{c}。"));
         }
     }
+    if codes.len() > 1 {
+        errs.push("一次出国申请只能领用一本证件；需要多本请分别提交出国申请。".into());
+    }
 
-    // 同一出行下不允许重复的未归还领用记录
     if let Some(tid) = d.travel_id {
+        match db::query_one(conn,
+            "SELECT personnel_filing_id, trip_status FROM travel_details WHERE id = ?", &[I(tid)]) {
+            None => errs.push("关联的出国申请不存在。".into()),
+            Some(tv) => {
+                if helpers::row_str(&tv, "trip_status") == "cancelled" {
+                    errs.push("该出国申请已取消行程，不能办理证件领用。".into());
+                }
+                // 领用人必须就是申请人——证是为这条申请借的，不能借给别人
+                if helpers::row_str(&tv, "personnel_filing_id") != d.personnel_filing_id {
+                    errs.push("领用人与该出国申请的申请人不一致。".into());
+                }
+            }
+        }
+        // 同一出行下不允许重复的未归还领用记录
         if let Some(dup) = db::query_one(conn,
             "SELECT id FROM cert_issuance WHERE travel_id = ? AND status = 'issued'", &[I(tid)]) {
             errs.push(format!("该出行记录已有未归还的领用记录（#{}），请先办理归还或作废。",

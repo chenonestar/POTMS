@@ -127,7 +127,7 @@ func seedBusinessData(t *testing.T, c *client) {
 		"unit": "总部", "department": "人事处", "name": "张三", "position": "正科",
 		"title": "副高", "id_number": testID, "destination_passport": "美国-护照",
 		"category": "旅游", "travel_dates": "2026/08/01-2026/08/11",
-		"need_new_passport": "否", "passport_collect_date": "20260725",
+		"need_new_passport": "否",
 	}
 	for k, v := range fields {
 		mw.WriteField(k, v)
@@ -234,7 +234,6 @@ func TestFullSystem(t *testing.T) {
 		"name": "张三", "position": "正科", "id_number": testID,
 		"destination_passport": "日本-护照", "category": "旅游",
 		"travel_dates": "2026/09/01-2026/09/05", "need_new_passport": "否",
-		"passport_collect_date": "20260828",
 	} {
 		mw.WriteField(k, v)
 	}

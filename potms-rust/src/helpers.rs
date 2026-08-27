@@ -356,6 +356,53 @@ pub fn is_cert_overdue(r: &Row, today: &str) -> bool {
     !deadline.is_empty() && today > deadline.as_str()
 }
 
+/// 判断路径B（做证）的新办证件是否逾期未交回。
+///
+/// 路径B 的人没有领用记录——证是他凭同意申办函自己去公安办的，从没进过保管处，
+/// 系统里没有「领用」这个动作可记。而 `is_cert_overdue` 的第一道判据是
+/// `passport_collect_date` 非空，那个字段由领用记录派生，路径B 永远是空，
+/// 于是**这类人整个掉出了逾期告警**。偏偏他们风险最高：那本证从办出来起
+/// 一直在本人手上，单位连见都没见过。
+///
+/// 这里换一套判据：证件是否已经进入证照台账。台账里有，说明已交回收缴
+/// （登记时上交日期是必填的）；台账里没有——号码都还没录，或录了但没入库——
+/// 就是还没交回。到期日沿用同一套算法（回国后 10 个工作日 / 取消后 5 个）。
+///
+/// `registered` 是「新证已入台账」的出行 id 集合，由调用方一次查出。
+pub fn is_new_cert_overdue(r: &Row, today: &str, registered: &std::collections::HashSet<i64>) -> bool {
+    if row_str(r, "need_new_passport") != "是" {
+        return false;
+    }
+    if registered.contains(&row_i64(r, "id")) {
+        return false;
+    }
+    let deadline = cert_overdue_deadline(r);
+    !deadline.is_empty() && today > deadline.as_str()
+}
+
+/// 做证的出行记录中，新证已经进入证照台账的那些 id。
+///
+/// 判据是「明细表上补录的证件号码，出现在该人证照台账的三个号码槽之一」。
+/// 台账登记时上交日期是必填的，所以「在台账里」等价于「已交回收缴」。
+/// 号码没补录、或补录了但台账里没有，都算还没交回。
+///
+/// JOIN 而不是子查询取一条：一个人可能有多条证照记录（历史遗留），
+/// 只要**任意一条**里出现了这个号码就算数。
+pub fn registered_cert_travel_ids(conn: &rusqlite::Connection) -> std::collections::HashSet<i64> {
+    crate::db::query_maps(
+        conn,
+        "SELECT DISTINCT t.id FROM travel_details t \
+         JOIN certificates c ON c.personnel_filing_id = t.personnel_filing_id \
+         WHERE t.need_new_passport = '是' \
+           AND t.passport_no IS NOT NULL AND t.passport_no != '' \
+           AND t.passport_no IN (c.passport_no, c.hm_pass_no, c.tw_pass_no)",
+        &[],
+    )
+    .iter()
+    .map(|r| row_i64(r, "id"))
+    .collect()
+}
+
 pub fn normalize_residence(raw: &str) -> String {
     raw.trim()
         .replace('省', "")

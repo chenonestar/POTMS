@@ -55,6 +55,26 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	// 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
+	// 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
+	// registeredCertTravelIDs 与 isNewCertOverdue。
+	registered := registeredCertTravelIDs()
+	newRows, _ := queryMaps("SELECT id, name, need_new_passport, actual_return_date, travel_end, " +
+		"trip_status, cancel_date, passport_collect_date FROM travel_details " +
+		"WHERE need_new_passport = '是' " +
+		"  AND (passport_collect_date IS NULL OR passport_collect_date = '')")
+	for _, row := range newRows {
+		row["cert_registered"] = registered[toInt64(row["id"])]
+		if isNewCertOverdue(row, today) {
+			ts := rowStr(row, "trip_status")
+			if ts == "" {
+				ts = "normal"
+			}
+			overdue = append(overdue, Row{
+				"name": row["name"], "deadline": certOverdueDeadline(row), "trip_status": ts,
+			})
+		}
+	}
 	sort.Slice(overdue, func(i, j int) bool {
 		return rowStr(overdue[i], "deadline") < rowStr(overdue[j], "deadline")
 	})

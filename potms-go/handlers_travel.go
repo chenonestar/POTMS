@@ -23,6 +23,34 @@ var (
 	}
 )
 
+// registeredCertTravelIDs 做证的出行记录中，新证已经进入证照台账的那些 id。
+//
+// 判据是「明细表上补录的证件号码，出现在该人证照台账的三个号码槽之一」。
+// 台账登记时上交日期是必填的，所以「在台账里」等价于「已交回收缴」。
+// 号码没补录、或补录了但台账里没有，都算还没交回。
+//
+// JOIN 而不是子查询取一条：一个人可能有多条证照记录（历史遗留），
+// 只要**任意一条**里出现了这个号码就算数。
+func registeredCertTravelIDs() map[int64]bool {
+	rows, _ := queryMaps(
+		"SELECT DISTINCT t.id FROM travel_details t " +
+			"JOIN certificates c ON c.personnel_filing_id = t.personnel_filing_id " +
+			"WHERE t.need_new_passport = '是' " +
+			"  AND t.passport_no IS NOT NULL AND t.passport_no != '' " +
+			"  AND t.passport_no IN (c.passport_no, c.hm_pass_no, c.tw_pass_no)")
+	out := map[int64]bool{}
+	for _, r := range rows {
+		out[toInt64(r["id"])] = true
+	}
+	return out
+}
+
+// travelOverdueIDs 全量计算「证件逾期未交回」记录的 id 集合。
+//
+// 两类合并：
+//   - 路径A：已领用 + 未归还 + 超工作日时限（判据在领用记录上）；
+//   - 路径B：做证 + 新证尚未进入台账 + 超工作日时限（路径B 没有领用记录，
+//     用老判据一条都抓不到，见 isNewCertOverdue 的说明）。
 func travelOverdueIDs() map[int64]bool {
 	today := nowLocalYMD()
 	rows, _ := queryMaps("SELECT id, passport_collect_date, passport_return_date, actual_return_date, " +
@@ -33,6 +61,22 @@ func travelOverdueIDs() map[int64]bool {
 	for _, r := range rows {
 		if isCertOverdue(r, today) {
 			out[toInt64(r["id"])] = true
+		}
+	}
+
+	registered := registeredCertTravelIDs()
+	newRows, _ := queryMaps("SELECT id, need_new_passport, actual_return_date, travel_end, " +
+		"trip_status, cancel_date, passport_collect_date FROM travel_details " +
+		"WHERE need_new_passport = '是'")
+	for _, r := range newRows {
+		// 已经走过领用流程的，归上面那套判据管，避免同一条记录被两边重复判定
+		if rowStr(r, "passport_collect_date") != "" {
+			continue
+		}
+		id := toInt64(r["id"])
+		r["cert_registered"] = registered[id]
+		if isNewCertOverdue(r, today) {
+			out[id] = true
 		}
 	}
 	return out
@@ -94,10 +138,18 @@ func handleTravelList(w http.ResponseWriter, r *http.Request) {
 	where, params := travelFilters(q, nil)
 	pg := listAll("SELECT * FROM travel_details WHERE 1=1"+where+" ORDER BY created_at DESC", params...)
 
+	// 标记逾期未交回，并附带应还到期日。两类判据见 travelOverdueIDs 的说明：
+	// 路径A 看领用记录，路径B（做证、无领用记录）看新证是否已进入证照台账。
 	today := nowLocalYMD()
+	registered := registeredCertTravelIDs()
 	var overdueIDs []interface{}
 	for _, row := range pg.Rows {
-		if isCertOverdue(row, today) {
+		late := isCertOverdue(row, today)
+		if !late && rowStr(row, "passport_collect_date") == "" {
+			row["cert_registered"] = registered[toInt64(row["id"])]
+			late = isNewCertOverdue(row, today)
+		}
+		if late {
 			overdueIDs = append(overdueIDs, toInt64(row["id"]))
 			// 到期日直接挂在行上，而不是另下发一个 id → 到期日的 map。
 			//
@@ -205,10 +257,10 @@ func extractTravelForm(r *http.Request) map[string]string {
 		"travel_dates":      f("travel_dates"),
 		"approval_date":     parseDateInput(f("approval_date")),
 		"need_new_passport": np, "passport_no": f("passport_no"),
-		"passport_collect_date": parseDateInput(f("passport_collect_date")),
-		"passport_return_date":  parseDateInput(f("passport_return_date")),
-		"actual_return_date":    parseDateInput(f("actual_return_date")),
-		"operator":              operatorName(r),
+		// 证件领用 / 归还日期不再由本表单收集：它们是领用模块的派生字段，
+		// 两处都能写就会出现「签了字的领用凭证」和「明细表上的日期」对不上。
+		"actual_return_date": parseDateInput(f("actual_return_date")),
+		"operator":           operatorName(r),
 	}
 }
 
@@ -227,11 +279,31 @@ func validateTravelForm(data map[string]string) []string {
 		}
 	}
 	errs = append(errs, checkDates(data, []fieldLabel{
-		{"approval_date", "批准日期"}, {"passport_collect_date", "证件领用日期"},
-		{"passport_return_date", "证件归还日期"}, {"actual_return_date", "实际回国日期"},
+		{"approval_date", "批准日期"}, {"actual_return_date", "实际回国日期"},
 	})...)
-	if data["need_new_passport"] == "否" && data["passport_collect_date"] == "" {
-		errs = append(errs, "路径A（已有证件）时，证件领用日期为必填。")
+	// 证件领用日期原在此校验必填，现已迁移至证件领用模块（须手写签名后登记），
+	// 出行表单不再收集该字段。
+
+	// 一本可用的证都没有，却说不做证——这条记录本身就是错的。
+	//
+	// 「够不够用」判不了：系统不知道这趟要用哪种证（明细表只有「地点、证照」
+	// 那段自由文本），有港澳通行证但要去美国这类情形只能靠经办人自己看。
+	// 但「一本都没有」是可判的，而且无论去哪都不可能有证用，属于硬错误。
+	//
+	// 「有证」要算有效期：一本过期护照等于没有。证照登记里填了号码就必须填
+	// 有效日期，所以这个判断的数据一定在。
+	if data["need_new_passport"] == "否" && data["personnel_filing_id"] != "" {
+		today := nowLocalYMD()
+		// 一个人可能有多条证照记录（历史遗留），任意一条里有在有效期内的证就算数
+		usable := queryOne(
+			"SELECT 1 FROM certificates WHERE personnel_filing_id = ? AND ("+
+				"  (passport_no IS NOT NULL AND passport_no != '' AND passport_expiry >= ?) OR"+
+				"  (hm_pass_no  IS NOT NULL AND hm_pass_no  != '' AND hm_pass_expiry  >= ?) OR"+
+				"  (tw_pass_no  IS NOT NULL AND tw_pass_no  != '' AND tw_pass_expiry  >= ?)) LIMIT 1",
+			toInt64(data["personnel_filing_id"]), today, today, today)
+		if usable == nil {
+			errs = append(errs, "该备案人员名下没有在有效期内的出入境证件，「是否做证」应为「是」。")
+		}
 	}
 	return errs
 }
@@ -347,13 +419,13 @@ func handleTravelNew(w http.ResponseWriter, r *http.Request) {
 		res, _ := db.Exec("INSERT INTO travel_details (personnel_filing_id, unit, department, name, "+
 			"position, title, id_number, destination_passport, category, travel_dates, "+
 			"travel_start, travel_end, approval_date, need_new_passport, passport_no, "+
-			"passport_collect_date, passport_return_date, actual_return_date, operator) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+			"actual_return_date, operator) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 			data["personnel_filing_id"], data["unit"], data["department"], data["name"],
 			data["position"], data["title"], data["id_number"], data["destination_passport"],
 			data["category"], data["travel_dates"], tStart, tEnd, data["approval_date"],
-			data["need_new_passport"], data["passport_no"], data["passport_collect_date"],
-			data["passport_return_date"], data["actual_return_date"], data["operator"])
+			data["need_new_passport"], data["passport_no"],
+			data["actual_return_date"], data["operator"])
 		travelID := lastInsertID(res)
 		saveAttachments(w, r, travelID)
 		logAction(r, "create", "travel_details", travelID, "", nil, rowSnapshot("travel_details", travelID))
@@ -395,7 +467,8 @@ func handleTravelEdit(w http.ResponseWriter, r *http.Request) {
 			for _, e := range errs {
 				flashMsg(w, r, e, "danger")
 			}
-			render(w, r, "travel/form.html", Row{"data": dataRow(data), "editing": true, "travel_id": travelID})
+			render(w, r, "travel/form.html", Row{"data": dataRow(data), "editing": true,
+				"travel_id": travelID, "cert_no_derived": travelHasIssuance(travelID)})
 			return
 		}
 		before := rowSnapshot("travel_details", travelID)
@@ -403,16 +476,21 @@ func handleTravelEdit(w http.ResponseWriter, r *http.Request) {
 		if canon := formatTravelRange(tStart, tEnd); canon != "" {
 			data["travel_dates"] = canon
 		}
+		// 有领用记录时证件号码由领用记录派生，表单上是只读的，提交上来的值不能覆盖它
+		passportNo := data["passport_no"]
+		if travelHasIssuance(travelID) {
+			passportNo = rowStr(row, "passport_no")
+		}
 		db.Exec("UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "+
 			"name=?, position=?, title=?, id_number=?, destination_passport=?, "+
 			"category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, "+
-			"passport_no=?, passport_collect_date=?, passport_return_date=?, actual_return_date=?, "+
+			"passport_no=?, actual_return_date=?, "+
 			"operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
 			data["personnel_filing_id"], data["unit"], data["department"], data["name"],
 			data["position"], data["title"], data["id_number"], data["destination_passport"],
 			data["category"], data["travel_dates"], tStart, tEnd, data["approval_date"],
-			data["need_new_passport"], data["passport_no"], data["passport_collect_date"],
-			data["passport_return_date"], data["actual_return_date"], data["operator"], travelID)
+			data["need_new_passport"], passportNo,
+			data["actual_return_date"], data["operator"], travelID)
 		saveAttachments(w, r, travelID)
 		logAction(r, "update", "travel_details", travelID, "", before, rowSnapshot("travel_details", travelID))
 		flashMsg(w, r, "明细表已更新。", "success")
@@ -422,6 +500,7 @@ func handleTravelEdit(w http.ResponseWriter, r *http.Request) {
 	atts, _ := queryMaps("SELECT * FROM attachments WHERE travel_id = ? ORDER BY uploaded_at", travelID)
 	render(w, r, "travel/form.html", Row{
 		"data": row, "editing": true, "travel_id": travelID, "attachments": rowsIface(atts),
+		"cert_no_derived": travelHasIssuance(travelID),
 	})
 }
 

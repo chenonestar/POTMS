@@ -37,9 +37,28 @@ fn is_pdf(bytes: &[u8]) -> bool {
     bytes.len() >= 5 && &bytes[..5] == b"%PDF-"
 }
 
+/// 全量计算「证件逾期未交回」记录的 id 集合。
+///
+/// 两类合并：
+/// - 路径A：已领用 + 未归还 + 超工作日时限（判据在领用记录上）；
+/// - 路径B：做证 + 新证尚未进入台账 + 超工作日时限（路径B 没有领用记录，
+///   用老判据一条都抓不到，见 `helpers::is_new_cert_overdue` 的说明）。
 fn travel_overdue_ids(conn: &rusqlite::Connection, today: &str) -> Vec<i64> {
     let rows = db::query_maps(conn, "SELECT id, passport_collect_date, passport_return_date, actual_return_date, travel_end, trip_status, cancel_date FROM travel_details WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' AND (passport_return_date IS NULL OR passport_return_date = '')", &[]);
-    rows.iter().filter(|r| helpers::is_cert_overdue(r, today)).map(|r| helpers::row_i64(r, "id")).collect()
+    let mut ids: Vec<i64> = rows.iter().filter(|r| helpers::is_cert_overdue(r, today)).map(|r| helpers::row_i64(r, "id")).collect();
+
+    let registered = helpers::registered_cert_travel_ids(conn);
+    let new_rows = db::query_maps(conn, "SELECT id, need_new_passport, actual_return_date, travel_end, trip_status, cancel_date, passport_collect_date FROM travel_details WHERE need_new_passport = '是'", &[]);
+    for r in &new_rows {
+        // 已经走过领用流程的，归上面那套判据管，避免同一条记录被两边重复判定
+        if !helpers::row_str(r, "passport_collect_date").is_empty() {
+            continue;
+        }
+        if helpers::is_new_cert_overdue(r, today, &registered) {
+            ids.push(helpers::row_i64(r, "id"));
+        }
+    }
+    ids
 }
 
 pub fn travel_filters(conn: &rusqlite::Connection, q: &F, ids: &[i64], today: &str) -> (String, Vec<SqlValue>) {
@@ -94,9 +113,14 @@ pub async fn list(State(st): State<St>, headers: HeaderMap, uri: Uri) -> Respons
     // 是整数，minijinja 查不到这个键，返回 undefined 并**静默渲染成空**，
     // 页面上就成了「应还: )」。Go 版同一处更直接，gonja 索引不了整数键，直接 500。
     // 两边都是同一个毛病：键的类型对不上。挂在行上就没有查表这一步了。
+    // 路径A 看领用记录，路径B（做证、无领用记录）看新证是否已进入证照台账。
+    let registered = { let conn = st.db.lock().unwrap(); helpers::registered_cert_travel_ids(&conn) };
     if let Some(rows) = items.get_mut("rows").and_then(|v| v.as_array_mut()) {
         for row in rows.iter_mut() {
-            if helpers::is_cert_overdue(row, &today) {
+            let late = helpers::is_cert_overdue(row, &today)
+                || (helpers::row_str(row, "passport_collect_date").is_empty()
+                    && helpers::is_new_cert_overdue(row, &today, &registered));
+            if late {
                 overdue_ids.push(json!(helpers::row_i64(row, "id")));
                 let dl = helpers::cert_overdue_deadline(row);
                 if let Some(obj) = row.as_object_mut() {
@@ -175,14 +199,16 @@ fn extract(form: &F, operator: &str) -> VForm {
     m.insert("id_number".into(), ff(form, "id_number").to_uppercase());
     let np = { let n = ff(form, "need_new_passport"); if n.is_empty() { "否".into() } else { n } };
     m.insert("need_new_passport".into(), np);
-    for k in ["approval_date", "passport_collect_date", "passport_return_date", "actual_return_date"] {
+    // 证件领用 / 归还日期不再由本表单收集：它们是领用模块的派生字段，
+    // 两处都能写就会出现「签了字的领用凭证」和「明细表上的日期」对不上。
+    for k in ["approval_date", "actual_return_date"] {
         m.insert(k.into(), v::parse_date_input(&ff(form, k)));
     }
     m.insert("operator".into(), operator.to_string());
     m
 }
 
-fn validate(data: &VForm) -> Vec<String> {
+fn validate(conn: &rusqlite::Connection, data: &VForm, today: &str) -> Vec<String> {
     let mut errs = v::check_required(data, &[
         ("personnel_filing_id", "备案人员"), ("unit", "单位"), ("department", "部门"), ("name", "姓名"),
         ("position", "职务"), ("id_number", "身份证号"), ("destination_passport", "地点、证照"),
@@ -194,9 +220,30 @@ fn validate(data: &VForm) -> Vec<String> {
         let (ok, msg) = v::validate_travel_range(&td);
         if !ok { errs.push(format!("计划出行日期: {msg}")); }
     }
-    errs.extend(v::check_dates(data, &[("approval_date", "批准日期"), ("passport_collect_date", "证件领用日期"), ("passport_return_date", "证件归还日期"), ("actual_return_date", "实际回国日期")]));
-    if data.get("need_new_passport").map(|s| s.as_str()) == Some("否") && data.get("passport_collect_date").map(|s| s.is_empty()).unwrap_or(true) {
-        errs.push("路径A（已有证件）时，证件领用日期为必填。".into());
+    errs.extend(v::check_dates(data, &[("approval_date", "批准日期"), ("actual_return_date", "实际回国日期")]));
+    // 证件领用日期原在此校验必填，现已迁移至证件领用模块（须手写签名后登记），
+    // 出行表单不再收集该字段。
+
+    // 一本可用的证都没有，却说不做证——这条记录本身就是错的。
+    //
+    // 「够不够用」判不了：系统不知道这趟要用哪种证（明细表只有「地点、证照」
+    // 那段自由文本），有港澳通行证但要去美国这类情形只能靠经办人自己看。
+    // 但「一本都没有」是可判的，而且无论去哪都不可能有证用，属于硬错误。
+    //
+    // 「有证」要算有效期：一本过期护照等于没有。证照登记里填了号码就必须填
+    // 有效日期，所以这个判断的数据一定在。
+    let pfid = data.get("personnel_filing_id").cloned().unwrap_or_default();
+    if data.get("need_new_passport").map(|s| s.as_str()) == Some("否") && !pfid.is_empty() {
+        // 一个人可能有多条证照记录（历史遗留），任意一条里有在有效期内的证就算数
+        let usable = db::query_one(conn,
+            "SELECT 1 FROM certificates WHERE personnel_filing_id = ? AND ( \
+               (passport_no IS NOT NULL AND passport_no != '' AND passport_expiry >= ?) OR \
+               (hm_pass_no  IS NOT NULL AND hm_pass_no  != '' AND hm_pass_expiry  >= ?) OR \
+               (tw_pass_no  IS NOT NULL AND tw_pass_no  != '' AND tw_pass_expiry  >= ?)) LIMIT 1",
+            &[db::sv_opt(&pfid), T(today.to_string()), T(today.to_string()), T(today.to_string())]);
+        if usable.is_none() {
+            errs.push("该备案人员名下没有在有效期内的出入境证件，「是否做证」应为「是」。".into());
+        }
     }
     errs
 }
@@ -248,8 +295,6 @@ fn travel_params(d: &VForm, t_start: &str, t_end: &str) -> Vec<SqlValue> {
         db::sv_opt(d.get("approval_date").map(|s| s.as_str()).unwrap_or("")),
         db::sv_opt(d.get("need_new_passport").map(|s| s.as_str()).unwrap_or("")),
         db::sv_opt(d.get("passport_no").map(|s| s.as_str()).unwrap_or("")),
-        db::sv_opt(d.get("passport_collect_date").map(|s| s.as_str()).unwrap_or("")),
-        db::sv_opt(d.get("passport_return_date").map(|s| s.as_str()).unwrap_or("")),
         db::sv_opt(d.get("actual_return_date").map(|s| s.as_str()).unwrap_or("")),
         db::sv_opt(d.get("operator").map(|s| s.as_str()).unwrap_or("")),
     ]
@@ -278,7 +323,8 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mp: Mu
     let (form, files) = parse_multipart(mp).await;
     if !csrf_check(&req, &form) { flash(&mut req, "表单已过期，请重试。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let mut data = extract(&form, &req.sess.operator_name());
-    let mut errs = validate(&data);
+    let today = helpers::now_local_ymd(st.cfg.tz_offset_hours);
+    let mut errs = { let conn = st.db.lock().unwrap(); validate(&conn, &data, &today) };
     errs.extend(missing_att_errors(&files, data.get("need_new_passport").map(|s| s.as_str()).unwrap_or("否")));
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }
@@ -289,7 +335,7 @@ pub async fn new_post(State(st): State<St>, headers: HeaderMap, uri: Uri, mp: Mu
     if !canon.is_empty() { data.insert("travel_dates".into(), canon); }
     let travel_id = {
         let conn = st.db.lock().unwrap();
-        db::exec(&conn, "INSERT INTO travel_details (personnel_filing_id, unit, department, name, position, title, id_number, destination_passport, category, travel_dates, travel_start, travel_end, approval_date, need_new_passport, passport_no, passport_collect_date, passport_return_date, actual_return_date, operator) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", &travel_params(&data, &ts, &te)).ok();
+        db::exec(&conn, "INSERT INTO travel_details (personnel_filing_id, unit, department, name, position, title, id_number, destination_passport, category, travel_dates, travel_start, travel_end, approval_date, need_new_passport, passport_no, actual_return_date, operator) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", &travel_params(&data, &ts, &te)).ok();
         conn.last_insert_rowid()
     };
     let mut warnings = vec![];
@@ -310,7 +356,10 @@ pub async fn edit_get(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(t
     };
     match row {
         None => { flash(&mut req, "记录不存在。", "danger"); redirect(&st, &req, "travel.list", &[]) }
-        Some(r) => page(&st, &mut req, "travel/form.html", json!({"data": r, "editing": true, "travel_id": travel_id, "attachments": atts})),
+        Some(r) => {
+            let derived = { let conn = st.db.lock().unwrap(); crate::handlers_issuance::travel_has_issuance(&conn, travel_id) };
+            page(&st, &mut req, "travel/form.html", json!({"data": r, "editing": true, "travel_id": travel_id, "attachments": atts, "cert_no_derived": derived}))
+        }
     }
 }
 
@@ -322,10 +371,12 @@ pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
     let exists = { let conn = st.db.lock().unwrap(); db::query_one(&conn, "SELECT id FROM travel_details WHERE id = ?", &[I(travel_id)]).is_some() };
     if !exists { flash(&mut req, "记录不存在。", "danger"); return redirect(&st, &req, "travel.list", &[]); }
     let mut data = extract(&form, &req.sess.operator_name());
-    let errs = validate(&data);
+    let today = helpers::now_local_ymd(st.cfg.tz_offset_hours);
+    let errs = { let conn = st.db.lock().unwrap(); validate(&conn, &data, &today) };
     if !errs.is_empty() {
         for e in &errs { flash(&mut req, e, "danger"); }
-        return page(&st, &mut req, "travel/form.html", json!({"data": vform_json(&data), "editing": true, "travel_id": travel_id}));
+        let derived = { let conn = st.db.lock().unwrap(); crate::handlers_issuance::travel_has_issuance(&conn, travel_id) };
+        return page(&st, &mut req, "travel/form.html", json!({"data": vform_json(&data), "editing": true, "travel_id": travel_id, "cert_no_derived": derived}));
     }
     let (ts, te) = v::parse_travel_range(data.get("travel_dates").map(|s| s.as_str()).unwrap_or(""));
     let canon = v::format_travel_range(&ts, &te);
@@ -333,9 +384,15 @@ pub async fn edit_post(State(st): State<St>, headers: HeaderMap, uri: Uri, Path(
     {
         let conn = st.db.lock().unwrap();
         let before = helpers::row_snapshot(&conn, "travel_details", travel_id);
+        // 有领用记录时证件号码由领用记录派生，表单上是只读的，提交上来的值不能覆盖它
+        if crate::handlers_issuance::travel_has_issuance(&conn, travel_id) {
+            let cur = db::query_one(&conn, "SELECT passport_no FROM travel_details WHERE id = ?", &[I(travel_id)])
+                .map(|r| helpers::row_str(&r, "passport_no")).unwrap_or_default();
+            data.insert("passport_no".into(), cur);
+        }
         let mut p = travel_params(&data, &ts, &te);
         p.push(I(travel_id));
-        db::exec(&conn, "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, name=?, position=?, title=?, id_number=?, destination_passport=?, category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, passport_no=?, passport_collect_date=?, passport_return_date=?, actual_return_date=?, operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", &p).ok();
+        db::exec(&conn, "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, name=?, position=?, title=?, id_number=?, destination_passport=?, category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, passport_no=?, actual_return_date=?, operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", &p).ok();
         let after = helpers::row_snapshot(&conn, "travel_details", travel_id);
         helpers::log_action(&conn, &req.sess.username(), &req.ip, "update", "travel_details", Some(travel_id), "", before, after);
     }
@@ -504,6 +561,8 @@ mod tests {
     struct App {
         router: axum::Router,
         cookie: String,
+        csrf: String,
+        db: crate::render::Db,
     }
 
     impl App {
@@ -541,9 +600,62 @@ mod tests {
             });
             let mut sess = crate::session::Session::default();
             sess.login("admin", "");
+            let csrf = sess.csrf_token();
             let cookie = sess.to_cookie(&cfg.secret_key);
             let cookie = cookie.split(';').next().unwrap().to_string();
-            App { router: crate::build_app(state), cookie }
+            App { router: crate::build_app(state.clone()), cookie, csrf, db: state.db.clone() }
+        }
+
+        async fn post(&self, path: &str, fields: &[(&str, &str)]) -> (StatusCode, String) {
+            let mut body = format!("csrf_token={}", urlencoding::encode(&self.csrf));
+            for (k, val) in fields {
+                body.push('&');
+                body.push_str(&format!("{}={}", urlencoding::encode(k), urlencoding::encode(val)));
+            }
+            let req = Request::builder().method("POST").uri(path)
+                .header("Cookie", &self.cookie)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(Body::from(body)).unwrap();
+            let res = self.router.clone().oneshot(req).await.unwrap();
+            let status = res.status();
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            (status, String::from_utf8_lossy(&bytes).into_owned())
+        }
+
+        /// 出国明细表单走 multipart（要收附件），这里手搓一个最小请求体。
+        async fn post_multipart(&self, path: &str, fields: &[(&str, &str)]) -> (StatusCode, String) {
+            const B: &str = "----potmstestboundary";
+            let mut body = String::new();
+            let mut push = |k: &str, v: &str| {
+                body.push_str(&format!(
+                    "--{B}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n"));
+            };
+            push("csrf_token", &self.csrf);
+            for (k, v) in fields { push(k, v); }
+            body.push_str(&format!("--{B}--\r\n"));
+            let req = Request::builder().method("POST").uri(path)
+                .header("Cookie", &self.cookie)
+                .header("Content-Type", format!("multipart/form-data; boundary={B}"))
+                .body(Body::from(body)).unwrap();
+            let res = self.router.clone().oneshot(req).await.unwrap();
+            let status = res.status();
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            (status, String::from_utf8_lossy(&bytes).into_owned())
+        }
+
+        fn exec(&self, sql: &str) {
+            self.db.lock().unwrap().execute_batch(sql).unwrap();
+        }
+        fn scalar(&self, sql: &str) -> String {
+            self.db.lock().unwrap()
+                .query_row(sql, [], |r| r.get::<_, Option<String>>(0))
+                .ok().flatten().unwrap_or_default()
+        }
+        fn count(&self, sql: &str) -> i64 {
+            self.db.lock().unwrap().query_row(sql, [], |r| r.get(0)).unwrap_or(-1)
+        }
+        fn overdue_ids(&self, today: &str) -> Vec<i64> {
+            super::travel_overdue_ids(&self.db.lock().unwrap(), today)
         }
 
         async fn get(&self, path: &str) -> (StatusCode, String) {
@@ -575,5 +687,281 @@ mod tests {
             .unwrap_or_default();
         let ctx: String = body.split("应还").nth(1).unwrap_or("").chars().take(60).collect();
         assert!(!after.is_empty(), "应还到期日为空，实际渲染：「应还{ctx}」");
+    }
+
+    // -----------------------------------------------------------------------
+    // 第 2 批：领用挂申请 / 路径B 逾期 / 号码派生 / 做证校验
+    // -----------------------------------------------------------------------
+
+    const PNG_DATA_URL: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ\
+AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    /// 再造两条都已回国 90 天、证都没交回的申请，区别只在是否做证。
+    /// 备案人 1 名下有在有效期内的护照（路径A），备案人 2 一本证都没有（路径B）。
+    fn seed_two_paths(app: &App) {
+        let ago = ymd_days_ago(90);
+        app.exec(&format!(
+            "INSERT INTO certificates (personnel_filing_id,unit,department,name,\
+                passport_no,passport_expiry,passport_submit_date,operator) \
+             VALUES (1,'总部','技术部','逾期某','E12345678','20360101','20250101','admin');\
+             INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,id_number,\
+                residence,political_status,work_unit,position_or_title,supervisor_unit,operator) \
+             VALUES (2,'李','四','男','19900101','110101199001012133','浙江杭州市西湖区',\
+                '群众','总部','科长','人事处','admin');\
+             INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,\
+                id_number,destination_passport,category,travel_dates,travel_start,travel_end,\
+                need_new_passport,actual_return_date,operator) \
+             VALUES (801,1,'总部','技术部','路径A张三','科长','110101199001012133','美国/护照',\
+                '因私','{ago}-{ago}','{ago}','{ago}','否','{ago}','admin');\
+             INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,\
+                id_number,destination_passport,category,travel_dates,travel_start,travel_end,\
+                need_new_passport,actual_return_date,operator) \
+             VALUES (802,2,'总部','技术部','路径B李四','科长','110101199001012133','美国/护照',\
+                '因私','{ago}-{ago}','{ago}','{ago}','是','{ago}','admin');"));
+    }
+
+    /// 提交一条挂在申请 801 上的领用登记。
+    async fn post_issue(app: &App, over: &[(&str, &str)]) -> (StatusCode, String) {
+        let ago = ymd_days_ago(90);
+        let mut fields: Vec<(&str, &str)> = vec![
+            ("travel_id", "801"), ("personnel_filing_id", "1"), ("holder_name", "路径A张三"),
+            ("id_number", "110101199001012133"), ("cert_types", "01"),
+            ("cert_nos", "E12345678"), ("issue_date", &ago), ("sign_png", PNG_DATA_URL),
+        ];
+        // 同名键后出现的覆盖先出现的：cert_types 需要能追加成多个，其余替换
+        for (k, v) in over {
+            if *k == "cert_types" { fields.push((k, v)); continue; }
+            match fields.iter_mut().find(|(fk, _)| fk == k) {
+                Some(slot) => slot.1 = v,
+                None => fields.push((k, v)),
+            }
+        }
+        app.post("/issuance/new", &fields).await
+    }
+
+    // ---- A1 领用必须挂出国申请 ----
+
+    #[tokio::test]
+    async fn issue_without_travel_is_rejected() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let (_, body) = post_issue(&app, &[("travel_id", "")]).await;
+        assert!(body.contains("关联出国申请"), "未提示必须关联出国申请");
+        assert_eq!(app.count("SELECT COUNT(*) FROM cert_issuance"), 0, "无主的领用记录被写进库了");
+    }
+
+    #[tokio::test]
+    async fn issue_with_unknown_travel_is_rejected() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let (_, body) = post_issue(&app, &[("travel_id", "999")]).await;
+        assert!(body.contains("关联的出国申请不存在"), "未校验申请是否存在");
+        assert_eq!(app.count("SELECT COUNT(*) FROM cert_issuance"), 0);
+    }
+
+    #[tokio::test]
+    async fn holder_must_match_applicant() {
+        let app = App::new();
+        seed_two_paths(&app);
+        // 证是为这条申请借的，不能借给别人
+        let (_, body) = post_issue(&app,
+            &[("personnel_filing_id", "2"), ("holder_name", "路径B李四")]).await;
+        assert!(body.contains("与该出国申请的申请人不一致"), "领用人与申请人不一致未被拦下");
+        assert_eq!(app.count("SELECT COUNT(*) FROM cert_issuance"), 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_trip_cannot_issue() {
+        let app = App::new();
+        seed_two_paths(&app);
+        app.exec("UPDATE travel_details SET trip_status='cancelled' WHERE id=801");
+        let (_, body) = post_issue(&app, &[]).await;
+        assert!(body.contains("已取消行程"), "已取消的行程仍能领用");
+        assert_eq!(app.count("SELECT COUNT(*) FROM cert_issuance"), 0);
+    }
+
+    #[tokio::test]
+    async fn one_cert_per_application() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let (_, body) = post_issue(&app, &[("cert_types", "02")]).await;
+        assert!(body.contains("只能领用一本证件"), "一次申请领多本未被拦下");
+        assert_eq!(app.count("SELECT COUNT(*) FROM cert_issuance"), 0);
+    }
+
+    #[tokio::test]
+    async fn new_without_travel_id_shows_picker() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let (status, body) = app.get("/issuance/new").await;
+        assert_eq!(status, StatusCode::OK, "/issuance/new → {status}");
+        for want in ["选择出国申请", "登记领用", "路径A张三"] {
+            assert!(body.contains(want), "选择页缺少「{want}」");
+        }
+    }
+
+    #[tokio::test]
+    async fn picker_excludes_cancelled_and_active_issuance() {
+        let app = App::new();
+        seed_two_paths(&app);
+        assert_eq!(post_issue(&app, &[]).await.0, StatusCode::SEE_OTHER, "领用登记失败");
+        app.exec("UPDATE travel_details SET trip_status='cancelled' WHERE id=802");
+        let (_, body) = app.get("/issuance/new").await;
+        assert!(!body.contains("路径A张三"), "已有未归还领用的申请仍出现在可选列表里");
+        assert!(!body.contains("路径B李四"), "已取消的行程仍出现在可选列表里");
+    }
+
+    // ---- A2 路径B 的逾期告警 ----
+
+    #[tokio::test]
+    async fn path_b_without_registered_cert_is_overdue() {
+        let app = App::new();
+        seed_two_paths(&app);
+        assert_eq!(post_issue(&app, &[]).await.0, StatusCode::SEE_OTHER, "领用登记失败");
+        let ids = app.overdue_ids(&ymd_days_ago(0));
+        assert!(ids.contains(&801), "路径A 已领未还且逾期，却没被抓到");
+        assert!(ids.contains(&802), "路径B 回国 90 天、证没交回，却没被抓到");
+    }
+
+    #[tokio::test]
+    async fn path_b_cleared_once_cert_registered() {
+        let app = App::new();
+        seed_two_paths(&app);
+        app.exec("UPDATE travel_details SET passport_no='E99999999' WHERE id=802;\
+                  INSERT INTO certificates (personnel_filing_id,unit,department,name,\
+                     passport_no,passport_expiry,passport_submit_date,operator) \
+                  VALUES (2,'总部','技术部','路径B李四','E99999999','20360101','20260101','admin');");
+        assert!(!app.overdue_ids(&ymd_days_ago(0)).contains(&802), "证已进台账仍在告警");
+    }
+
+    #[tokio::test]
+    async fn path_b_number_recorded_but_not_registered_still_overdue() {
+        let app = App::new();
+        seed_two_paths(&app);
+        app.exec("UPDATE travel_details SET passport_no='E99999999' WHERE id=802");
+        assert!(app.overdue_ids(&ymd_days_ago(0)).contains(&802),
+                "只补录号码未入台账，应仍算逾期");
+    }
+
+    #[tokio::test]
+    async fn path_b_not_overdue_before_deadline() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let today = ymd_days_ago(0);
+        app.exec(&format!(
+            "UPDATE travel_details SET actual_return_date='{today}', travel_end='{today}' WHERE id=802"));
+        assert!(!app.overdue_ids(&today).contains(&802), "还没到期就报了逾期");
+    }
+
+    #[tokio::test]
+    async fn path_b_shows_on_travel_list() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let (status, body) = app.get("/travel/?passport_status=overdue").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("路径B李四"), "逾期筛选没带上路径B");
+    }
+
+    #[tokio::test]
+    async fn path_b_counts_on_dashboard() {
+        let app = App::new();
+        seed_two_paths(&app);
+        let (status, body) = app.get("/").await;
+        assert_eq!(status, StatusCode::OK);
+        // 不能只断言姓名出现在页面上——「近期出行」板块本来就会列出这个人，
+        // 那样即使逾期统计完全失灵也照样通过。查姓名后面是否跟着「应还」。
+        let seg: String = body.split("路径B李四").nth(1).unwrap_or("").chars().take(200).collect();
+        assert!(seg.contains("应还"), "仪表盘逾期清单里没有路径B，实际：{seg}");
+    }
+
+    // ---- C 证件号码派生 ----
+
+    #[tokio::test]
+    async fn cert_no_derived_from_issuance() {
+        let app = App::new();
+        seed_two_paths(&app);
+        assert_eq!(post_issue(&app, &[("cert_nos", "E77778888")]).await.0, StatusCode::SEE_OTHER);
+        assert_eq!(app.scalar("SELECT passport_no FROM travel_details WHERE id=801"), "E77778888",
+                   "证件号码未从领用记录派生到出行表");
+
+        // 表单上那一栏应变成只读。不能只查页面上有没有 readonly——领用日期、
+        // 归还日期两栏本来就是只读的，那样查恒为真。只看 passport_no 这个 input。
+        let (_, body) = app.get("/travel/801/edit").await;
+        let i = body.find("name=\"passport_no\"").expect("页面上找不到证件号码输入框");
+        let start = body[..i].rfind("<input").unwrap();
+        let end = i + body[i..].find('>').unwrap();
+        let tag = &body[start..=end];
+        assert!(tag.contains("readonly"), "有领用记录时证件号码栏未置为只读：{tag}");
+
+        // 就算绕过只读直接提交，也不能覆盖派生值
+        app.post_multipart("/travel/801/edit", &[
+            ("personnel_filing_id", "1"), ("unit", "总部"), ("department", "技术部"),
+            ("name", "路径A张三"), ("position", "科长"), ("id_number", "110101199001012133"),
+            ("destination_passport", "美国-护照"), ("category", "旅游"),
+            ("travel_dates", "2026/09/01-2026/09/11"), ("need_new_passport", "否"),
+            ("passport_no", "BOGUS999"),
+        ]).await;
+        assert_eq!(app.scalar("SELECT passport_no FROM travel_details WHERE id=801"), "E77778888",
+                   "绕过只读的提交覆盖了派生的证件号码");
+    }
+
+    // ---- D 做证校验 ----
+
+    async fn post_travel(app: &App, over: &[(&str, &str)]) -> String {
+        let mut fields: Vec<(&str, &str)> = vec![
+            ("personnel_filing_id", "2"), ("unit", "总部"), ("department", "技术部"),
+            ("name", "李四"), ("position", "科长"), ("id_number", "110101199001012133"),
+            ("destination_passport", "美国-护照"), ("category", "旅游"),
+            ("travel_dates", "2026/09/01-2026/09/11"), ("need_new_passport", "否"),
+        ];
+        for (k, v) in over {
+            match fields.iter_mut().find(|(fk, _)| fk == k) {
+                Some(slot) => slot.1 = v,
+                None => fields.push((k, v)),
+            }
+        }
+        app.post_multipart("/travel/new", &fields).await.1
+    }
+
+    #[tokio::test]
+    async fn no_usable_cert_must_make_new() {
+        let app = App::new();
+        seed_two_paths(&app);   // 备案人 2 名下一本证都没有
+        let body = post_travel(&app, &[]).await;
+        assert!(body.contains("没有在有效期内的出入境证件"),
+                "一本证都没有却填「不做证」，未被拦下");
+    }
+
+    #[tokio::test]
+    async fn expired_cert_counts_as_none() {
+        let app = App::new();
+        seed_two_paths(&app);
+        // 一本过期护照等于没有——只看有没有号码是不够的
+        app.exec("INSERT INTO certificates (personnel_filing_id,unit,department,name,\
+                     passport_no,passport_expiry,passport_submit_date,operator) \
+                  VALUES (2,'总部','技术部','李四','E11112222','20200101','20190101','admin')");
+        let body = post_travel(&app, &[]).await;
+        assert!(body.contains("没有在有效期内的出入境证件"), "过期证件被当成可用");
+    }
+
+    #[tokio::test]
+    async fn valid_cert_passes_path_a() {
+        let app = App::new();
+        seed_two_paths(&app);
+        app.exec("INSERT INTO certificates (personnel_filing_id,unit,department,name,\
+                     hm_pass_no,hm_pass_expiry,hm_pass_submit_date,operator) \
+                  VALUES (2,'总部','技术部','李四','C11112222','20360101','20260101','admin')");
+        let body = post_travel(&app, &[]).await;
+        assert!(!body.contains("没有在有效期内的出入境证件"),
+                "名下有在有效期内的证件，却被判为必须做证");
+    }
+
+    #[tokio::test]
+    async fn need_new_passport_skips_cert_check() {
+        let app = App::new();
+        seed_two_paths(&app);
+        // 做证=是 时本来就没证，不该报这条
+        let body = post_travel(&app, &[("need_new_passport", "是")]).await;
+        assert!(!body.contains("没有在有效期内的出入境证件"), "做证=是 时不该校验名下证件");
     }
 }

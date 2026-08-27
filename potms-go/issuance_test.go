@@ -18,7 +18,8 @@ const pngDataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAA
 func newIssuance(t *testing.T, c *client, sign string) string {
 	t.Helper()
 	form := url.Values{
-		"csrf_token": {c.csrf("/issuance/new")}, "personnel_filing_id": {"1"},
+		// travel_id 是必填：领用必须挂在一条出国申请上
+		"csrf_token": {c.csrf("/issuance/new")}, "travel_id": {"1"}, "personnel_filing_id": {"1"},
 		"holder_name": {"张三"}, "id_number": {testID}, "cert_types": {"01"},
 		"cert_nos": {"E12345678"}, "issue_date": {"20260801"}, "sign_png": {sign},
 	}
