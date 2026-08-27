@@ -131,12 +131,21 @@ public class IssuanceController {
         Map<String, String> prefill = new LinkedHashMap<>();
         prefill.put("issue_date", today());
         var travel = travelBrief(travelId);
-        if (travel != null) {
-            prefill.put("travel_id", String.valueOf(travelId));
-            prefill.put("personnel_filing_id", str(travel.get("personnel_filing_id")));
-            prefill.put("holder_name", str(travel.get("name")));
-            prefill.put("id_number", str(travel.get("id_number")));
+        // 领用必须挂在一条出国申请上。直接进本页（没带 travel_id）时，先让经办人挑一条
+        // 申请，挑完再进登记表单——而不是给个能填空的表单，让人有机会登记出一条无主的
+        // 领用记录。
+        if (travel == null) {
+            if (travelId != null) {
+                Flash.warning(req, "指定的出国申请不存在。");
+            }
+            model.addAttribute("ctx", Ctx.of(req));
+            model.addAttribute("travels", IssuanceOps.eligibleTravels(db.jdbc()));
+            return "issuance/pick_travel";
         }
+        prefill.put("travel_id", String.valueOf(travelId));
+        prefill.put("personnel_filing_id", str(travel.get("personnel_filing_id")));
+        prefill.put("holder_name", str(travel.get("name")));
+        prefill.put("id_number", str(travel.get("id_number")));
         return render(req, model, prefill, travel);
     }
 
@@ -166,7 +175,7 @@ public class IssuanceController {
                 Signature.cleanMeta(req.getParameter("sign_meta")),
                 data.get("remarks"), data.get("operator"));
 
-        IssuanceOps.syncTravelDates(db.jdbc(), travelId);
+        IssuanceOps.syncTravelDerived(db.jdbc(), travelId);
         sealQuietly(req, id, "issue", sig.bytes(), Signature.cleanMeta(req.getParameter("sign_meta")));
         Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
                 "create", "cert_issuance", id,
@@ -257,7 +266,7 @@ public class IssuanceController {
                 returnDate, sig.bytes(), Signature.cleanMeta(req.getParameter("sign_meta")),
                 operatorName(req), id);
 
-        IssuanceOps.syncTravelDates(db.jdbc(), longOrNull(str(row.get("travel_id"))));
+        IssuanceOps.syncTravelDerived(db.jdbc(), longOrNull(str(row.get("travel_id"))));
         sealQuietly(req, id, "return", sig.bytes(),
                 Signature.cleanMeta(req.getParameter("sign_meta")));
         Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
@@ -291,7 +300,7 @@ public class IssuanceController {
         var before = Helpers.rowSnapshot(db.jdbc(), "cert_issuance", id);
         db.jdbc().update("UPDATE cert_issuance SET status='voided', void_reason=?, "
                 + "updated_at=CURRENT_TIMESTAMP WHERE id=?", reason, id);
-        IssuanceOps.syncTravelDates(db.jdbc(), longOrNull(str(row.get("travel_id"))));
+        IssuanceOps.syncTravelDerived(db.jdbc(), longOrNull(str(row.get("travel_id"))));
         Helpers.logAction(db.jdbc(), operator(req), SecurityFilters.clientIp(req),
                 "void", "cert_issuance", id,
                 "领用记录作废：" + str(row.get("holder_name")) + "，原因：" + reason,
@@ -418,6 +427,10 @@ public class IssuanceController {
 
     private List<String> validate(Map<String, String> d) {
         List<String> errors = new ArrayList<>(Validators.checkRequired(d, List.of(
+                // 领用必须挂在一条出国申请上：证件是为某一次已批准的出行借出的，没有
+                // 申请就没有借出的理由。无主的领用记录还会掉出逾期告警——告警按出行
+                // 记录来算，挂不上申请的记录没人盯。
+                new Validators.Field("travel_id", "关联出国申请"),
                 new Validators.Field("personnel_filing_id", "领用人（备案人员）"),
                 new Validators.Field("holder_name", "领用人姓名"),
                 new Validators.Field("cert_types", "领用证件种类"),
@@ -425,14 +438,39 @@ public class IssuanceController {
         errors.addAll(Validators.checkDates(d,
                 List.of(new Validators.Field("issue_date", "领用日期"))));
 
+        // 证件种类必须是字典内的合法代码。一次申请一本证，所以只能有一个。
+        int codeCount = 0;
         for (String c : d.getOrDefault("cert_types", "").split(",")) {
-            if (!c.isEmpty() && !IssuanceOps.CERT_NO_FIELD.containsKey(c)) {
+            if (c.isEmpty()) {
+                continue;
+            }
+            codeCount++;
+            if (!IssuanceOps.CERT_NO_FIELD.containsKey(c)) {
                 errors.add("无效的证件种类代码：" + c + "。");
             }
         }
-        // 同一出行下不允许重复的未归还领用记录
+        if (codeCount > 1) {
+            errors.add("一次出国申请只能领用一本证件；需要多本请分别提交出国申请。");
+        }
+
         Long travelId = longOrNull(d.get("travel_id"));
         if (travelId != null) {
+            var tv = db.jdbc().queryForList(
+                    "SELECT personnel_filing_id, trip_status FROM travel_details WHERE id = ?",
+                    travelId);
+            if (tv.isEmpty()) {
+                errors.add("关联的出国申请不存在。");
+            } else {
+                if ("cancelled".equals(str(tv.get(0).get("trip_status")))) {
+                    errors.add("该出国申请已取消行程，不能办理证件领用。");
+                }
+                // 领用人必须就是申请人——证是为这条申请借的，不能借给别人
+                if (!str(tv.get(0).get("personnel_filing_id"))
+                        .equals(d.getOrDefault("personnel_filing_id", ""))) {
+                    errors.add("领用人与该出国申请的申请人不一致。");
+                }
+            }
+            // 同一出行下不允许重复的未归还领用记录
             var dup = db.jdbc().queryForList(
                     "SELECT id FROM cert_issuance WHERE travel_id = ? AND status = 'issued'",
                     travelId);

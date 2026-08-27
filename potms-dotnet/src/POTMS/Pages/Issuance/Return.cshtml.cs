@@ -61,7 +61,7 @@ public class ReturnModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             "return_operator=@op, status='returned', updated_at=CURRENT_TIMESTAMP WHERE id=@id",
             new { d = ReturnDate, img = blob, meta = Signature.CleanMeta(Request.Form["sign_meta"]),
                   op = OperatorName, id });
-        IssuanceOps.SyncTravelDates(cn, row.TravelId);
+        IssuanceOps.SyncTravelDerived(cn, row.TravelId);
         Log(cn, "update", "cert_issuance", id,
             $"证件归还登记：{row.HolderName}，归还日期 {ReturnDate}",
             before, Helpers.RowSnapshot(cn, "cert_issuance", id));

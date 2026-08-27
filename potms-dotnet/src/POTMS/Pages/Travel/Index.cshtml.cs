@@ -47,12 +47,17 @@ public class IndexModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         return f;
     }
 
-    /// <summary>全量计算「证件逾期未还」的 id 集合。</summary>
+    /// <summary>全量计算「证件逾期未还」的 id 集合。
+    ///
+    /// <para>两类合并：路径A 已领用 + 未归还 + 超工作日时限（判据在领用记录上）；
+    /// 路径B 做证 + 新证尚未进入台账 + 超工作日时限——路径B 没有领用记录，用老判据
+    /// 一条都抓不到，见 <see cref="Validators.IsNewCertOverdue"/>。</para>
+    /// </summary>
     public static List<long> OverdueIdSet(Db db, Config cfg)
     {
         using var cn = db.Open();
         var today = Helpers.TodayLocal(cfg);
-        return cn.Query(
+        var ids = cn.Query(
             "SELECT id, passport_collect_date, passport_return_date, actual_return_date, " +
             "       travel_end, trip_status, cancel_date FROM travel_details " +
             "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' " +
@@ -61,6 +66,18 @@ public class IndexModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
                 (string?)r.trip_status, (string?)r.cancel_date, (string?)r.actual_return_date,
                 (string?)r.travel_end, today))
             .Select(r => (long)r.id).ToList();
+
+        var registered = IssuanceOps.RegisteredCertTravelIds(cn);
+        // 已经走过领用流程的归上面那套判据管，避免同一条记录被两边重复判定
+        ids.AddRange(cn.Query(
+            "SELECT id, need_new_passport, actual_return_date, travel_end, trip_status, cancel_date " +
+            "FROM travel_details WHERE need_new_passport = '是' " +
+            "  AND (passport_collect_date IS NULL OR passport_collect_date = '')")
+            .Where(r => Validators.IsNewCertOverdue((string?)r.need_new_passport,
+                registered.Contains((long)r.id), (string?)r.trip_status, (string?)r.cancel_date,
+                (string?)r.actual_return_date, (string?)r.travel_end, today))
+            .Select(r => (long)r.id));
+        return ids;
     }
 
     public void OnGet()
@@ -77,11 +94,17 @@ public class IndexModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         Items = Helpers.ListAll<TravelDetail>(cn,
             "SELECT * FROM travel_details WHERE 1=1" + f.Where + " ORDER BY created_at DESC", f.Params);
 
+        // 路径A 看领用记录，路径B（做证、无领用记录）看新证是否已进入证照台账。
         var today = Helpers.TodayLocal(cfg);
+        var registered = IssuanceOps.RegisteredCertTravelIds(cn);
         foreach (var r in Items.Rows)
         {
-            if (!Validators.IsCertOverdue(r.PassportCollectDate, r.PassportReturnDate, r.TripStatus,
-                    r.CancelDate, r.ActualReturnDate, r.TravelEnd, today)) continue;
+            var late = Validators.IsCertOverdue(r.PassportCollectDate, r.PassportReturnDate, r.TripStatus,
+                           r.CancelDate, r.ActualReturnDate, r.TravelEnd, today)
+                       || (string.IsNullOrEmpty(r.PassportCollectDate)
+                           && Validators.IsNewCertOverdue(r.NeedNewPassport, registered.Contains(r.Id),
+                               r.TripStatus, r.CancelDate, r.ActualReturnDate, r.TravelEnd, today));
+            if (!late) continue;
             OverdueIds.Add(r.Id);
             Deadlines[r.Id] = Validators.CertOverdueDeadline(r.TripStatus, r.CancelDate,
                 r.ActualReturnDate, r.TravelEnd);

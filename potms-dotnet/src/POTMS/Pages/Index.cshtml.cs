@@ -58,6 +58,24 @@ public class IndexModel(Db db, Config cfg, Flash flash) : PageModel
                 Validators.CertOverdueDeadline((string?)r.trip_status, (string?)r.cancel_date,
                     (string?)r.actual_return_date, (string?)r.travel_end)));
         }
+        // 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
+        // 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
+        // IssuanceOps.RegisteredCertTravelIds 与 Validators.IsNewCertOverdue。
+        var registered = IssuanceOps.RegisteredCertTravelIds(cn);
+        foreach (var r in cn.Query(
+            "SELECT id, name, unit, need_new_passport, actual_return_date, travel_end, " +
+            "       trip_status, cancel_date FROM travel_details " +
+            "WHERE need_new_passport = '是' " +
+            "  AND (passport_collect_date IS NULL OR passport_collect_date = '')"))
+        {
+            if (!Validators.IsNewCertOverdue((string?)r.need_new_passport, registered.Contains((long)r.id),
+                    (string?)r.trip_status, (string?)r.cancel_date, (string?)r.actual_return_date,
+                    (string?)r.travel_end, today))
+                continue;
+            Overdue.Add(new OverdueItem((long)r.id, (string?)r.name ?? "", (string?)r.unit ?? "",
+                Validators.CertOverdueDeadline((string?)r.trip_status, (string?)r.cancel_date,
+                    (string?)r.actual_return_date, (string?)r.travel_end)));
+        }
         Overdue = Overdue.OrderBy(o => o.Deadline, StringComparer.Ordinal).ToList();
         CertOverdue = Overdue.Count;
 

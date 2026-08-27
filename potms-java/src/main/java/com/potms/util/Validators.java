@@ -269,6 +269,33 @@ public final class Validators {
     }
 
     /**
+     * 判断路径B（做证）的新办证件是否逾期未交回。
+     *
+     * <p>路径B 的人没有领用记录——证是他凭同意申办函自己去公安办的，从没进过保管处，
+     * 系统里没有「领用」这个动作可记。而 {@link #isCertOverdue} 的第一道判据是
+     * passport_collect_date 非空，那个字段由领用记录派生，路径B 永远是空，于是
+     * <b>这类人整个掉出了逾期告警</b>。偏偏他们风险最高：那本证从办出来起一直在本人
+     * 手上，单位连见都没见过。
+     *
+     * <p>这里换一套判据：证件是否已经进入证照台账。台账里有，说明已交回收缴（登记时
+     * 上交日期是必填的）；台账里没有——号码都还没录，或录了但没入库——就是还没交回。
+     * 到期日沿用同一套算法（回国后 10 个工作日 / 取消后 5 个）。
+     *
+     * @param certRegistered 该出行的新证是否已进入证照台账，由调用方查台账后传入
+     */
+    public static boolean isNewCertOverdue(Map<String, Object> row, String today,
+                                           boolean certRegistered) {
+        if (!"是".equals(str(row.get("need_new_passport")))) {
+            return false;
+        }
+        if (certRegistered) {
+            return false;
+        }
+        String deadline = certOverdueDeadline(row);
+        return !deadline.isEmpty() && today.compareTo(deadline) > 0;
+    }
+
+    /**
      * 是否「证件逾期未还」：已领用（collect 非空）+ 未归还（return 空）+ 已过到期日。
      *
      * @param today YYYYMMDD

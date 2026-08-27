@@ -9,6 +9,7 @@ import static com.potms.web.PersonnelController.trim;
 
 import com.potms.Config;
 import com.potms.data.Db;
+import com.potms.service.IssuanceOps;
 import com.potms.util.TravelDates;
 import com.potms.util.Validators;
 import jakarta.servlet.http.HttpServletRequest;
@@ -109,7 +110,13 @@ public class TravelController {
         return f;
     }
 
-    /** 全量计算「证件逾期未还」的 id 集合。 */
+    /**
+     * 全量计算「证件逾期未还」的 id 集合。
+     *
+     * <p>两类合并：路径A 已领用 + 未归还 + 超工作日时限（判据在领用记录上）；路径B
+     * 做证 + 新证尚未进入台账 + 超工作日时限——路径B 没有领用记录，用老判据一条都抓
+     * 不到，见 {@link Validators#isNewCertOverdue}。
+     */
     private Set<Long> overdueIds() {
         String today = today();
         Set<Long> out = new HashSet<>();
@@ -122,6 +129,17 @@ public class TravelController {
                 out.add(Fmt.n(r, "id"));
             }
         }
+        // 已经走过领用流程的归上面那套判据管，避免同一条记录被两边重复判定
+        Set<Long> registered = IssuanceOps.registeredCertTravelIds(db.jdbc());
+        for (var r : db.jdbc().queryForList(
+                "SELECT id, need_new_passport, actual_return_date, travel_end, trip_status, "
+                + "cancel_date FROM travel_details WHERE need_new_passport = '是' "
+                + "AND (passport_collect_date IS NULL OR passport_collect_date = '')")) {
+            long id = Fmt.n(r, "id");
+            if (Validators.isNewCertOverdue(r, today, registered.contains(id))) {
+                out.add(id);
+            }
+        }
         return out;
     }
 
@@ -132,12 +150,17 @@ public class TravelController {
                 "SELECT * FROM travel_details WHERE 1=1" + f.where() + " ORDER BY created_at DESC",
                 f.params());
 
+        // 路径A 看领用记录，路径B（做证、无领用记录）看新证是否已进入证照台账。
         String today = today();
+        Set<Long> registered = IssuanceOps.registeredCertTravelIds(db.jdbc());
         Set<Long> overdue = new HashSet<>();
         Map<Long, String> deadlines = new HashMap<>();
         for (var row : items.rows()) {
-            if (Validators.isCertOverdue(row, today)) {
-                long id = Fmt.n(row, "id");
+            long id = Fmt.n(row, "id");
+            boolean late = Validators.isCertOverdue(row, today)
+                    || (str(row.get("passport_collect_date")).isEmpty()
+                        && Validators.isNewCertOverdue(row, today, registered.contains(id)));
+            if (late) {
                 overdue.add(id);
                 deadlines.put(id, Validators.certOverdueDeadline(row));
             }
@@ -321,6 +344,11 @@ public class TravelController {
         if (!canon.isEmpty()) {
             data.put("travel_dates", canon);
         }
+        // 有领用记录时证件号码由领用记录派生，表单上是只读的，提交上来的值不能覆盖它
+        String passportNo = data.get("passport_no");
+        if (IssuanceOps.travelHasIssuance(db.jdbc(), id)) {
+            passportNo = str(one(id).get("passport_no"));
+        }
         // 同 create：不覆盖 passport_collect_date / passport_return_date 两个派生字段
         db.jdbc().update(
                 "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, name=?, "
@@ -332,7 +360,7 @@ public class TravelController {
                 data.get("name"), data.get("position"), data.get("title"), data.get("id_number"),
                 data.get("destination_passport"), data.get("category"), data.get("travel_dates"),
                 range.start(), range.end(), data.get("approval_date"),
-                data.get("need_new_passport"), data.get("passport_no"),
+                data.get("need_new_passport"), passportNo,
                 data.get("actual_return_date"), data.get("operator"), id);
 
         saveAttachments(req, id);
@@ -543,6 +571,29 @@ public class TravelController {
         errors.addAll(Validators.checkDates(d, List.of(
                 new Validators.Field("approval_date", "批准日期"),
                 new Validators.Field("actual_return_date", "实际回国日期"))));
+
+        // 一本可用的证都没有，却说不做证——这条记录本身就是错的。
+        //
+        // 「够不够用」判不了：系统不知道这趟要用哪种证（明细表只有「地点、证照」那段
+        // 自由文本），有港澳通行证但要去美国这类情形只能靠经办人自己看。但「一本都
+        // 没有」是可判的，而且无论去哪都不可能有证用，属于硬错误。
+        //
+        // 「有证」要算有效期：一本过期护照等于没有。证照登记里填了号码就必须填有效
+        // 日期，所以这个判断的数据一定在。
+        String pfid = d.getOrDefault("personnel_filing_id", "");
+        if ("否".equals(d.get("need_new_passport")) && !pfid.isEmpty()) {
+            String today = today();
+            // 一个人可能有多条证照记录（历史遗留），任意一条里有在有效期内的证就算数
+            var usable = db.jdbc().queryForList(
+                    "SELECT 1 FROM certificates WHERE personnel_filing_id = ? AND ("
+                    + "  (passport_no IS NOT NULL AND passport_no != '' AND passport_expiry >= ?) OR"
+                    + "  (hm_pass_no  IS NOT NULL AND hm_pass_no  != '' AND hm_pass_expiry  >= ?) OR"
+                    + "  (tw_pass_no  IS NOT NULL AND tw_pass_no  != '' AND tw_pass_expiry  >= ?)) LIMIT 1",
+                    longOrNull(pfid), today, today, today);
+            if (usable.isEmpty()) {
+                errors.add("该备案人员名下没有在有效期内的出入境证件，「是否做证」应为「是」。");
+            }
+        }
         return errors;
     }
 
@@ -659,6 +710,7 @@ public class TravelController {
         model.addAttribute("attachments", atts);
         model.addAttribute("people", Helpers.personnelOptions(db.jdbc()));
         model.addAttribute("categoryOpts", Helpers.dictOptions(db.jdbc(), "travel_category"));
+        model.addAttribute("certNoDerived", IssuanceOps.travelHasIssuance(db.jdbc(), travelId));
         return "travel/form";
     }
 

@@ -199,6 +199,29 @@ public static partial class Validators
         return AddWorkingDays(baseDate, 10);
     }
 
+    /// <summary>判断路径B（做证）的新办证件是否逾期未交回。
+    ///
+    /// <para>路径B 的人没有领用记录——证是他凭同意申办函自己去公安办的，从没进过保管处，
+    /// 系统里没有「领用」这个动作可记。而 <see cref="IsCertOverdue"/> 的第一道判据是
+    /// passport_collect_date 非空，那个字段由领用记录派生，路径B 永远是空，于是
+    /// <b>这类人整个掉出了逾期告警</b>。偏偏他们风险最高：那本证从办出来起一直在本人
+    /// 手上，单位连见都没见过。</para>
+    ///
+    /// <para>这里换一套判据：证件是否已经进入证照台账。台账里有，说明已交回收缴
+    /// （登记时上交日期是必填的）；台账里没有——号码都还没录，或录了但没入库——就是
+    /// 还没交回。到期日沿用同一套算法（回国后 10 个工作日 / 取消后 5 个）。</para>
+    /// </summary>
+    public static bool IsNewCertOverdue(string? needNewPassport, bool certRegistered,
+                                        string? tripStatus, string? cancelDate,
+                                        string? actualReturnDate, string? travelEnd, string today)
+    {
+        if (needNewPassport != "是") return false;
+        if (certRegistered) return false;
+        var deadline = CertOverdueDeadline(tripStatus, cancelDate, actualReturnDate, travelEnd);
+        if (deadline.Length == 0) return false;
+        return string.CompareOrdinal(today, deadline) > 0;
+    }
+
     /// <summary>是否证件逾期未还：已领用 + 未归还 + today 严格大于到期日。</summary>
     public static bool IsCertOverdue(string? collectDate, string? returnDate, string? tripStatus,
                                      string? cancelDate, string? actualReturnDate, string? travelEnd,

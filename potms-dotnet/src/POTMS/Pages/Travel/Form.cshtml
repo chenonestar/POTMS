@@ -71,8 +71,17 @@
             <option value="否" selected="@(V("need_new_passport") == "否")">否（已有证件，路径A）</option>
             <option value="是" selected="@(V("need_new_passport") == "是")">是（需新办，路径B）</option>
         </select></div>
-    <div class="col-md-3"><label class="form-label">证件号码</label>
-        <input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="@V("passport_no")" placeholder="选已登记证件或手输新证件号" autocomplete="off">
+    <div class="col-md-3"><label class="form-label">证件号码@if (Model.CertNoDerived) { <span class="text-muted">(派生)</span> }</label>
+        @if (Model.CertNoDerived)
+        {
+            <input type="text" class="form-control" name="passport_no" id="tPassportNo" value="@V("passport_no")" placeholder="选已登记证件或手输新证件号" autocomplete="off" readonly>
+            <div class="form-text">由「证件领用」模块登记后自动带入，与领用凭证同源。</div>
+        }
+        else
+        {
+            <input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="@V("passport_no")" placeholder="选已登记证件或手输新证件号" autocomplete="off">
+            <div class="form-text">已有证件可下拉选；做证的新证号，拿到证后回本页补录。</div>
+        }
         <datalist id="certNoList"></datalist></div>
     <div class="col-md-3"><label class="form-label">实际回国日期</label>
         <input type="text" class="form-control" name="actual_return_date" value="@V("actual_return_date")" placeholder="YYYYMMDD" maxlength="8">

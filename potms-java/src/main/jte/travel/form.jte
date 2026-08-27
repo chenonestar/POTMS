@@ -9,6 +9,7 @@
 @param List<Map<String, Object>> attachments
 @param List<Helpers.PersonOption> people
 @param List<Helpers.DictOption> categoryOpts
+@param boolean certNoDerived
 !{String action = editing ? "/travel/" + travelId + "/edit" : "/travel/new";
   String selected = Fmt.v(data, "personnel_filing_id");}
 @template.layout(ctx = ctx, title = "因私出国（境）人员明细表", content = @`
@@ -89,10 +90,16 @@
             <h5>证件流转</h5>
             <div class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label">证件号码</label>
-                    <input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="${Fmt.v(data, "passport_no")}" placeholder="选已登记证件或手输新证件号" autocomplete="off">
-                    <datalist id="certNoList"></datalist>
-                    <div class="form-text">已有证件可下拉选，做证新号手输。</div>
+                    <label class="form-label">证件号码@if(certNoDerived) <span class="text-muted">(派生)</span>@endif</label>
+                    @if(certNoDerived)
+                        <input type="text" class="form-control" name="passport_no" id="tPassportNo" value="${Fmt.v(data, "passport_no")}" placeholder="选已登记证件或手输新证件号" autocomplete="off" readonly>
+                        <datalist id="certNoList"></datalist>
+                        <div class="form-text">由「证件领用」模块登记后自动带入，与领用凭证同源。</div>
+                    @else
+                        <input type="text" class="form-control" name="passport_no" id="tPassportNo" list="certNoList" value="${Fmt.v(data, "passport_no")}" placeholder="选已登记证件或手输新证件号" autocomplete="off">
+                        <datalist id="certNoList"></datalist>
+                        <div class="form-text">已有证件可下拉选；做证的新证号，拿到证后回本页补录。</div>
+                    @endif
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">证件领用日期 <span class="text-muted">(派生)</span></label>

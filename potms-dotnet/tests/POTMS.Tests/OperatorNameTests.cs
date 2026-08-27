@@ -49,7 +49,8 @@ public class OperatorNameTests(SeededDbAppFactory factory)
         try
         {
             await SaveFullName(client, Name);
-            var html = await (await client.GetAsync("/Issuance/Form")).Content.ReadAsStringAsync();
+            // 必须带上 travelId：不带时本页是「先选出国申请」的选择页，没有表单
+            var html = await (await client.GetAsync("/Issuance/Form?travelId=1")).Content.ReadAsStringAsync();
             Assert.Matches(new Regex("经办人（发放人）[\\s\\S]{0,200}value=\"" + Name + "\"[^>]*readonly"), html);
         }
         finally { await SaveFullName(client, ""); }

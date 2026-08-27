@@ -47,7 +47,7 @@ public class ViewModel(Db db, Flash flash) : AppPageModel(flash)
         var before = Helpers.RowSnapshot(cn, "cert_issuance", id);
         cn.Execute("UPDATE cert_issuance SET status='voided', void_reason=@r, updated_at=CURRENT_TIMESTAMP WHERE id=@id",
             new { r = voidReason, id });
-        IssuanceOps.SyncTravelDates(cn, row.TravelId);
+        IssuanceOps.SyncTravelDerived(cn, row.TravelId);
         Log(cn, "void", "cert_issuance", id, $"领用记录作废：{row.HolderName}，原因：{voidReason}",
             before, Helpers.RowSnapshot(cn, "cert_issuance", id));
         Flash.Info("领用记录已作废，如需更正请重新登记。");

@@ -12,6 +12,9 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
     public long? TravelId { get; private set; }
     public List<Attachment> ExistingAttachments { get; private set; } = [];
 
+    /// <summary>证件号码是否已由领用记录派生——是则表单上那一栏只读。</summary>
+    public bool CertNoDerived { get; private set; }
+
     public IActionResult OnGet(long? id, long? filingId)
     {
         TravelId = id; Editing = id.HasValue;
@@ -23,6 +26,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             foreach (var kv in (IDictionary<string, object?>)row) Data[kv.Key] = kv.Value?.ToString();
             ExistingAttachments = cn.Query<Attachment>(
                 "SELECT * FROM attachments WHERE travel_id=@id ORDER BY uploaded_at", new { id }).AsList();
+            CertNoDerived = IssuanceOps.TravelHasIssuance(cn, id);
             return Page();
         }
         Data["need_new_passport"] = "否";
@@ -34,16 +38,19 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
     {
         TravelId = id; Editing = id.HasValue;
         Data = Extract();
-        var errors = Validate(Data);
+        using var cn = db.Open();
+        var errors = Validate(cn, Data, Helpers.TodayLocal(cfg));
         errors.AddRange(Attachments.MissingErrors(Request.Form.Files, Data["need_new_passport"] ?? "否", Editing));
 
-        using var cn = db.Open();
         if (errors.Count > 0)
         {
             foreach (var e in errors) Flash.Danger(e);
             if (id is not null)
+            {
                 ExistingAttachments = cn.Query<Attachment>(
                     "SELECT * FROM attachments WHERE travel_id=@id ORDER BY uploaded_at", new { id }).AsList();
+                CertNoDerived = IssuanceOps.TravelHasIssuance(cn, id);
+            }
             return Page();
         }
 
@@ -67,6 +74,12 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         {
             var before = Helpers.RowSnapshot(cn, "travel_details", id!.Value);
             p.Add("id", id);
+            // 有领用记录时证件号码由领用记录派生，表单上是只读的，提交上来的值不能覆盖它
+            if (IssuanceOps.TravelHasIssuance(cn, id))
+            {
+                p.Add("pno", cn.QueryFirstOrDefault<string>(
+                    "SELECT passport_no FROM travel_details WHERE id=@id", new { id }));
+            }
             // 证件领用/归还日期为派生字段，由证件领用模块维护，此处不覆盖
             cn.Execute("UPDATE travel_details SET personnel_filing_id=@pfid, unit=@unit, department=@department, " +
                        "name=@name, position=@position, title=@title, id_number=@id_number, " +
@@ -115,7 +128,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         };
     }
 
-    private static List<string> Validate(Dictionary<string, string?> d)
+    private static List<string> Validate(System.Data.IDbConnection cn, Dictionary<string, string?> d, string today)
     {
         var errs = Validators.CheckRequired(d,
             ("personnel_filing_id", "备案人员"), ("unit", "单位"), ("department", "部门"),
@@ -132,6 +145,27 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         }
         errs.AddRange(Validators.CheckDates(d,
             ("approval_date", "批准日期"), ("actual_return_date", "实际回国日期")));
+
+        // 一本可用的证都没有，却说不做证——这条记录本身就是错的。
+        //
+        // 「够不够用」判不了：系统不知道这趟要用哪种证（明细表只有「地点、证照」那段
+        // 自由文本），有港澳通行证但要去美国这类情形只能靠经办人自己看。但「一本都
+        // 没有」是可判的，而且无论去哪都不可能有证用，属于硬错误。
+        //
+        // 「有证」要算有效期：一本过期护照等于没有。证照登记里填了号码就必须填有效
+        // 日期，所以这个判断的数据一定在。
+        if (d["need_new_passport"] == "否" && !string.IsNullOrEmpty(d["personnel_filing_id"]))
+        {
+            // 一个人可能有多条证照记录（历史遗留），任意一条里有在有效期内的证就算数
+            var usable = cn.QueryFirstOrDefault<long?>(
+                "SELECT 1 FROM certificates WHERE personnel_filing_id=@id AND (" +
+                "  (passport_no IS NOT NULL AND passport_no != '' AND passport_expiry >= @t) OR" +
+                "  (hm_pass_no  IS NOT NULL AND hm_pass_no  != '' AND hm_pass_expiry  >= @t) OR" +
+                "  (tw_pass_no  IS NOT NULL AND tw_pass_no  != '' AND tw_pass_expiry  >= @t)) LIMIT 1",
+                new { id = d["personnel_filing_id"], t = today });
+            if (usable is null)
+                errs.Add("该备案人员名下没有在有效期内的出入境证件，「是否做证」应为「是」。");
+        }
         return errs;
     }
 }

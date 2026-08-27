@@ -40,18 +40,26 @@ public static class IssuanceOps
     public static bool CanFixCertTypes(CertIssuance row) =>
         row.SignImage is null || row.SignImage.Length == 0;
 
-    /// <summary>把领用/归还日期回写到出行表（派生字段，本模块为唯一写入方）。
+    /// <summary>把领用/归还日期与证件号码回写到出行表（派生字段，本模块为唯一写入方）。
     ///
-    /// 取该出行下**未作废**记录中最早的领用日期；仅当全部已归还时取最晚归还日期，
-    /// 否则为空。若全部作废或无记录则清空，使逾期告警口径与领用记录始终一致。
+    /// <para>日期：取该出行下<b>未作废</b>记录中最早的领用日期；仅当全部已归还时取最晚
+    /// 归还日期，否则为空。若全部作废或无记录则清空，使逾期告警口径与领用记录始终一致。</para>
+    ///
+    /// <para>证件号码：一次申请一本证，所以该出行下所有未作废记录说的都是同一本；取
+    /// 最后一条的号码。号码原先是出行表单上手填的，与领用记录各写各的，打印件上
+    /// 「证件号码」和「证件领用日期」两个格子可能来自不同的证件。现在跟日期一样降级为
+    /// 派生——有领用记录就以领用记录为准。</para>
+    ///
+    /// <para><b>不清空</b>号码：路径B（做证）没有领用记录，那一栏是系统里唯一的来源，
+    /// 手填的值必须保留；领用记录全部作废时也保留，那仍是当时用的号码。</para>
     /// </summary>
-    public static void SyncTravelDates(IDbConnection cn, string? travelId)
+    public static void SyncTravelDerived(IDbConnection cn, string? travelId)
     {
         if (string.IsNullOrEmpty(travelId)) return;
-        SyncTravelDates(cn, long.Parse(travelId));
+        SyncTravelDerived(cn, long.Parse(travelId));
     }
 
-    public static void SyncTravelDates(IDbConnection cn, long? travelId)
+    public static void SyncTravelDerived(IDbConnection cn, long? travelId)
     {
         if (travelId is null) return;
         var agg = cn.QueryFirstOrDefault(
@@ -70,5 +78,53 @@ public static class IssuanceOps
                 r = string.IsNullOrEmpty(ret) ? null : ret,
                 id = travelId,
             });
+
+        var nos = cn.QueryFirstOrDefault<string>(
+            "SELECT cert_nos FROM cert_issuance WHERE travel_id=@t AND status != 'voided' " +
+            "  AND cert_nos IS NOT NULL AND cert_nos != '' ORDER BY id DESC LIMIT 1",
+            new { t = travelId });
+        if (!string.IsNullOrEmpty(nos))
+            cn.Execute("UPDATE travel_details SET passport_no=@n WHERE id=@id",
+                       new { n = nos, id = travelId });
     }
+
+    /// <summary>该出行是否已有未作废的领用记录——有的话证件号码由领用记录派生，
+    /// 出行表单上那一栏是只读的。</summary>
+    public static bool TravelHasIssuance(IDbConnection cn, long? travelId) =>
+        travelId is not null && cn.QueryFirstOrDefault<long?>(
+            "SELECT 1 FROM cert_issuance WHERE travel_id=@t AND status != 'voided' LIMIT 1",
+            new { t = travelId }) is not null;
+
+    /// <summary>做证的出行记录中，新证已经进入证照台账的那些 id。
+    ///
+    /// <para>判据是「明细表上补录的证件号码，出现在该人证照台账的三个号码槽之一」。
+    /// 台账登记时上交日期是必填的，所以「在台账里」等价于「已交回收缴」。号码没补录、
+    /// 或补录了但台账里没有，都算还没交回。</para>
+    ///
+    /// <para>JOIN 而不是子查询取一条：一个人可能有多条证照记录（历史遗留），只要
+    /// <b>任意一条</b>里出现了这个号码就算数。</para>
+    /// </summary>
+    public static HashSet<long> RegisteredCertTravelIds(IDbConnection cn) =>
+        cn.Query<long>(
+            "SELECT DISTINCT t.id FROM travel_details t " +
+            "JOIN certificates c ON c.personnel_filing_id = t.personnel_filing_id " +
+            "WHERE t.need_new_passport = '是' " +
+            "  AND t.passport_no IS NOT NULL AND t.passport_no != '' " +
+            "  AND t.passport_no IN (c.passport_no, c.hm_pass_no, c.tw_pass_no)").ToHashSet();
+
+    /// <summary>可以办理领用的出国申请。
+    ///
+    /// <para>排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还
+    /// 领用记录的申请（同一申请下不允许两本证同时在外——一次申请一本证）。
+    /// 「领用 → 归还 → 再领用」仍然可以，因为已归还的记录不在排除之列。</para>
+    /// </summary>
+    public static IEnumerable<TravelDetail> EligibleTravels(IDbConnection cn) =>
+        cn.Query<TravelDetail>(
+            "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, " +
+            "       t.approval_date, t.need_new_passport " +
+            "FROM travel_details t " +
+            "WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' " +
+            "  AND NOT EXISTS (SELECT 1 FROM cert_issuance c " +
+            "                  WHERE c.travel_id = t.id AND c.status = 'issued') " +
+            "ORDER BY t.created_at DESC");
 }

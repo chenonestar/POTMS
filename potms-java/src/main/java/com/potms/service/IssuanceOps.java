@@ -59,13 +59,20 @@ public final class IssuanceOps {
     }
 
     /**
-     * 把领用/归还日期回写到出行表。本模块是这两个派生字段的唯一写入方。
+     * 把领用/归还日期与证件号码回写到出行表。本模块是这些派生字段的唯一写入方。
      *
-     * <p>取该出行下**未作废**记录中最早的领用日期；归还日期只有在所有未作废记录
-     * 都已归还时才写入（取最晚），否则留空——否则「部分归还」会被误判为已还清，
+     * <p>日期：取该出行下<b>未作废</b>记录中最早的领用日期；归还日期只有在所有未作废
+     * 记录都已归还时才写入（取最晚），否则留空——否则「部分归还」会被误判为已还清，
      * 逾期告警就失真了。全部作废或无记录时一律清空。
+     *
+     * <p>证件号码：一次申请一本证，所以该出行下所有未作废记录说的都是同一本；取最后
+     * 一条的号码。号码原先是出行表单上手填的，与领用记录各写各的，打印件上「证件号码」
+     * 和「证件领用日期」两个格子可能来自不同的证件。现在跟日期一样降级为派生。
+     *
+     * <p><b>不清空</b>号码：路径B（做证）没有领用记录，那一栏是系统里唯一的来源，
+     * 手填的值必须保留；领用记录全部作废时也保留，那仍是当时用的号码。
      */
-    public static void syncTravelDates(JdbcTemplate jdbc, Long travelId) {
+    public static void syncTravelDerived(JdbcTemplate jdbc, Long travelId) {
         if (travelId == null) {
             return;
         }
@@ -83,6 +90,65 @@ public final class IssuanceOps {
         }
         jdbc.update("UPDATE travel_details SET passport_collect_date=?, passport_return_date=? "
                 + "WHERE id=?", collect, ret, travelId);
+
+        var nos = jdbc.queryForList(
+                "SELECT cert_nos FROM cert_issuance WHERE travel_id = ? AND status != 'voided' "
+                + "  AND cert_nos IS NOT NULL AND cert_nos != '' ORDER BY id DESC LIMIT 1",
+                String.class, travelId);
+        if (!nos.isEmpty()) {
+            jdbc.update("UPDATE travel_details SET passport_no=? WHERE id=?", nos.get(0), travelId);
+        }
+    }
+
+    /**
+     * 该出行是否已有未作废的领用记录——有的话证件号码由领用记录派生，
+     * 出行表单上那一栏是只读的。
+     */
+    public static boolean travelHasIssuance(JdbcTemplate jdbc, Long travelId) {
+        if (travelId == null) {
+            return false;
+        }
+        return !jdbc.queryForList(
+                "SELECT 1 FROM cert_issuance WHERE travel_id = ? AND status != 'voided' LIMIT 1",
+                travelId).isEmpty();
+    }
+
+    /**
+     * 做证的出行记录中，新证已经进入证照台账的那些 id。
+     *
+     * <p>判据是「明细表上补录的证件号码，出现在该人证照台账的三个号码槽之一」。台账
+     * 登记时上交日期是必填的，所以「在台账里」等价于「已交回收缴」。号码没补录、或
+     * 补录了但台账里没有，都算还没交回。
+     *
+     * <p>JOIN 而不是子查询取一条：一个人可能有多条证照记录（历史遗留），只要
+     * <b>任意一条</b>里出现了这个号码就算数。
+     */
+    public static java.util.Set<Long> registeredCertTravelIds(JdbcTemplate jdbc) {
+        return new java.util.HashSet<>(jdbc.queryForList(
+                "SELECT DISTINCT t.id FROM travel_details t "
+                + "JOIN certificates c ON c.personnel_filing_id = t.personnel_filing_id "
+                + "WHERE t.need_new_passport = '是' "
+                + "  AND t.passport_no IS NOT NULL AND t.passport_no != '' "
+                + "  AND t.passport_no IN (c.passport_no, c.hm_pass_no, c.tw_pass_no)",
+                Long.class));
+    }
+
+    /**
+     * 可以办理领用的出国申请。
+     *
+     * <p>排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还领用
+     * 记录的申请（同一申请下不允许两本证同时在外——一次申请一本证）。
+     * 「领用 → 归还 → 再领用」仍然可以，因为已归还的记录不在排除之列。
+     */
+    public static List<Map<String, Object>> eligibleTravels(JdbcTemplate jdbc) {
+        return jdbc.queryForList(
+                "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, "
+                + "       t.approval_date, t.need_new_passport "
+                + "FROM travel_details t "
+                + "WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' "
+                + "  AND NOT EXISTS (SELECT 1 FROM cert_issuance c "
+                + "                  WHERE c.travel_id = t.id AND c.status = 'issued') "
+                + "ORDER BY t.created_at DESC");
     }
 
     private static Object blankToNull(Object o) {

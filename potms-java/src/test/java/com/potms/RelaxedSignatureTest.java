@@ -40,7 +40,7 @@ class RelaxedSignatureTest {
     @Test
     @DisplayName("放宽模式下签名板标「可留空」并给出提示")
     void padShowsRelaxedHint() throws Exception {
-        String body = app.get("/issuance/new").body();
+        String body = app.get("/issuance/new?travel_id=1").body();
         assertTrue(body.contains("可留空"), "签名板未标注「可留空」");
         assertTrue(body.contains("非强制"), "未提示当前为非强制模式");
         assertTrue(body.contains("var signRequired = false"),
@@ -51,8 +51,15 @@ class RelaxedSignatureTest {
     @DisplayName("放宽模式下不签名也能提交，库里如实存 NULL")
     void submitsWithoutSignature() throws Exception {
         String id = AppUnderTest.validId();
-        var res = app.post("/issuance/new", "csrf_token=" + app.token("/issuance/new")
-                + "&personnel_filing_id=1&holder_name=" + e("史迪威")
+        // 种子数据里出行 1 已经有一条未归还的领用记录，一次申请只能有一本证在外，
+        // 所以另造一条申请来承接本次登记
+        app.sql("INSERT INTO travel_details (id, personnel_filing_id, unit, department, name, "
+                + "position, id_number, destination_passport, category, travel_dates, "
+                + "travel_start, travel_end, operator, need_new_passport, trip_status) "
+                + "VALUES (2,1,'总部','办公室','史迪威','处级','" + id + "','法国','因私',"
+                + "'2026/10/01-2026/10/10','20261001','20261010','admin','否','normal')");
+        var res = app.post("/issuance/new", "csrf_token=" + app.token("/issuance/new?travel_id=2")
+                + "&travel_id=2&personnel_filing_id=1&holder_name=" + e("史迪威")
                 + "&id_number=" + id + "&cert_types=01&cert_nos=E1234567"
                 + "&issue_date=20260803&sign_png=");
         assertEquals(302, res.statusCode(),
@@ -66,8 +73,8 @@ class RelaxedSignatureTest {
     @Test
     @DisplayName("放宽只放开「留空」，坏签名照样拒绝")
     void stillRejectsMalformedSignature() throws Exception {
-        var res = app.post("/issuance/new", "csrf_token=" + app.token("/issuance/new")
-                + "&personnel_filing_id=1&holder_name=" + e("史迪威")
+        var res = app.post("/issuance/new", "csrf_token=" + app.token("/issuance/new?travel_id=1")
+                + "&travel_id=1&personnel_filing_id=1&holder_name=" + e("史迪威")
                 + "&id_number=" + AppUnderTest.validId()
                 + "&cert_types=01&cert_nos=E1234567&issue_date=20260804"
                 + "&sign_png=" + e("data:image/jpeg;base64,AAAA"));

@@ -60,7 +60,7 @@ class OperatorNameTest {
     @DisplayName("未填姓名时仪表盘提示一次，且单据回退到登录账号")
     void promptsWhenNameMissing() throws Exception {
         assertTrue(app.get("/").body().contains("尚未填写"), "未填姓名时仪表盘应提示");
-        assertTrue(app.get("/issuance/new").body().contains("value=\"admin\""),
+        assertTrue(app.get("/issuance/new?travel_id=1").body().contains("value=\"admin\""),
                 "未填姓名时领用表单的经办人应回退到登录账号");
     }
 
@@ -77,7 +77,7 @@ class OperatorNameTest {
     @Order(4)
     @DisplayName("单据与打印件的经办人用真实姓名")
     void documentsUseRealName() throws Exception {
-        assertTrue(app.get("/issuance/new").body().contains("value=\"" + NAME + "\""),
+        assertTrue(app.get("/issuance/new?travel_id=1").body().contains("value=\"" + NAME + "\""),
                 "领用表单的经办人应显示真实姓名");
         assertTrue(app.get("/print/filing/1").body().contains("操作人：" + NAME),
                 "打印页脚的操作人应显示真实姓名");

@@ -345,7 +345,7 @@ class PageSmokeTest {
     static List<String> staticAssets() throws Exception {
         var found = new java.util.TreeSet<String>();
         Pattern ref = Pattern.compile("(?:href|src)=\"(/static/[^\"]+)\"");
-        for (String page : List.of("/login", "/", "/issuance/new", "/personnel/info/new")) {
+        for (String page : List.of("/login", "/", "/issuance/new?travel_id=1", "/personnel/info/new")) {
             Matcher m = ref.matcher(seeded.get(page).body());
             while (m.find()) {
                 found.add(m.group(1));
@@ -493,7 +493,7 @@ class PageSmokeTest {
                     + "'2026/09/01-2026/09/10','20260901','20260910','admin','否','normal')");
             sql("INSERT INTO attachments (id, travel_id, file_name, file_path, file_type, file_size) "
                     + "VALUES (1,1,'申请表.pdf','nonexistent.pdf','个人申请报告',1024)");
-            post("/issuance/new", "csrf_token=" + token("/issuance/new")
+            post("/issuance/new", "csrf_token=" + token("/issuance/new?travel_id=1")
                     + "&travel_id=1&personnel_filing_id=1&holder_name=" + e("史迪威")
                     + "&id_number=" + id + "&cert_types=01&cert_nos=E1234567"
                     + "&issue_date=20260802&sign_png=" + e(pngDataUrl()));

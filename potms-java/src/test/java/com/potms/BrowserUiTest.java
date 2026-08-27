@@ -83,7 +83,7 @@ class BrowserUiTest {
     @DisplayName("鼠标能在签名板上画出墨迹，并写入提交用的隐藏域")
     void mouseDrawsInk() throws Exception {
         login();
-        open("/issuance/new");
+        open("/issuance/new?travel_id=1");
         waitFor("!!document.getElementById('signCanvas') && !!window.POTMSSignature",
                 "签名画布或 signature.js 没加载出来");
 

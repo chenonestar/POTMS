@@ -88,6 +88,23 @@ public class DashboardController {
                         st == null || str(st).isEmpty() ? "normal" : str(st)));
             }
         }
+        // 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
+        // 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
+        // IssuanceOps.registeredCertTravelIds 与 Validators.isNewCertOverdue。
+        var registered = com.potms.service.IssuanceOps.registeredCertTravelIds(jdbc);
+        for (Map<String, Object> r : jdbc.queryForList(
+                "SELECT id, name, need_new_passport, actual_return_date, travel_end, "
+                + "trip_status, cancel_date FROM travel_details "
+                + "WHERE need_new_passport = '是' "
+                + "AND (passport_collect_date IS NULL OR passport_collect_date = '')")) {
+            long tid = ((Number) r.get("id")).longValue();
+            if (Validators.isNewCertOverdue(r, today, registered.contains(tid))) {
+                Object st = r.get("trip_status");
+                overdue.add(new OverdueItem(str(r.get("name")),
+                        Validators.certOverdueDeadline(r),
+                        st == null || str(st).isEmpty() ? "normal" : str(st)));
+            }
+        }
         overdue.sort(Comparator.comparing(OverdueItem::deadline));
         model.addAttribute("certInUse", (long) inUse.size());
         model.addAttribute("certOverdue", (long) overdue.size());
