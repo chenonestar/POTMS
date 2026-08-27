@@ -112,12 +112,13 @@
     <h5>领用证件</h5>
     <div class="row g-3">
         <div class="col-md-6">
-            <label class="form-label required">证件种类（可多选）</label>
+            @* 一次出国申请只领一本证，界面就该是单选——服务端也拦，但摆着复选框等于请人踩坑 *@
+            <label class="form-label required">证件种类</label>
             <div>
                 @foreach (var o in types)
                 {
                     <div class="form-check">
-                        <input class="form-check-input cert-type" type="checkbox" name="cert_types" value="@o.Code" id="ct@(o.Code)"
+                        <input class="form-check-input cert-type" type="radio" name="cert_types" value="@o.Code" id="ct@(o.Code)" required
                                checked="@Model.SelectedTypes.Contains(o.Code)">
                         <label class="form-check-label" for="ct@(o.Code)">@o.Value</label>
                     </div>

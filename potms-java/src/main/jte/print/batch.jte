@@ -109,6 +109,26 @@
     @endfor
     </tbody>
 </table>
+
+@elseif(mode.equals("issuance"))
+<table>
+    <thead><tr><th>单位</th><th>领用人</th><th>身份证号</th><th>证件种类</th><th>证件号码</th><th>领用日期</th><th>经办人（发放）</th><th>领用人签名</th><th>归还日期</th><th>经办人（接收）</th><th>归还人签名</th><th>状态</th><th>备注</th></tr></thead>
+    <tbody>
+    @for(var r : docs)
+    <tr>
+        <td>${r.get("work_unit")}</td><td>${r.get("holder_name")}</td><td>${r.get("id_number")}</td>
+        <%-- 种类标签由后端算好再下发，模板只负责摆 --%>
+        <td>${r.get("cert_types_label")}</td><td>${r.get("cert_nos")}</td>
+        <td>${r.get("issue_date")}</td><td>${r.get("issuer")}</td>
+        <%-- 签名按行取图，不往页面里塞 BLOB；缺签名时留空，与单条打印一致 --%>
+        <td>@if(!r.get("has_sign").isEmpty())<img src="/issuance/${r.get("_id")}/signature.png" alt="领用人签名" style="height:32px;">@endif</td>
+        <td>${r.get("return_date")}</td><td>${r.get("return_operator")}</td>
+        <td>@if(!r.get("has_return_sign").isEmpty())<img src="/issuance/${r.get("_id")}/signature.png?kind=return" alt="归还人签名" style="height:32px;">@endif</td>
+        <td>${r.get("status_label")}</td><td>${r.get("remarks")}</td>
+    </tr>
+    @endfor
+    </tbody>
+</table>
 @endif
 
 <p class="meta">打印日期：<span id="pd"></span>　｜　共 ${docs.size()} 条记录</p>

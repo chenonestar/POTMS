@@ -19,7 +19,7 @@ public class ViewPageModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
         var t = cn.QueryFirstOrDefault<TravelDetail>("SELECT * FROM travel_details WHERE id=@id", new { id });
         if (t is null) { Flash.Danger("记录不存在。"); return Redirect("/Travel"); }
         Travel = t;
-        Files = cn.Query<Attachment>("SELECT * FROM attachments WHERE travel_id=@id ORDER BY uploaded_at",
+        Files = cn.Query<Attachment>("SELECT * FROM attachments WHERE travel_id=@id ORDER BY " + Attachments.FileTypeOrderSql() + ", id",
             new { id }).AsList();
         Issuances = cn.Query<CertIssuance>("SELECT * FROM cert_issuance WHERE travel_id=@id ORDER BY issue_date DESC",
             new { id }).AsList();

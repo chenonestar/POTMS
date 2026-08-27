@@ -13,6 +13,7 @@
 @param Map<String, Long> typeCounts
 @param long totalAtt
 @param List<String> types
+@param String sort
 @template.layout(ctx = ctx, title = "附件总览", content = @`
     <div class="d-flex justify-content-between align-items-center mb-3 mt-3">
         <h4><i class="bi bi-paperclip"></i> 附件总览</h4>
@@ -67,6 +68,10 @@
             <div class="col-md-2"><select class="form-select form-select-sm" name="file_type">
                 <option value="">全部类型</option>
                 @for(var t : types)<option value="${t}" selected="${Fmt.is(typeFilter, t)}">${t}</option>@endfor
+            </select></div>
+            <div class="col-md-3"><select class="form-select form-select-sm" name="sort" onchange="this.form.submit()">
+                <option value="batch" selected="${Fmt.is(sort, "batch")}">按出国批次（同一申请聚在一起）</option>
+                <option value="uploaded" selected="${Fmt.is(sort, "uploaded")}">按上传时间</option>
             </select></div>
             <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_from" placeholder="上传起 YYYY-MM-DD" value="${dateFrom}"></div>
             <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="date_to" placeholder="上传止 YYYY-MM-DD" value="${dateTo}"></div>

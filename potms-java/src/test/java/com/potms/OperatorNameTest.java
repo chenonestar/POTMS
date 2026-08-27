@@ -87,9 +87,14 @@ class OperatorNameTest {
     @Order(5)
     @DisplayName("新写入的业务记录记姓名，操作日志仍记账号")
     void newRecordsUseNameLogsKeepAccount() throws Exception {
+        // 证照一人一行：备案人 1 在种子数据里已经有一条，这里另建一个人来登记
+        app.sql("INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,id_number,"
+                + "residence,political_status,work_unit,position_or_title,supervisor_unit,operator) "
+                + "VALUES (77,'另','一人','男','19900101','110101199001012133','浙江宁波市鄞州区',"
+                + "'群众','总部','科长','人事处','admin')");
         app.post("/certificate/new", "csrf_token=" + app.token("/certificate/new")
-                + "&personnel_filing_id=1&unit=" + e("总部") + "&department=" + e("办公室")
-                + "&name=" + e("史迪威") + "&passport_no=E7654321"
+                + "&personnel_filing_id=77&unit=" + e("总部") + "&department=" + e("办公室")
+                + "&name=" + e("另一人") + "&passport_no=E7654321"
                 + "&passport_expiry=20311231&passport_submit_date=20260201");
 
         assertEquals(NAME, app.queryOne(

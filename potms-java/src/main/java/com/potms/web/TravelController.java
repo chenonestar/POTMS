@@ -187,8 +187,44 @@ public class TravelController {
     /** 缺件项：某条出行还差哪几类附件。 */
     public record MissingItem(long id, String name, String unit, String path, List<String> lack) {}
 
+    /**
+     * 把附件类型排成办件顺序（个人申请报告 → 审批表 → 同意申办函）的 CASE 表达式。
+     *
+     * <p>这三个中文词按任何排序规则（拼音、笔画、UTF-8 码位）都排不出办件顺序，只能显式
+     * 指定。次序直接取自 {@link #REQUIRED_B}——那里已经定义了必备附件的先后，再手抄一份
+     * 迟早两边漂移。表里出现的其它类型统一排在最后。
+     */
+    private static String fileTypeOrderSql(String col) {
+        StringBuilder sb = new StringBuilder("CASE ").append(col);
+        for (int i = 0; i < REQUIRED_B.size(); i++) {
+            sb.append(" WHEN '").append(REQUIRED_B.get(i)).append("' THEN ").append(i + 1);
+        }
+        return sb.append(" ELSE ").append(REQUIRED_B.size() + 1).append(" END").toString();
+    }
+
+    /**
+     * 附件总览的排序方式，白名单取值，不把查询串直接拼进 SQL。
+     *
+     * <p>batch（默认）：先把同一条出行申请的附件聚成一组，组间与「出国明细」列表同序
+     * （created_at DESC），组内按办件顺序。此前只按 uploaded_at 排，一旦有过补传，那条
+     * 申请的附件就会被别人的插在中间，翻起来对不上人。
+     *
+     * <p>uploaded：保留原来的按上传时间倒序，找「最近传了什么」时更顺手。
+     *
+     * <p>两种都以 a.id 收尾：uploaded_at 是 CURRENT_TIMESTAMP，只精确到秒，同一次提交
+     * 上传的多个文件时间戳完全相同，没有兜底列的话它们之间的先后在 SQL 层面是未定义的。
+     */
+    private static String attOrderBy(String sort) {
+        return "uploaded".equals(sort)
+                ? " ORDER BY a.uploaded_at DESC, a.id"
+                : " ORDER BY t.created_at DESC, t.id DESC, " + fileTypeOrderSql("a.file_type") + ", a.id";
+    }
+
+    private static final String ATT_SORT_DEFAULT = "batch";
+
     @GetMapping("/travel/attachments")
     public String attachments(HttpServletRequest req, Model model) {
+        String sort = "uploaded".equals(param(req, "sort", "")) ? "uploaded" : ATT_SORT_DEFAULT;
         Filter f = new Filter();
         f.like("(t.name LIKE ? OR a.file_name LIKE ?)", req.getParameter("search"), 2);
         f.eq("a.file_type", req.getParameter("file_type"));
@@ -204,7 +240,7 @@ public class TravelController {
                 "SELECT a.id, a.file_name, a.file_type, a.file_size, a.uploaded_at, "
                 + "t.id AS travel_id, t.name, t.unit, t.destination_passport, t.travel_dates "
                 + "FROM attachments a JOIN travel_details t ON a.travel_id = t.id WHERE 1=1"
-                + f.where() + " ORDER BY a.uploaded_at DESC", f.params());
+                + f.where() + attOrderBy(sort), f.params());
 
         // 缺件检查：一次取全部附件建映射，避免逐条出行再查一次
         Map<Long, Set<String>> have = new HashMap<>();
@@ -247,6 +283,7 @@ public class TravelController {
         model.addAttribute("typeCounts", typeCounts);
         model.addAttribute("totalAtt", count("SELECT COUNT(*) FROM attachments"));
         model.addAttribute("types", REQUIRED_B);
+        model.addAttribute("sort", sort);
         return "travel/attachments";
     }
 

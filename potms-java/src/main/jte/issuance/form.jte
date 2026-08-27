@@ -70,7 +70,7 @@
                     <div>
                         @for(var o : certTypeOpts)
                             <div class="form-check">
-                                <input class="form-check-input cert-type" type="checkbox" name="cert_types" value="${o.code()}" id="ct${o.code()}" checked="${picked.contains(o.code())}">
+                                <input class="form-check-input cert-type" type="radio" name="cert_types" required value="${o.code()}" id="ct${o.code()}" checked="${picked.contains(o.code())}">
                                 <label class="form-check-label" for="ct${o.code()}">${o.value()}</label>
                             </div>
                         @endfor

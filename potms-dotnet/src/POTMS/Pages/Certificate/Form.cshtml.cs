@@ -50,9 +50,21 @@ public class FormModel(Db db, Flash flash) : AppPageModel(flash)
         CertId = id; Editing = id.HasValue;
         Data = Extract();
         var errors = Validate(Data);
-        if (errors.Count > 0) { foreach (var e in errors) Flash.Danger(e); return Page(); }
 
         using var cn = db.Open();
+        // 一人一行：三种证件是同一行上的三组列，本来就装得下一个人的全部证件。
+        // 需求文档写明「一行为一人」，但此前代码从未拦过，现实里很容易变成「没找到
+        // 原记录就又建一条」——于是同一个人两个编辑入口，到期预警报两遍，想改护照
+        // 有效期还得先点进去看哪条里有护照。
+        if (!Editing && !string.IsNullOrEmpty(Data["personnel_filing_id"]))
+        {
+            var dup = cn.QueryFirstOrDefault<long?>(
+                "SELECT id FROM certificates WHERE personnel_filing_id=@id ORDER BY id LIMIT 1",
+                new { id = Data["personnel_filing_id"] });
+            if (dup is not null)
+                errors.Add($"该备案人员已有证照记录（#{dup}）。三类证件登记在同一条记录上，请直接编辑那一条，不要新建。");
+        }
+        if (errors.Count > 0) { foreach (var e in errors) Flash.Danger(e); return Page(); }
         var p = new DynamicParameters();
         foreach (var k in new[] { "personnel_filing_id", "unit", "department", "name",
                                   "passport_no", "passport_expiry", "passport_submit_date",
@@ -73,6 +85,11 @@ public class FormModel(Db db, Flash flash) : AppPageModel(flash)
             Log(cn, "update", "certificates", id, before: before,
                 after: Helpers.RowSnapshot(cn, "certificates", id.Value));
             Flash.Success("证照信息已更新。");
+            // 换发新证时最容易漏的一步：号码换了，有效期或上交日期还留着旧证的。
+            // 台账是到期预警与「有没有可用证件」校验的唯一依据，日期不准这两样都会失灵。
+            // 号码变化是换发的确切信号，此时提醒一次，成本为零。
+            foreach (var label in RenewedLabels(before, Data))
+                Flash.Warning($"{label}号码已变更：请确认有效日期与上交日期同步更新为新证的。");
         }
         else
         {
@@ -88,6 +105,23 @@ public class FormModel(Db db, Flash flash) : AppPageModel(flash)
             Flash.Success("证照登记已保存。");
         }
         return Redirect("/Certificate");
+    }
+
+    /// <summary>哪几类证件的号码发生了变化（旧号码非空且与新号码不同）。
+    ///
+    /// <para>只认「换发」：从空到有是首次登记，不提醒；改回空是注销，也不提醒。</para>
+    /// </summary>
+    private static List<string> RenewedLabels(Dictionary<string, object?>? before, Dictionary<string, string?> after)
+    {
+        var out_ = new List<string>();
+        if (before is null) return out_;
+        foreach (var (no, _, _, label) in CertGroups)
+        {
+            var old = (before.TryGetValue(no, out var v) ? v?.ToString() : "")?.Trim() ?? "";
+            var now = (after.TryGetValue(no, out var w) ? w : "")?.Trim() ?? "";
+            if (old.Length > 0 && now.Length > 0 && old != now) out_.Add(label);
+        }
+        return out_;
     }
 
     private Dictionary<string, string?> Extract()

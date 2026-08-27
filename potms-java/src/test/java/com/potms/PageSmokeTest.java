@@ -217,10 +217,14 @@ class PageSmokeTest {
     }
 
     @Test
-    @DisplayName("领用凭证不做批量打印，与 Python 版一致")
-    void batchPrintRejectsIssuance() throws Exception {
-        // 逐份签字的单据摊成清单没有意义，签名图也放不进去
-        assertEquals(302, seeded.get("/print/batch/issuance?ids=1").statusCode());
+    @DisplayName("领用凭证也能批量打印，与 Python 版一致")
+    void batchPrintCoversIssuance() throws Exception {
+        // 领用凭证归档时要按批出。签名按行取图（src 指向 signature.png），
+        // 不往页面里塞 BLOB，一行一份摆得下。
+        var res = seeded.get("/print/batch/issuance?ids=1");
+        assertEquals(200, res.statusCode());
+        assertTrue(res.body().contains("因私出国（境）证件领用登记表"), "批量打印页标题不对");
+        assertTrue(res.body().contains("因私护照"), "证件种类应印中文，不能印出裸代码");
     }
 
     @Test

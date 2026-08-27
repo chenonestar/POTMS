@@ -47,11 +47,13 @@ public class PrintController {
     /**
      * 支持批量打印的类型。
      *
-     * <p>不含 issuance，与 Python 版一致：领用凭证是逐份签字的单据，
-     * 摊成一行行的清单没有意义，签名图也放不进去。
+     * <p>含 issuance：领用凭证虽是逐份签字的单据，但归档时要按批出，签名图按行取
+     * （src 指向 /issuance/{id}/signature.png，不往页面里塞 BLOB），一行一份也摆得下。
+     * 此前这里把 issuance 排除在外，并注称「与 Python 版一致」——那句注释是错的，
+     * Python 版一直支持领用的批量打印。
      */
     private static final java.util.Set<String> BATCH_KINDS =
-            java.util.Set.of("info", "filing", "certificate", "travel", "decontrol");
+            java.util.Set.of("info", "filing", "certificate", "travel", "decontrol", "issuance");
 
     private final Db db;
     private final com.potms.Config cfg;

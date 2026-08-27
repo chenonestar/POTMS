@@ -16,6 +16,7 @@
         <h4><i class="bi bi-vector-pen"></i> 证件领用登记</h4>
         <div>
             <a href="/issuance/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新增领用</a>
+            <button type="button" class="btn btn-outline-success ms-1" onclick="batchPrint('issuance')"><i class="bi bi-printer"></i> 批量打印</button>
             <a href="/export/issuance" class="btn btn-outline-success ms-1"><i class="bi bi-file-earmark-excel"></i> 导出</a>
         </div>
     </div>
@@ -43,16 +44,18 @@
     <div class="table-card"><div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead class="table-light"><tr>
+                <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
                 <th>领用日期</th><th>持证人</th><th>工作单位</th><th>证件种类</th><th>证件号码</th>
                 <th>状态</th><th>归还日期</th><th>签名</th><th>操作</th>
             </tr></thead>
             <tbody>
             @if(items.rows().isEmpty())
-                <tr><td colspan="9" class="text-center text-muted py-4">暂无领用记录</td></tr>
+                <tr><td colspan="10" class="text-center text-muted py-4">暂无领用记录</td></tr>
             @endif
             @for(var r : items.rows())
                 !{long id = Fmt.n(r, "id"); String st = Fmt.s(r, "status");}
                 <tr class="${"voided".equals(st) ? "row-muted" : ""}">
+                    <td><input type="checkbox" class="row-check" value="${id}"></td>
                     <td>${Fmt.s(r, "issue_date")}</td>
                     <td>${Fmt.s(r, "holder_name")}</td>
                     <td title="${Fmt.s(r, "work_unit")}">${Fmt.s(r, "work_unit")}</td>

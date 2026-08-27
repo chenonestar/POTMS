@@ -133,6 +133,15 @@ public class CertificateController {
     public String create(HttpServletRequest req, Model model) {
         Map<String, String> data = extract(req);
         List<String> errors = validate(data);
+        // 一人一行：三种证件是同一行上的三组列，本来就装得下一个人的全部证件。
+        // 需求文档写明「一行为一人」，但此前代码从未拦过，现实里很容易变成「没找到
+        // 原记录就又建一条」——于是同一个人两个编辑入口，到期预警报两遍，想改护照
+        // 有效期还得先点进去看哪条里有护照。
+        Long dupId = existingCertId(data.get("personnel_filing_id"));
+        if (dupId != null) {
+            errors.add("该备案人员已有证照记录（#" + dupId
+                    + "）。三类证件登记在同一条记录上，请直接编辑那一条，不要新建。");
+        }
         if (!errors.isEmpty()) {
             errors.forEach(e -> Flash.danger(req, e));
             return render(req, model, data, false, null);
@@ -188,6 +197,12 @@ public class CertificateController {
                 "update", "certificate", id, null, before,
                 Helpers.rowSnapshot(db.jdbc(), "certificates", id));
         Flash.success(req, "证照信息已更新。");
+        // 换发新证时最容易漏的一步：号码换了，有效期或上交日期还留着旧证的。
+        // 台账是到期预警与「有没有可用证件」校验的唯一依据，日期不准这两样都会失灵。
+        // 号码变化是换发的确切信号，此时提醒一次，成本为零。
+        for (String label : renewedLabels(before, data)) {
+            Flash.warning(req, label + "号码已变更：请确认有效日期与上交日期同步更新为新证的。");
+        }
         return "redirect:/certificate";
     }
 
@@ -220,6 +235,38 @@ public class CertificateController {
         }
         d.put("operator", operatorName(req));
         return d;
+    }
+
+    /** 该备案人员是否已有证照记录；有则返回其 id。 */
+    private Long existingCertId(String personnelFilingId) {
+        if (personnelFilingId == null || personnelFilingId.isBlank()) {
+            return null;
+        }
+        var rows = db.jdbc().queryForList(
+                "SELECT id FROM certificates WHERE personnel_filing_id = ? ORDER BY id LIMIT 1",
+                Long.valueOf(personnelFilingId));
+        return rows.isEmpty() ? null : ((Number) rows.get(0).get("id")).longValue();
+    }
+
+    /**
+     * 哪几类证件的号码发生了变化（旧号码非空且与新号码不同）。
+     *
+     * <p>只认「换发」：从空到有是首次登记，不提醒；改回空是注销，也不提醒。
+     */
+    private static List<String> renewedLabels(Map<String, Object> before, Map<String, String> after) {
+        List<String> out = new ArrayList<>();
+        if (before == null) {
+            return out;
+        }
+        for (String[] k : KINDS) {
+            Object o = before.get(k[0]);
+            String old = o == null ? "" : o.toString().trim();
+            String now = after.getOrDefault(k[0], "").trim();
+            if (!old.isEmpty() && !now.isEmpty() && !old.equals(now)) {
+                out.add(k[4]);      // 用全称，与预警文案一致
+            }
+        }
+        return out;
     }
 
     private List<String> validate(Map<String, String> d) {

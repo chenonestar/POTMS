@@ -18,6 +18,21 @@ public static class Attachments
     public static readonly string[] RequiredPathA = ["个人申请报告", "审批表"];
     public static readonly string[] RequiredPathB = ["个人申请报告", "审批表", "同意申办函"];
 
+    /// <summary>把附件类型排成办件顺序（个人申请报告 → 审批表 → 同意申办函）的 CASE 表达式。
+    ///
+    /// <para>这三个中文词按任何排序规则（拼音、笔画、UTF-8 码位）都排不出办件顺序，只能
+    /// 显式指定。次序直接取自 <see cref="RequiredPathB"/>——那里已经定义了必备附件的先后，
+    /// 再手抄一份迟早两边漂移。表里出现的其它类型统一排在最后。</para>
+    ///
+    /// <para>以 id 收尾：uploaded_at 是 CURRENT_TIMESTAMP，只精确到秒，同一次提交上传的
+    /// 多个文件时间戳完全相同，没有兜底列的话它们之间的先后在 SQL 层面是未定义的。</para>
+    /// </summary>
+    public static string FileTypeOrderSql(string col = "file_type")
+    {
+        var whens = string.Join(" ", RequiredPathB.Select((t, i) => $"WHEN '{t}' THEN {i + 1}"));
+        return $"CASE {col} {whens} ELSE {RequiredPathB.Length + 1} END";
+    }
+
     private static readonly byte[] PdfMagic = "%PDF-"u8.ToArray();
 
     /// <summary>魔数校验：真实 PDF 以 %PDF- 开头，防止改扩展名的任意文件入库。</summary>

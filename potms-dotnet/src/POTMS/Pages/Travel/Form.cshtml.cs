@@ -25,7 +25,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             if (row is null) { Flash.Danger("记录不存在。"); return Redirect("/Travel"); }
             foreach (var kv in (IDictionary<string, object?>)row) Data[kv.Key] = kv.Value?.ToString();
             ExistingAttachments = cn.Query<Attachment>(
-                "SELECT * FROM attachments WHERE travel_id=@id ORDER BY uploaded_at", new { id }).AsList();
+                "SELECT * FROM attachments WHERE travel_id=@id ORDER BY " + Attachments.FileTypeOrderSql() + ", id", new { id }).AsList();
             CertNoDerived = IssuanceOps.TravelHasIssuance(cn, id);
             return Page();
         }
@@ -48,7 +48,7 @@ public class FormModel(Db db, Config cfg, Flash flash) : AppPageModel(flash)
             if (id is not null)
             {
                 ExistingAttachments = cn.Query<Attachment>(
-                    "SELECT * FROM attachments WHERE travel_id=@id ORDER BY uploaded_at", new { id }).AsList();
+                    "SELECT * FROM attachments WHERE travel_id=@id ORDER BY " + Attachments.FileTypeOrderSql() + ", id", new { id }).AsList();
                 CertNoDerived = IssuanceOps.TravelHasIssuance(cn, id);
             }
             return Page();
