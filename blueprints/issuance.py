@@ -420,21 +420,34 @@ def _travel_brief(travel_id):
         "FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
 
 
+def open_issuance_travel_ids() -> set:
+    """还挂着未归还领用记录的出国申请 id。
+
+    同一申请下不允许两本证同时在外——一次申请一本证。「领用 → 归还 → 再领用」
+    仍然可以，因为已归还的记录不在此列。
+
+    出国申请列表要按同一口径决定「证件领用登记」按钮给不给点（见 travel.list），
+    所以这条判据在这里出一次，两边共用；各写一遍迟早漂移。
+    """
+    return {r[0] for r in get_db().execute(
+        "SELECT DISTINCT travel_id FROM cert_issuance "
+        "WHERE status = 'issued' AND travel_id IS NOT NULL").fetchall()}
+
+
 def _eligible_travels():
     """可以办理领用的出国申请。
 
     排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还
-    领用记录的申请（同一申请下不允许两本证同时在外——一次申请一本证）。
-    「领用 → 归还 → 再领用」仍然可以，因为已归还的记录不在排除之列。
+    领用记录的申请（判据见 open_issuance_travel_ids）。
     """
-    return get_db().execute(
+    blocked = open_issuance_travel_ids()
+    rows = get_db().execute(
         "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, "
         "       t.approval_date, t.need_new_passport "
         "FROM travel_details t "
         "WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' "
-        "  AND NOT EXISTS (SELECT 1 FROM cert_issuance c "
-        "                  WHERE c.travel_id = t.id AND c.status = 'issued') "
         "ORDER BY t.created_at DESC").fetchall()
+    return [r for r in rows if r["id"] not in blocked]
 
 
 def _types_label(codes: str) -> str:

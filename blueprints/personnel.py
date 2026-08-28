@@ -18,6 +18,36 @@ from utils.validators import (
 personnel_bp = Blueprint("personnel", __name__)
 
 
+def _sync_certificates(filing_id, name=None, unit=None, department=None) -> int:
+    """人员信息变了，把证照台账上那份跟着改，返回改动条数。
+
+    证照台账是**台账**，不是单据——它记的是「这个人现在手上有哪几本证」，
+    所以姓名、单位、部门都该跟着人走。这与 cert_issuance / travel_details /
+    decontrol_filing 三张表正好相反：那些是**开出去的单据**，上面印的是开单
+    那天的信息，本来就该定格，改人不能改单。
+
+    不跟着改的后果不是好看不好看：台账页按姓名搜、按单位筛，改了名之后这本证
+    就从原来的名字下消失、也不在新名字下——两边都找不着。
+
+    只在 personnel_filing 上做联动（证照按 personnel_filing_id 挂靠）；
+    department 来自 personnel_info，由信息表那条路径传进来。
+    """
+    sets, args = [], []
+    for col, val in (("name", name), ("unit", unit), ("department", department)):
+        if val is not None:
+            sets.append(f"{col} = ?")
+            args.append(val)
+    if not sets:
+        return 0
+    db = get_db()
+    args.append(filing_id)
+    cur = db.execute(
+        f"UPDATE certificates SET {', '.join(sets)}, updated_at = CURRENT_TIMESTAMP "
+        "WHERE personnel_filing_id = ?", args)
+    db.commit()
+    return cur.rowcount
+
+
 # =========================================================================
 # 列表页
 # =========================================================================
@@ -198,6 +228,18 @@ def info_edit(info_id) -> ResponseReturnValue:
         log_action("update", "personnel_info", info_id,
                    before=before, after=row_snapshot("personnel_info", info_id))
         flash("信息登记表已更新。", "success")
+
+        # 证照台账上的「部门」取自信息表（备案表里没有这一栏），所以这条路径也要联动。
+        if data["department"] != before["department"]:
+            total = 0
+            for f in db.execute("SELECT id FROM personnel_filing WHERE personnel_info_id = ?",
+                                (info_id,)).fetchall():
+                total += _sync_certificates(f["id"], department=data["department"])
+            if total:
+                log_action("update", "certificate", None,
+                           detail=f"随人员信息变更同步证照台账部门："
+                                  f"{before['department']} → {data['department']}，共 {total} 条")
+                flash(f"已同步更新证照台账上的部门（{total} 条）。", "info")
         return redirect(url_for("personnel.list"))
 
     return render_template(
@@ -328,6 +370,20 @@ def filing_edit(filing_id) -> ResponseReturnValue:
         log_action("update", "personnel_filing", filing_id,
                    before=before, after=row_snapshot("personnel_filing", filing_id))
         flash("登记备案表已更新。", "success")
+
+        # 证照台账跟着人走，理由见 _sync_certificates
+        old_name = f"{before['surname']}{before['given_name']}"
+        new_name = f"{data['surname']}{data['given_name']}"
+        synced = _sync_certificates(
+            filing_id,
+            name=new_name if new_name != old_name else None,
+            unit=data["work_unit"] if data["work_unit"] != before["work_unit"] else None,
+        )
+        if synced:
+            log_action("update", "certificate", None,
+                       detail=f"随备案人员信息变更同步证照台账：{old_name} → {new_name}"
+                              f"／{before['work_unit']} → {data['work_unit']}，共 {synced} 条")
+            flash(f"已同步更新证照台账上的姓名／单位（{synced} 条）。", "info")
         return redirect(url_for("personnel.list"))
 
     return render_template(

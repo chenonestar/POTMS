@@ -3,41 +3,43 @@
 {% block content %}
 <h4 class="mb-3"><i class="bi bi-card-list"></i> 数据字典维护</h4>
 
-<div class="alert alert-info d-flex align-items-center py-2">
-    <i class="bi bi-info-circle me-2"></i>
+<div class="alert alert-info d-flex align-items-start py-2">
+    <i class="bi bi-info-circle me-2 mt-1"></i>
     <div class="small">
-        维护各表单下拉选项。<strong>编码</strong>为稳定标识（建议用数字/字母，创建后不建议更改）；<strong>显示值</strong>为界面展示文字；<strong>排序</strong>越小越靠前。
+        维护各表单下拉选项。<strong>编码</strong>为稳定标识（创建后不建议更改），<strong>显示值</strong>为界面展示文字，<strong>排序</strong>越小越靠前。
         已被业务记录引用的字典项<strong>不可删除</strong>——该项若已不再使用，请先把引用它的记录改到别的选项上。
+        <details class="mt-1">
+            <summary class="text-primary" style="cursor:pointer">改显示值前请看这里：<span class="badge bg-secondary">存编码</span> 与 <span class="badge bg-warning text-dark">存文字</span> 的区别</summary>
+            <ul class="mb-0 mt-2">
+                <li><span class="badge bg-secondary">存编码</span> 学历 / 学位 / 职称 / 职级 —— 库里存的是编码，
+                    改显示值只是换个叫法，历史记录会跟着显示新名称，<strong>无需同步</strong>。</li>
+                <li><span class="badge bg-warning text-dark">存文字</span> 政治面貌 / 出国（境）类别 / 报送单位类别 / 人事主管单位
+                    —— 库里存的就是这几个字。改名后历史数据仍是旧文字，而下拉里只剩新文字，
+                    <strong>按新值筛选一条也搜不到</strong>。所以编辑时会问你历史数据要不要一并更新；
+                    选择更新即批量重写历史，系统会先自动备份并记入操作日志。</li>
+            </ul>
+        </details>
     </div>
 </div>
 
-<div class="alert alert-warning d-flex align-items-start py-2">
-    <i class="bi bi-exclamation-triangle me-2 mt-1"></i>
-    <div class="small">
-        <strong>改显示值前请看这里。</strong>各类别在业务表里存的东西不一样，后果也不一样：
-        <ul class="mb-0 mt-1">
-            <li><span class="badge bg-secondary">存编码</span> 学历 / 学位 / 职称 / 职级 —— 库里存的是编码，
-                改显示值只是换个叫法，历史记录会跟着显示新名称，<strong>无需同步</strong>。</li>
-            <li><span class="badge bg-warning text-dark">存文字</span> 政治面貌 / 出国（境）类别 / 报送单位类别 / 人事主管单位
-                —— 库里存的就是这几个字。改名后历史数据仍是旧文字，而下拉里只剩新文字，
-                <strong>按新值筛选一条也搜不到</strong>。所以编辑时会问你历史数据要不要一并更新；
-                选择更新即批量重写历史，系统会先自动备份并记入操作日志。</li>
-        </ul>
-    </div>
-</div>
-
-<div class="row g-3">
+<ul class="nav nav-tabs" id="dictTabs" role="tablist">
 {% for g in groups %}
-    <div class="col-lg-6">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <strong>{{ g.label }}</strong>
-                <span>
-                    {% if g.stores == 'text' %}<span class="badge bg-warning text-dark" title="业务表里存的是显示值本身，改名需要决定历史数据是否同步">存文字</span>
-                    {% else %}<span class="badge bg-secondary" title="业务表里存的是编码，改显示值不影响历史数据">存编码</span>{% endif %}
-                    <span class="badge bg-light text-dark border">{{ g.rows | length }} 项</span>
-                </span>
-            </div>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {{ 'active' if g.key == active }}" data-bs-toggle="tab" data-cat="{{ g.key }}"
+                data-bs-target="#tab-{{ g.key }}" type="button" role="tab">
+            {{ g.label }}
+            <span class="badge bg-light text-dark border ms-1">{{ g.rows | length }}</span>
+            {% if g.stores == 'text' %}<span class="badge bg-warning text-dark ms-1" title="业务表里存的是显示值本身，改名需要决定历史数据是否同步">存文字</span>
+            {% else %}<span class="badge bg-secondary ms-1" title="业务表里存的是编码，改显示值不影响历史数据">存编码</span>{% endif %}
+        </button>
+    </li>
+{% endfor %}
+</ul>
+
+<div class="tab-content">
+{% for g in groups %}
+    <div class="tab-pane fade {{ 'show active' if g.key == active }}" id="tab-{{ g.key }}" role="tabpanel">
+        <div class="card border-top-0 rounded-top-0">
             <div class="table-responsive">
                 <table class="table table-sm mb-0 align-middle">
                     <thead><tr><th style="width:90px">编码</th><th>显示值</th><th style="width:64px">排序</th><th style="width:96px" class="text-end">操作</th></tr></thead>
@@ -116,5 +118,17 @@ function editDict(id, btn) {
     document.getElementById('dictSyncCount').textContent = used;
     new bootstrap.Modal(document.getElementById('editDictModal')).show();
 }
+
+// 切标签时把 ?cat= 写进地址栏：刷新、收藏、以及后端跳回来时都能落在同一页。
+// 增删改由后端带 ?cat= 跳回，这里只管纯浏览时的地址同步。
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('#dictTabs button[data-bs-toggle="tab"]').forEach(function (btn) {
+        btn.addEventListener('shown.bs.tab', function () {
+            var url = new URL(window.location);
+            url.searchParams.set('cat', btn.getAttribute('data-cat'));
+            history.replaceState(null, '', url);
+        });
+    });
+});
 </script>
 {% endblock %}

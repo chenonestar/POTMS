@@ -162,6 +162,11 @@ def list() -> ResponseReturnValue:
     deadlines = {row["id"]: cert_overdue_deadline(row)
                  for row in pg["rows"] if row["id"] in overdue_ids}
 
+    # 「证件领用登记」按钮此前对每一行都亮着，点进去才被挡回来——办不了的事不该
+    # 先给个入口。判据与领用模块的准入完全一致（同一个函数），不在这里另写一套。
+    from blueprints.issuance import open_issuance_travel_ids
+    open_issuance = open_issuance_travel_ids()
+
     return render_template(
         "travel/list.html",
         items=pg,
@@ -173,6 +178,7 @@ def list() -> ResponseReturnValue:
         date_to=date_to,
         overdue_ids=overdue_ids,
         deadlines=deadlines,
+        open_issuance=open_issuance,
         category_opts=get_dict_options("travel_category"),
     )
 
@@ -448,14 +454,33 @@ def view(travel_id) -> ResponseReturnValue:
 @login_required
 def delete(travel_id) -> ResponseReturnValue:
     db = get_db()
-    # 引用守卫：已有证件领用记录（含签名凭证）时禁止删除，避免留下悬空引用
-    iss = db.execute(
-        "SELECT COUNT(*) AS n FROM cert_issuance WHERE travel_id = ?", (travel_id,)
-    ).fetchone()
-    if iss and iss["n"]:
-        flash(f"该出行记录已有 {iss['n']} 条证件领用记录，不能删除。"
-              f"如确需删除，请先作废相关领用记录。", "danger")
+    row = db.execute("SELECT * FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
         return redirect(url_for("travel.list"))
+
+    # 引用守卫：开过证件领用单就不能删这条申请，否则那张单指向一条不存在的出行。
+    #
+    # 原来的提示写的是「请先作废相关领用记录」——照做没有用：下面这条统计不看
+    # status，作废的照样算数，作废完再来删还是被挡。而这不是判据写漏了：
+    # 领用单上有本人手写签名，作废是「这次领用作废」，不是「这次领用没发生过」，
+    # 单子仍要留档，仍然指着这条出行。
+    #
+    # 所以把话说准：这条申请删不掉，能做的是「取消行程」——申请确实发生过，
+    # 只是没有成行，取消会记下取消日期并按 5 个工作日催还证件，历史也留得住。
+    counts = db.execute(
+        "SELECT SUM(status = 'issued') AS issued, SUM(status = 'returned') AS returned, "
+        "       SUM(status = 'voided') AS voided, COUNT(*) AS total "
+        "FROM cert_issuance WHERE travel_id = ?", (travel_id,)
+    ).fetchone()
+    if counts["total"]:
+        parts = [f"{n} 条{label}" for label, n in
+                 (("已领用未归还", counts["issued"]), ("已归还", counts["returned"]),
+                  ("已作废", counts["voided"])) if n]
+        flash(f"该出国申请已开出 {counts['total']} 条证件领用记录（{'、'.join(parts)}），不能删除"
+              "——领用单上有本人签名，作废也仍要留档，删了申请那张单就指向一条不存在的出行。"
+              "如果这次没有成行，请改用「取消行程」。", "danger")
+        return redirect(url_for("travel.view", travel_id=travel_id))
     # 清理附件文件
     atts = db.execute(
         "SELECT file_path FROM attachments WHERE travel_id = ?", (travel_id,)

@@ -72,6 +72,12 @@ def _usage_count(db, category: str, code: str, value: str) -> int:
 def index() -> ResponseReturnValue:
     db = get_db()
     groups = []
+    # 八个类别改成标签页后，增删改都要回到刚才那一页——否则在「职称」下加了一项，
+    # 保存完弹回「学历」，得重新找一遍。带上 ?cat= 就能落回原处。
+    active = request.args.get("cat", "").strip()
+    if active not in _CAT_MAP:
+        active = CATEGORIES[0]["key"]
+
     usage = {}
     for cat in CATEGORIES:
         items = db.execute(
@@ -83,7 +89,7 @@ def index() -> ResponseReturnValue:
             usage[it["id"]] = sum(n for _, n in count_refs(cat["refs"], it["value"]))
         groups.append({"key": cat["key"], "label": cat["label"],
                        "stores": cat["stores"], "rows": items})
-    return render_template("dict/list.html", groups=groups, usage=usage)
+    return render_template("dict/list.html", groups=groups, usage=usage, active=active)
 
 
 @dict_bp.route("/dict/add", methods=["POST"])
@@ -98,9 +104,10 @@ def add() -> ResponseReturnValue:
     if category not in _CAT_MAP:
         flash("无效的字典类别。", "danger")
         return redirect(url_for("dict_admin.index"))
+    back = url_for("dict_admin.index", cat=category)
     if not code or not value:
         flash("编码与显示值均为必填。", "danger")
-        return redirect(url_for("dict_admin.index"))
+        return redirect(back)
 
     db = get_db()
     dup = db.execute(
@@ -108,7 +115,7 @@ def add() -> ResponseReturnValue:
     ).fetchone()
     if dup:
         flash(f"「{_CAT_MAP[category]['label']}」下编码 {code} 已存在。", "warning")
-        return redirect(url_for("dict_admin.index"))
+        return redirect(back)
 
     db.execute(
         "INSERT INTO sys_dict (category, code, value, sort_order) VALUES (?, ?, ?, ?)",
@@ -120,7 +127,7 @@ def add() -> ResponseReturnValue:
                detail=f"{_CAT_MAP[category]['label']}: {code}={value}",
                after=row_snapshot("sys_dict", new_id))
     flash("字典项已添加。", "success")
-    return redirect(url_for("dict_admin.index"))
+    return redirect(back)
 
 
 @dict_bp.route("/dict/<int:dict_id>/edit", methods=["POST"])
@@ -131,13 +138,14 @@ def edit(dict_id) -> ResponseReturnValue:
     if not row:
         flash("字典项不存在。", "danger")
         return redirect(url_for("dict_admin.index"))
+    back = url_for("dict_admin.index", cat=row["category"])
 
     value = request.form.get("value", "").strip()
     sort_raw = request.form.get("sort_order", "0").strip()
     sort_order = int(sort_raw) if sort_raw.lstrip("-").isdigit() else 0
     if not value:
         flash("显示值为必填。", "danger")
-        return redirect(url_for("dict_admin.index"))
+        return redirect(back)
 
     cat = _CAT_MAP.get(row["category"], {})
     renamed = value != row["value"]
@@ -151,13 +159,13 @@ def edit(dict_id) -> ResponseReturnValue:
         flash(f"「{row['value']}」已被 {describe_refs(counts)} 引用，而这一项在业务表里"
               "存的是文字本身。请在编辑框里选择历史数据是否一并更新——不勾选就只改"
               "下拉选项，历史数据仍是旧文字，按新值筛选一条也搜不到。", "warning")
-        return redirect(url_for("dict_admin.index"))
+        return redirect(back)
     snapshot = None
     if syncing:
         snapshot, err = backup_before_bulk_edit("dict_rename")
         if err:
             flash(err, "danger")
-            return redirect(url_for("dict_admin.index"))
+            return redirect(back)
 
     before = dict(row)
     db.execute("UPDATE sys_dict SET value = ?, sort_order = ? WHERE id = ?", (value, sort_order, dict_id))
@@ -174,7 +182,7 @@ def edit(dict_id) -> ResponseReturnValue:
     else:
         log_action("update", "sys_dict", dict_id, before=before, after=row_snapshot("sys_dict", dict_id))
         flash("字典项已更新。", "success")
-    return redirect(url_for("dict_admin.index"))
+    return redirect(back)
 
 
 @dict_bp.route("/dict/<int:dict_id>/delete", methods=["POST"])
@@ -185,15 +193,16 @@ def delete(dict_id) -> ResponseReturnValue:
     if not row:
         flash("字典项不存在。", "danger")
         return redirect(url_for("dict_admin.index"))
+    back = url_for("dict_admin.index", cat=row["category"])
 
     used = _usage_count(db, row["category"], row["code"], row["value"])
     if used:
         flash(f"「{row['value']}」已被 {used} 条记录使用，不能删除（可改用编辑或保留）。", "warning")
-        return redirect(url_for("dict_admin.index"))
+        return redirect(back)
 
     before = dict(row)
     db.execute("DELETE FROM sys_dict WHERE id = ?", (dict_id,))
     db.commit()
     log_action("delete", "sys_dict", dict_id, before=before)
     flash("字典项已删除。", "info")
-    return redirect(url_for("dict_admin.index"))
+    return redirect(back)
