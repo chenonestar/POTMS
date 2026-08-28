@@ -7,7 +7,22 @@
     <i class="bi bi-info-circle me-2"></i>
     <div class="small">
         维护各表单下拉选项。<strong>编码</strong>为稳定标识（建议用数字/字母，创建后不建议更改）；<strong>显示值</strong>为界面展示文字；<strong>排序</strong>越小越靠前。
-        已被业务记录引用的字典项<strong>不可删除</strong>——如需停用，可保留或修改显示值。
+        已被业务记录引用的字典项<strong>不可删除</strong>——该项若已不再使用，请先把引用它的记录改到别的选项上。
+    </div>
+</div>
+
+<div class="alert alert-warning d-flex align-items-start py-2">
+    <i class="bi bi-exclamation-triangle me-2 mt-1"></i>
+    <div class="small">
+        <strong>改显示值前请看这里。</strong>各类别在业务表里存的东西不一样，后果也不一样：
+        <ul class="mb-0 mt-1">
+            <li><span class="badge bg-secondary">存编码</span> 学历 / 学位 / 职称 / 职级 —— 库里存的是编码，
+                改显示值只是换个叫法，历史记录会跟着显示新名称，<strong>无需同步</strong>。</li>
+            <li><span class="badge bg-warning text-dark">存文字</span> 政治面貌 / 出国（境）类别 / 报送单位类别 / 人事主管单位
+                —— 库里存的就是这几个字。改名后历史数据仍是旧文字，而下拉里只剩新文字，
+                <strong>按新值筛选一条也搜不到</strong>。所以编辑时会问你历史数据要不要一并更新；
+                选择更新即批量重写历史，系统会先自动备份并记入操作日志。</li>
+        </ul>
     </div>
 </div>
 
@@ -17,7 +32,11 @@
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <strong>{{ g.label }}</strong>
-                <span class="badge bg-secondary">{{ g.rows | length }} 项</span>
+                <span>
+                    {% if g.stores == 'text' %}<span class="badge bg-warning text-dark" title="业务表里存的是显示值本身，改名需要决定历史数据是否同步">存文字</span>
+                    {% else %}<span class="badge bg-secondary" title="业务表里存的是编码，改显示值不影响历史数据">存编码</span>{% endif %}
+                    <span class="badge bg-light text-dark border">{{ g.rows | length }} 项</span>
+                </span>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0 align-middle">
@@ -29,7 +48,7 @@
                             <td>{{ it.value }}</td>
                             <td>{{ it.sort_order }}</td>
                             <td class="text-end">
-                                <button class="btn btn-sm btn-outline-warning" onclick="editDict({{ it.id }}, this)" data-value="{{ it.value }}" data-sort="{{ it.sort_order }}" title="编辑"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="editDict({{ it.id }}, this)" data-value="{{ it.value }}" data-sort="{{ it.sort_order }}" data-used="{{ usage.get(it.id, 0) }}" title="编辑"><i class="bi bi-pencil"></i></button>
                                 <form method="POST" action="{{ url_for('dict_admin.delete', dict_id=it.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ it.value }}」吗？');">
                                     <button class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
                                 </form>
@@ -66,6 +85,17 @@
                     <input type="text" class="form-control" name="value" id="editDictValue" required>
                     <label class="form-label mt-2">排序</label>
                     <input type="text" class="form-control" name="sort_order" id="editDictSort" value="0">
+                    <div class="form-check mt-3 d-none" id="dictSyncBox">
+                        <input class="form-check-input" type="checkbox" name="sync_history" value="1" id="dictSync" checked>
+                        <label class="form-check-label" for="dictSync">
+                            同时更新历史数据中的旧文字（<span id="dictSyncCount">0</span> 条）
+                        </label>
+                        <div class="form-text">
+                            这一项在业务表里存的是文字本身。不勾选则只改下拉选项，历史数据仍是旧文字，
+                            按新值筛选一条也搜不到；勾选则批量重写这些历史记录，
+                            <strong>系统会在改动前自动备份数据库并记入操作日志</strong>。
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
             </form>
@@ -79,6 +109,11 @@ function editDict(id, btn) {
     document.getElementById('editDictValue').value = btn.getAttribute('data-value');
     document.getElementById('editDictSort').value = btn.getAttribute('data-sort');
     document.getElementById('editDictForm').action = '/dict/' + id + '/edit';
+    // 存编码的类别（data-used 恒为 0）不出现这个勾选框——改名不波及历史数据，
+    // 问一个不影响任何东西的问题只会添乱
+    var used = parseInt(btn.getAttribute('data-used') || '0', 10);
+    document.getElementById('dictSyncBox').classList.toggle('d-none', !used);
+    document.getElementById('dictSyncCount').textContent = used;
     new bootstrap.Modal(document.getElementById('editDictModal')).show();
 }
 </script>

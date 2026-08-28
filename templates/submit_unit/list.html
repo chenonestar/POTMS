@@ -14,13 +14,13 @@
     <tbody>
     {% for r in rows %}
     <tr>
-        <td>{{ r.name }}</td>
+        <td>{{ r.name }}{% if usage.get(r.id) %} <span class="badge bg-light text-dark border" title="有 {{ usage[r.id] }} 条撤控记录按名字引用着它。删除会被拒绝；改名可选择是否一并更新。">在用 {{ usage[r.id] }} 条</span>{% endif %}</td>
         <td>{{ r.contact or '-' }}</td>
         <td>{{ r.phone or '-' }}</td>
         <td>{{ r.sort_order }}</td>
         <td class="text-end">
-            <button class="btn btn-sm btn-outline-warning" onclick="editSU(this)" data-id="{{ r.id }}" data-name="{{ r.name }}" data-contact="{{ r.contact or '' }}" data-phone="{{ r.phone or '' }}" data-sort="{{ r.sort_order }}" title="编辑"><i class="bi bi-pencil"></i></button>
-            <form method="POST" action="{{ url_for('submit_unit.delete', uid=r.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ r.name }}」吗？');">
+            <button class="btn btn-sm btn-outline-warning" onclick="editSU(this)" data-id="{{ r.id }}" data-name="{{ r.name }}" data-contact="{{ r.contact or '' }}" data-phone="{{ r.phone or '' }}" data-sort="{{ r.sort_order }}" data-used="{{ usage.get(r.id, 0) }}" title="编辑"><i class="bi bi-pencil"></i></button>
+            <form method="POST" action="{{ url_for('submit_unit.delete', uid=r.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ r.name }}」吗？{% if usage.get(r.id) %}\n注意：还有 {{ usage[r.id] }} 条撤控记录在用这个名字，将被拒绝删除。{% endif %}');">
                 <button class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
             </form>
         </td>
@@ -55,6 +55,17 @@
                         <div class="col"><label class="form-label">联系电话</label><input class="form-control" name="phone" id="suPhone"></div>
                     </div>
                     <div class="mt-2"><label class="form-label">排序</label><input class="form-control" name="sort_order" id="suSort" value="0"></div>
+                    <div class="form-check mt-3 d-none" id="suSyncBox">
+                        <input class="form-check-input" type="checkbox" name="sync_history" value="1" id="suSync" checked>
+                        <label class="form-check-label" for="suSync">
+                            同时更新历史撤控记录中的旧名称（<span id="suSyncCount">0</span> 条）
+                        </label>
+                        <div class="form-text">
+                            撤控备案单上存的是报送单位名字的文字。不勾选则只改这张配置表，历史撤控记录
+                            仍挂在旧名下；勾选则批量重写这些历史记录，
+                            <strong>系统会在改动前自动备份数据库并记入操作日志</strong>。
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
             </form>
@@ -70,6 +81,10 @@ function editSU(btn) {
     document.getElementById('suPhone').value = btn.getAttribute('data-phone');
     document.getElementById('suSort').value = btn.getAttribute('data-sort');
     document.getElementById('editSUForm').action = '/submit-unit/' + btn.getAttribute('data-id') + '/edit';
+    // 没有历史记录引用时不出现这个勾选框——问一个不影响任何东西的问题只会添乱
+    var used = parseInt(btn.getAttribute('data-used') || '0', 10);
+    document.getElementById('suSyncBox').classList.toggle('d-none', !used);
+    document.getElementById('suSyncCount').textContent = used;
     new bootstrap.Modal(document.getElementById('editSUModal')).show();
 }
 </script>

@@ -32,14 +32,16 @@
             <span class="{{ 'fw-bold' if level == 0 }}">{{ o.name }}</span>
             {{ level_badge(level) }}
             {% if level == 0 %}<small class="text-muted ms-1">（下辖 {{ child_count }} 个部门）</small>{% endif %}
+            {% set used = usage.get(o.id, 0) %}
+            {% if used %}<span class="badge bg-light text-dark border ms-1" title="业务数据里按名字引用了 {{ used }} 条。删除会让这些数据变成选不到的孤儿值；改名可选择是否一并更新。">在用 {{ used }} 条</span>{% endif %}
         </span>
         <div class="btn-group btn-group-sm">
             <button class="btn btn-outline-secondary btn-sm" onclick="addChild({{ o.id }}, '{{ o.name }}', {{ level }})"
                     title="{{ '为该单位添加部门' if level == 0 else '添加子部门' }}">
                 <i class="bi bi-plus-lg"></i> {{ '加部门' if level == 0 else '加子部门' }}
             </button>
-            <button class="btn btn-outline-warning btn-sm" onclick="editNode({{ o.id }}, '{{ o.name }}', {{ o.parent_id }})" title="重命名"><i class="bi bi-pencil"></i></button>
-            <form method="POST" action="{{ url_for('organization.delete', org_id=o.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ o.name }}」吗？{% if child_count %}\n注意：需先删除其下级。{% endif %}');">
+            <button class="btn btn-outline-warning btn-sm" onclick="editNode({{ o.id }}, '{{ o.name }}', {{ o.parent_id }}, {{ used }})" title="重命名"><i class="bi bi-pencil"></i></button>
+            <form method="POST" action="{{ url_for('organization.delete', org_id=o.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ o.name }}」吗？{% if child_count %}\n注意：需先删除其下级。{% endif %}{% if used %}\n注意：还有 {{ used }} 条业务数据在用这个名字，将被拒绝删除。{% endif %}');">
                 <button class="btn btn-outline-danger btn-sm" title="删除"><i class="bi bi-trash"></i></button>
             </form>
         </div>
@@ -86,6 +88,17 @@
                     <label class="form-label">名称</label>
                     <input type="text" class="form-control" name="name" id="editName" required>
                     <input type="hidden" name="parent_id" id="editParentId" value="0">
+                    <div class="form-check mt-3 d-none" id="editSyncBox">
+                        <input class="form-check-input" type="checkbox" name="sync_history" value="1" id="editSync" checked>
+                        <label class="form-check-label" for="editSync">
+                            同时更新历史数据中的旧名称（<span id="editSyncCount">0</span> 条）
+                        </label>
+                        <div class="form-text">
+                            业务表里存的是当时那个名字的文字。不勾选则只改组织树，历史数据仍留在旧名下，
+                            同一个单位在统计里会裂成两个；勾选则批量重写这些历史记录，
+                            <strong>系统会在改动前自动备份数据库并记入操作日志</strong>。
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-primary">保存</button></div>
             </form>
@@ -110,10 +123,14 @@ function addChild(pid, pname, level) {
     document.getElementById('addName').value = '';
     new bootstrap.Modal(document.getElementById('addModal')).show();
 }
-function editNode(id, name, pid) {
+function editNode(id, name, pid, used) {
     document.getElementById('editName').value = name;
     document.getElementById('editParentId').value = pid;
     document.getElementById('editForm').action = '/org/' + id + '/edit';
+    // 没有历史数据引用时不出现这个勾选框——问一个不影响任何东西的问题只会添乱
+    var box = document.getElementById('editSyncBox');
+    box.classList.toggle('d-none', !used);
+    document.getElementById('editSyncCount').textContent = used || 0;
     new bootstrap.Modal(document.getElementById('editModal')).show();
 }
 </script>
