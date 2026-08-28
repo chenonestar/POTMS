@@ -14,6 +14,39 @@ from utils.validators import parse_date_input, check_required, check_dates, chec
 decontrol_bp = Blueprint("decontrol", __name__)
 
 
+def _unsettled_certs(filing_id) -> list[str]:
+    """撤控前的清障检查：这个人名下还有哪些证件没清干净。
+
+    撤控表上「证件移交日期」这一栏本身就说明：业务上撤控是以证件收缴完毕为前提的。
+    但此前代码不查，于是可以「带证走人」——人撤控了，那条逾期告警还挂在首页，
+    而这个人已经不在管理范围内，谁也处理不掉，成了永远消不掉的死账。
+
+    两类未清，与逾期告警同源（见 blueprints/travel.py 的说明）：
+    - 路径A：还有未归还的领用记录（证在本人手上，从保管处借出去没还）；
+    - 路径B：做证的申请里，新证还没进证照台账（证从公安办出来就没回来过）。
+    """
+    db = get_db()
+    problems = []
+    issued = db.execute(
+        "SELECT COUNT(*) FROM cert_issuance WHERE personnel_filing_id = ? AND status = 'issued'",
+        (filing_id,)).fetchone()[0]
+    if issued:
+        problems.append(f"未归还的证件领用记录 {issued} 条")
+    # 做证且新证号码没出现在该人证照台账里 —— 判据与 travel._registered_cert_travel_ids 一致
+    pending = db.execute(
+        "SELECT COUNT(*) FROM travel_details t "
+        "WHERE t.personnel_filing_id = ? AND t.need_new_passport = '是' "
+        "  AND COALESCE(t.trip_status, 'normal') != 'cancelled' "
+        "  AND NOT EXISTS (SELECT 1 FROM certificates c "
+        "                  WHERE c.personnel_filing_id = t.personnel_filing_id "
+        "                    AND t.passport_no IS NOT NULL AND t.passport_no != '' "
+        "                    AND t.passport_no IN (c.passport_no, c.hm_pass_no, c.tw_pass_no))",
+        (filing_id,)).fetchone()[0]
+    if pending:
+        problems.append(f"新办后尚未交回入库的证件 {pending} 本")
+    return problems
+
+
 def build_filters(args, ids=None):
     """构建撤控列表 WHERE 子句，供列表与导出复用。"""
     where = ""
@@ -65,6 +98,14 @@ def new(filing_id) -> ResponseReturnValue:
 
     if filing["status"] == "decontrolled":
         flash("该人员已被撤控。", "warning")
+        return redirect(url_for("personnel.view", filing_id=filing_id))
+
+    # 证件没清干净不许撤控。放在 GET 上也拦：让人填完一整张表再告诉他不行，
+    # 是最没必要的一种为难。
+    unsettled = _unsettled_certs(filing_id)
+    if unsettled:
+        flash("该人员名下尚有" + "、".join(unsettled)
+              + "，请先办理归还或交回登记后再撤控。", "danger")
         return redirect(url_for("personnel.view", filing_id=filing_id))
 
     if request.method == "POST":
@@ -165,6 +206,8 @@ def _validate_form(data: dict) -> list[str]:
         ("submit_unit_name", "报送单位名称"), ("submit_unit_type", "报送单位类别"),
         ("submit_contact", "报送单位联系人"), ("submit_phone", "报送单位联系电话"),
         ("batch_no", "入库批号"), ("reason", "撤控原因"),
+        # 撤控以证件收缴完毕为前提，移交日期是这件事发生过的凭据，不能留空
+        ("cert_handover_date", "证件移交日期"),
     ]
     errors += check_required(data, required)
     errors += check_dates(data, [

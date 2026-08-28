@@ -7,6 +7,17 @@
 <div class="form-section">
     <h5>选择备案人员</h5>
     <p class="text-muted small mb-2">选择人员后，基本信息自动从备案信息带入，无需手动填写。</p>
+    {% if applicant_locked %}
+    {# 已有领用记录：领用凭证上有本人签名，改申请人会让那张凭证指向另一个人。
+       要换人只能先作废领用记录。这里只展示，不给可改的控件。 #}
+    <div class="row g-3">
+        <div class="col-md-5">
+            <label class="form-label">备案人员 <span class="text-muted">(已锁定)</span></label>
+            <input type="text" class="form-control" value="{{ data.name or '' }}" readonly>
+            <div class="form-text">本申请已有证件领用记录（含手写签名），申请人不可更改；如需更换，请先作废相关领用记录。</div>
+        </div>
+    </div>
+    {% else %}
     <div class="row g-3">
         <div class="col-md-5">
             <label class="form-label">搜索备案人员</label>
@@ -22,6 +33,7 @@
             </select>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <div class="form-section">

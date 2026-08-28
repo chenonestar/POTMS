@@ -198,12 +198,51 @@ def edit(cert_id) -> ResponseReturnValue:
 @login_required
 def delete(cert_id) -> ResponseReturnValue:
     db = get_db()
+    row = db.execute("SELECT * FROM certificates WHERE id = ?", (cert_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("certificate.list"))
+
+    refs = _cert_references(row)
+    if refs:
+        flash("该证照的号码" + "、".join(refs) + "，不能删除。"
+              "如证件已注销或换发，请编辑本条记录更新号码，不要删除。", "danger")
+        return redirect(url_for("certificate.list"))
+
     before = row_snapshot("certificates", cert_id)
     db.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))
     db.commit()
     log_action("delete", "certificate", cert_id, before=before)
     flash("证照记录已删除。", "info")
     return redirect(url_for("certificate.list"))
+
+
+def _cert_references(row) -> list[str]:
+    """这条证照的号码被哪些业务记录引用了。
+
+    此前删除是裸 DELETE，什么都不查，而后果是隐性的：
+    - 出行表上补录的做证号码一旦在台账里找不到对应，那条出行**当场变回「逾期未交回」**
+      （路径B 的判据就是「号码在不在台账里」，见 travel._registered_cert_travel_ids）；
+    - 已签字的领用凭证上印着这个号码，台账里却查无此证。
+
+    所以判据是「号码有没有被引用」，而不是「这条记录属于谁」——三个号码槽逐个查。
+    """
+    db = get_db()
+    nos = [str(row[f] or "").strip() for _, f, _, _ in CERT_SLOTS]
+    nos = [n for n in nos if n]
+    if not nos:
+        return []
+    ph = ",".join("?" for _ in nos)
+    out = []
+    trav = db.execute(
+        f"SELECT COUNT(*) FROM travel_details WHERE passport_no IN ({ph})", nos).fetchone()[0]
+    if trav:
+        out.append(f"已被 {trav} 条出国申请引用")
+    iss = db.execute(
+        f"SELECT COUNT(*) FROM cert_issuance WHERE cert_nos IN ({ph})", nos).fetchone()[0]
+    if iss:
+        out.append(f"已被 {iss} 条证件领用记录引用")
+    return out
 
 
 # ---------------------------------------------------------------------------

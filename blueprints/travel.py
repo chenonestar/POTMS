@@ -353,7 +353,11 @@ def edit(travel_id) -> ResponseReturnValue:
         if errors:
             for e in errors:
                 flash(e, "danger")
-            return render_template("travel/form.html", data=data, editing=True, travel_id=travel_id)
+            from blueprints.issuance import travel_has_issuance
+            return render_template("travel/form.html", data=data, editing=True,
+                                   travel_id=travel_id,
+                                   cert_no_derived=travel_has_issuance(travel_id),
+                                   applicant_locked=travel_has_issuance(travel_id))
 
         before = row_snapshot("travel_details", travel_id)
         t_start, t_end = parse_travel_range(data["travel_dates"])
@@ -363,7 +367,13 @@ def edit(travel_id) -> ResponseReturnValue:
         # 直接沿用库里的既有值，不采信提交上来的。路径B 没有领用记录，
         # 那一栏是系统里唯一的来源，仍按提交值写入。
         from blueprints.issuance import travel_has_issuance
-        passport_no = row["passport_no"] if travel_has_issuance(travel_id) else data["passport_no"]
+        locked = travel_has_issuance(travel_id)
+        passport_no = row["passport_no"] if locked else data["passport_no"]
+        # 申请人同理，而且更要紧：领用记录上有本人手写签名，签的就是「我为这次申请
+        # 领了这本证」。事后把申请改挂到别人名下，那张签了字的凭证就指向了另一个人
+        # ——这正是这套签名要防的事。登记领用时校验过一次「领用人必须就是申请人」，
+        # 但那只是那一刻的事，事后改申请人能绕过去。要换人只能先作废领用记录。
+        pfid = row["personnel_filing_id"] if locked else data["personnel_filing_id"]
         db.execute(
             # 证件领用/归还日期为派生字段，由证件领用模块维护，此处不覆盖
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
@@ -372,7 +382,7 @@ def edit(travel_id) -> ResponseReturnValue:
             "passport_no=?, actual_return_date=?, "
             "operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (
-                data["personnel_filing_id"], data["unit"], data["department"],
+                pfid, data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
                 data["destination_passport"], data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], passport_no,
@@ -401,6 +411,7 @@ def edit(travel_id) -> ResponseReturnValue:
         travel_id=travel_id,
         attachments=attachments,
         cert_no_derived=travel_has_issuance(travel_id),
+        applicant_locked=travel_has_issuance(travel_id),
     )
 
 
