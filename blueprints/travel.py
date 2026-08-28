@@ -90,6 +90,18 @@ def _registered_cert_travel_ids() -> set:
     ).fetchall()}
 
 
+# 已撤控人员不再进入证件告警。
+#
+# 撤控本身就以证件收缴完毕为前提（见 decontrol._unsettled_certs），所以撤控之后
+# 本来就不该还有未交回的证。这一条挡的是存量：在加上撤控前置校验之前撤控掉的人，
+# 他名下那条逾期会一直挂在首页，而人已经不在管理范围内，谁也处理不掉——那是一笔
+# 永远消不掉的死账，比漏报更糟，因为它会让人对整个告警区失去信任。
+_ACTIVE_ONLY = (
+    " AND EXISTS (SELECT 1 FROM personnel_filing pf "
+    "             WHERE pf.id = travel_details.personnel_filing_id AND pf.status = 'active')"
+)
+
+
 def _overdue_ids() -> set:
     """全量计算「证件逾期未交回」记录的 id 集合。
 
@@ -97,6 +109,8 @@ def _overdue_ids() -> set:
     - 路径A：已领用 + 未归还 + 超工作日时限（判据在领用记录上）；
     - 路径B：做证 + 新证尚未进入台账 + 超工作日时限（路径B 没有领用记录，
       用老判据一条都抓不到，见 is_new_cert_overdue 的说明）。
+
+    两类都只算在控人员，理由见 _ACTIVE_ONLY。
     """
     today = datetime.now().strftime("%Y%m%d")
     db = get_db()
@@ -104,7 +118,7 @@ def _overdue_ids() -> set:
         "SELECT id, passport_collect_date, passport_return_date, actual_return_date, "
         "travel_end, trip_status, cancel_date FROM travel_details "
         "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
-        "AND (passport_return_date IS NULL OR passport_return_date = '')"
+        "AND (passport_return_date IS NULL OR passport_return_date = '')" + _ACTIVE_ONLY
     ).fetchall()
     ids = {r["id"] for r in rows if is_cert_overdue(r, today)}
 
@@ -112,7 +126,7 @@ def _overdue_ids() -> set:
     new_rows = db.execute(
         "SELECT id, need_new_passport, actual_return_date, travel_end, "
         "trip_status, cancel_date, passport_collect_date FROM travel_details "
-        "WHERE need_new_passport = '是'"
+        "WHERE need_new_passport = '是'" + _ACTIVE_ONLY
     ).fetchall()
     for r in new_rows:
         # 已经走过领用流程的，归上面那套判据管，避免同一条记录被两边重复判定
@@ -138,20 +152,15 @@ def list() -> ResponseReturnValue:
 
     pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
-    # 标记逾期未交回，并附带应还到期日。两类判据见 _overdue_ids 的说明：
-    # 路径A 看领用记录，路径B（做证、无领用记录）看新证是否已进入证照台账。
-    today = datetime.now().strftime("%Y%m%d")
-    registered = _registered_cert_travel_ids()
-    overdue_ids = set()
-    deadlines = {}
-    for row in pg["rows"]:
-        late = is_cert_overdue(row, today)
-        if not late and not row["passport_collect_date"]:
-            late = is_new_cert_overdue(
-                {**dict(row), "cert_registered": row["id"] in registered}, today)
-        if late:
-            overdue_ids.add(row["id"])
-            deadlines[row["id"]] = cert_overdue_deadline(row)
+    # 标记逾期未交回，并附带应还到期日。判据见 _overdue_ids 的说明。
+    #
+    # 直接复用 _overdue_ids()，而不是在这里另算一遍：本页的高亮与
+    # 「?passport_status=overdue」筛选必须永远一致，两套并行实现迟早会漂移
+    # （已撤控人员的排除就差点只加在筛选那一侧）。
+    all_overdue = _overdue_ids()
+    overdue_ids = {row["id"] for row in pg["rows"] if row["id"] in all_overdue}
+    deadlines = {row["id"]: cert_overdue_deadline(row)
+                 for row in pg["rows"] if row["id"] in overdue_ids}
 
     return render_template(
         "travel/list.html",

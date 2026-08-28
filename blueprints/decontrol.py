@@ -173,6 +173,49 @@ def view(dec_id) -> ResponseReturnValue:
     return render_template("decontrol/view.html", dec=row)
 
 
+@decontrol_bp.route("/decontrol/<int:dec_id>/revoke", methods=["POST"])
+@login_required
+def revoke(dec_id) -> ResponseReturnValue:
+    """撤销撤控：把人放回「有效」，撤控记录本身物理删除。
+
+    撤控此前是一扇单向门——错撤了一个人，界面上没有任何回头路，只能去改库。
+    而撤控会把这个人从所有在办入口里摘掉（发起撤控的下拉、出行申请的选人、
+    首页告警都只认 status='active'），所以「撤错了」的代价不是一条脏数据，
+    是这个人的业务彻底办不了。
+
+    为什么是物理删除而不是标记作废：撤控表是**报出去的备案单据**，一条记录就是
+    「这个人已上报撤控」。撤销意味着这件事没有发生过，留一条作废的单据反而会在
+    列表和导出里制造「他到底撤没撤」的歧义。完整的 before 快照进操作日志，
+    需要追溯时查日志——这正是日志该干的事。
+    """
+    db = get_db()
+    row = db.execute("SELECT * FROM decontrol_filing WHERE id = ?", (dec_id,)).fetchone()
+    if not row:
+        flash("记录不存在。", "danger")
+        return redirect(url_for("decontrol.list"))
+
+    before = row_snapshot("decontrol_filing", dec_id)
+    filing_id = row["personnel_filing_id"]
+    db.execute("DELETE FROM decontrol_filing WHERE id = ?", (dec_id,))
+    # 人员备案可能已被删除（撤控单据自带姓名身份证快照，不依赖它存在）；
+    # 只在还在的时候把状态放回去。
+    restored = db.execute(
+        "UPDATE personnel_filing SET status = 'active', updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND status = 'decontrolled'",
+        (filing_id,),
+    ).rowcount
+    db.commit()
+    log_action("delete", "decontrol_filing", dec_id, before=before)
+
+    name = f"{row['surname']}{row['given_name']}"
+    if restored:
+        flash(f"已撤销 {name} 的撤控备案，该人员备案状态已恢复为「有效」。", "success")
+    else:
+        flash(f"已撤销 {name} 的撤控备案。未找到对应的有效备案人员，"
+              "请到「人员备案」确认其状态。", "warning")
+    return redirect(url_for("decontrol.list"))
+
+
 def _extract_form(form):
     return {
         "surname": form.get("surname", "").strip(),

@@ -49,6 +49,7 @@
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('export.print_view', print_type='decontrol', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
             <a href="{{ url_for('decontrol.view', dec_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+            <button type="button" class="btn btn-outline-danger" title="撤销撤控" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('decontrol.revoke', dec_id=row.id) }}" data-message="确定要撤销 {{ row.surname }}{{ row.given_name }} 的撤控备案吗？该人员将恢复为「有效」，这条撤控记录会被删除（操作日志留存完整快照）。"><i class="bi bi-arrow-counterclockwise"></i></button>
         </div></td>
     </tr>
     {% else %}
@@ -60,6 +61,8 @@
 
 {% from "components/pagination.html" import render_pagination %}
 {{ render_pagination(items, 'decontrol.list') }}
+
+{% include "components/confirm_modal.html" %}
 
 <!-- 发起撤控：选择备案人员 -->
 <div class="modal fade" id="startDecontrolModal" tabindex="-1">

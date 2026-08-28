@@ -49,7 +49,9 @@
         <td><input type="checkbox" class="row-check" value="{{ row.id }}"></td>
         <td title="{{ row.unit }}">{{ row.unit }}</td>
         <td title="{{ row.department }}">{{ row.department }}</td>
-        <td>{{ row.name }}</td>
+        <td>{{ row.name }}{% if row.filing_status == 'decontrolled' %}
+            <span class="badge bg-secondary" title="持证人已撤控{% if row.handover_date %}，证件于 {{ row.handover_date }} 移交{% endif %}">已撤控{% if row.handover_date %} · 移交 {{ row.handover_date }}{% endif %}</span>
+        {% endif %}</td>
         <td>{{ row.passport_no or '-' }}</td>
         <td class="{{ 'text-danger fw-bold' if (row.id, '普通护照') in expired_set }}">{{ row.passport_expiry or '-' }}</td>
         <td>{{ row.hm_pass_no or '-' }}</td>

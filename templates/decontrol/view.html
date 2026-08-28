@@ -43,5 +43,12 @@
     <a href="{{ url_for('decontrol.list') }}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left"></i> 返回列表
     </a>
+    <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#confirmModal"
+            data-action="{{ url_for('decontrol.revoke', dec_id=dec.id) }}"
+            data-message="确定要撤销 {{ dec.surname }}{{ dec.given_name }} 的撤控备案吗？该人员将恢复为「有效」，这条撤控记录会被删除（操作日志留存完整快照）。">
+        <i class="bi bi-arrow-counterclockwise"></i> 撤销撤控
+    </button>
+    <span class="form-text ms-2">撤错了人可从这里回退——撤控后该人员的出行、领用等业务全部办不了。</span>
 </div>
+{% include "components/confirm_modal.html" %}
 {% endblock %}

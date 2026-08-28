@@ -52,7 +52,16 @@ def list() -> ResponseReturnValue:
     has_tw = request.args.get("has_tw", "").strip()
 
     where, params = build_filters(request.args)
-    base = "SELECT * FROM certificates WHERE 1=1" + where + " ORDER BY updated_at DESC"
+    # 带上持证人的备案状态与撤控时的证件移交日期：人已撤控的，台账上要一眼看出来，
+    # 否则「在库 N 本」这个数字里混着一批早已移交出去的证。两者都是关联查得到的，
+    # 不在 certificates 上冗余列（那样五版共用的 schema 就得跟着改）。
+    base = ("SELECT certificates.*, pf.status AS filing_status, "
+            "       (SELECT d.cert_handover_date FROM decontrol_filing d "
+            "        WHERE d.personnel_filing_id = certificates.personnel_filing_id "
+            "        ORDER BY d.id DESC LIMIT 1) AS handover_date "
+            "FROM certificates "
+            "LEFT JOIN personnel_filing pf ON pf.id = certificates.personnel_filing_id "
+            "WHERE 1=1" + where + " ORDER BY certificates.updated_at DESC")
 
     pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 
@@ -64,6 +73,9 @@ def list() -> ResponseReturnValue:
 
     expired = []  # (row, passport_type_label)
     for row in pg["rows"]:
+        # 人都撤控了，他那本证到不到期与本单位无关，不再标黄
+        if row["filing_status"] == "decontrolled":
+            continue
         for key, label in [
             ("passport_expiry", "普通护照"),
             ("hm_pass_expiry", "往来港澳通行证"),

@@ -76,6 +76,9 @@ def index() -> ResponseReturnValue:
         "FROM travel_details "
         "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
         "AND (passport_return_date IS NULL OR passport_return_date = '')"
+        # 已撤控人员不进告警，口径见 blueprints/travel.py 的 _ACTIVE_ONLY
+        " AND EXISTS (SELECT 1 FROM personnel_filing pf "
+        "             WHERE pf.id = travel_details.personnel_filing_id AND pf.status = 'active')"
     ).fetchall()
     cert_in_use = len(in_use_rows)
     # 逾期未还：已领用 + 未归还 + 超过归还工作日时限（正常 10 / 取消 5）
@@ -97,6 +100,8 @@ def index() -> ResponseReturnValue:
         "trip_status, cancel_date, passport_collect_date FROM travel_details "
         "WHERE need_new_passport = '是' "
         "  AND (passport_collect_date IS NULL OR passport_collect_date = '')"
+        "  AND EXISTS (SELECT 1 FROM personnel_filing pf "
+        "              WHERE pf.id = travel_details.personnel_filing_id AND pf.status = 'active')"
     ).fetchall():
         if is_new_cert_overdue({**dict(r), "cert_registered": r["id"] in registered}, today):
             overdue.append({
@@ -108,8 +113,13 @@ def index() -> ResponseReturnValue:
     cert_overdue = len(overdue)
 
     # ——— 证照到期预警 ———
+    # 到期预警同样只看在控人员：人都撤控了，他那本证到不到期与本单位无关，
+    # 报出来只会把真正要办的事淹掉。
     cert_expiry_warnings = db.execute(
-        "SELECT name, passport_expiry, hm_pass_expiry, tw_pass_expiry FROM certificates"
+        "SELECT c.name, c.passport_expiry, c.hm_pass_expiry, c.tw_pass_expiry "
+        "FROM certificates c "
+        "JOIN personnel_filing pf ON pf.id = c.personnel_filing_id "
+        "WHERE pf.status = 'active'"
     ).fetchall()
     expiring = []
     for row in cert_expiry_warnings:
