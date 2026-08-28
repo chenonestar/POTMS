@@ -1,10 +1,11 @@
-"""首页仪表盘 — 增强版（维度分类 + 可点击）"""
+"""首页仪表盘 — 统计概览 + 待办告警"""
 from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash
 from flask.typing import ResponseReturnValue
 
 from auth import login_required
+from config import Config
 from database import get_db
 from utils.backup import run_daily_backup, latest_backup
 from utils.helpers import log_action
@@ -38,7 +39,9 @@ def index() -> ResponseReturnValue:
 
     db = get_db()
     today = datetime.now().strftime("%Y%m%d")
-    warn_date = (datetime.now() + timedelta(days=30)).strftime("%Y%m%d")
+    # 用配置里的阈值，别在这里另写一个 30：首页与证照台账报的必须是同一批证，
+    # 两处各拿一个天数，调了配置就只有一处跟着变，用的人无从判断哪个才算数。
+    warn_date = (datetime.now() + timedelta(days=Config.CERT_EXPIRY_WARN_DAYS)).strftime("%Y%m%d")
 
     # 基础统计
     total_active = db.execute("SELECT COUNT(*) FROM personnel_filing WHERE status = 'active'").fetchone()[0]
@@ -46,24 +49,11 @@ def index() -> ResponseReturnValue:
     total_certificates = db.execute("SELECT COUNT(*) FROM certificates").fetchone()[0]
     total_travel = db.execute("SELECT COUNT(*) FROM travel_details").fetchone()[0]
 
-    # ——— 按单位维度 ———
-    by_unit = db.execute(
-        "SELECT work_unit AS label, COUNT(*) AS cnt FROM personnel_filing "
-        "WHERE status = 'active' GROUP BY work_unit ORDER BY cnt DESC LIMIT 8"
-    ).fetchall()
-
-    # ——— 按政治面貌维度 ———
-    by_political = db.execute(
-        "SELECT political_status AS label, COUNT(*) AS cnt FROM personnel_filing "
-        "WHERE status = 'active' GROUP BY political_status ORDER BY cnt DESC"
-    ).fetchall()
-
-    # ——— 按职级维度（personnel_info) ———
-    by_rank = db.execute(
-        "SELECT pi.rank AS label, COUNT(*) AS cnt FROM personnel_filing pf "
-        "JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
-        "WHERE pf.status = 'active' GROUP BY pi.rank ORDER BY cnt DESC"
-    ).fetchall()
+    # 这里刻意没有「按单位 / 按政治面貌 / 按职级」三项分布统计。
+    # 原来算了 by_unit / by_political / by_rank 三段并传给模板，而 dashboard.html
+    # 从第一版起就没用过它们——每进一次首页白跑三个查询（其中职级那个还带 JOIN）。
+    # 500 人、单用户的规模上，分布统计更像报表需求，放首页每天看意义不大；
+    # .NET 与 Java 两版早已按这个口径不查也不显示，此处与它们对齐。
 
     # ——— 证照状态分类 ———
     cert_in_storage = db.execute(
@@ -130,7 +120,15 @@ def index() -> ResponseReturnValue:
         ]:
             expiry = row[key]
             if expiry and today <= expiry <= warn_date:
-                expiring.append({"name": row["name"], "type": label, "expiry": expiry})
+                # 带上还剩几天：光看一个日期还得心算，而这张卡要回答的就是「有多急」
+                # 按自然日相减，不能拿 datetime 直接减：那样带上了当前时刻，
+                # 5 天后到期会算成「剩 4 天」——早报一天没坏处，但数字对不上日期
+                # 就会让人怀疑这张卡到底准不准。
+                days = (datetime.strptime(expiry, "%Y%m%d").date() - datetime.now().date()).days
+                expiring.append({"name": row["name"], "type": label,
+                                 "expiry": expiry, "days": max(days, 0)})
+    # 最先到期的排在最前——这张卡是「接下来要办什么」，不是一份名册
+    expiring.sort(key=lambda x: x["expiry"])
 
     # ——— 近期出行（按出行日期排序） ———
     recent_travel = db.execute(
@@ -155,13 +153,11 @@ def index() -> ResponseReturnValue:
         total_decontrolled=total_decontrolled,
         total_certificates=total_certificates,
         total_travel=total_travel,
-        by_unit=by_unit,
-        by_political=by_political,
-        by_rank=by_rank,
         cert_in_storage=cert_in_storage,
         cert_in_use=cert_in_use,
         cert_overdue=cert_overdue,
         expiring=expiring,
+        warn_days=Config.CERT_EXPIRY_WARN_DAYS,
         overdue=overdue,
         recent_travel=recent_travel,
         backup_date=backup_date,
