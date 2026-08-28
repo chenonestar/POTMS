@@ -163,7 +163,10 @@ def test_correction_backs_up_and_logs(tmp_path, monkeypatch):
     import database
     database.run_migrations()
 
-    assert list((tmp_path / "bak").glob("data_*.db")), "订正前应留下备份"
+    # 改前快照是独立的带时间戳文件，不是当天那份每日备份——每日备份会被后续
+    # 备份覆盖掉，而这份要能一直指向「这次订正之前」的状态。
+    assert list((tmp_path / "bak").glob("before_migrate_cert_types_*.db")), \
+        f"订正前没留下改前快照，备份目录里只有：{[p.name for p in (tmp_path / 'bak').iterdir()]}"
     db = sqlite3.connect(Config.DATABASE)
     detail = db.execute(
         "SELECT detail FROM operation_logs WHERE action='migrate' "

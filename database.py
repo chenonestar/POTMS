@@ -308,10 +308,11 @@ def run_migrations():
             (BACKFILL_REMARK_LEGACY,)).fetchall()
         if stale:
             # 动的是业务记录，先留一份改动前的快照。create_app 里的每日备份排在
-            # 迁移之后，等它就晚了。
+            # 迁移之后，等它就晚了；而且每日备份同一天会被覆盖，这份要能一直
+            # 指向「这次订正之前」那个状态，所以用独立的带时间戳快照。
             try:
-                from utils.backup import run_daily_backup
-                run_daily_backup(force=True)
+                from utils.backup import snapshot_before_change
+                snapshot_before_change("migrate_cert_types")
             except Exception:
                 pass
             fixed = pending = 0

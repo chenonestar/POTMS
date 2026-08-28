@@ -72,9 +72,12 @@ def edit(uid) -> ResponseReturnValue:
               "历史数据是否一并更新——不勾选就只改这张配置表，历史撤控记录仍挂在旧名下。",
               "warning")
         return redirect(url_for("submit_unit.index"))
-    if syncing and (err := backup_before_bulk_edit()):
-        flash(err, "danger")
-        return redirect(url_for("submit_unit.index"))
+    snapshot = None
+    if syncing:
+        snapshot, err = backup_before_bulk_edit("submit_unit_rename")
+        if err:
+            flash(err, "danger")
+            return redirect(url_for("submit_unit.index"))
 
     before = dict(row)
     db.execute("UPDATE sys_submit_unit SET name = ?, contact = ?, phone = ?, sort_order = ? WHERE id = ?",
@@ -86,8 +89,10 @@ def edit(uid) -> ResponseReturnValue:
         changed = sync_refs(SUBMIT_UNIT_REFS, row["name"], name)
         log_action("update", "sys_submit_unit", uid, before=before,
                    after=row_snapshot("sys_submit_unit", uid),
-                   detail=f"报送单位改名同步历史数据：{row['name']} → {name}，共 {changed} 条")
-        flash(f"报送单位已更新；并同步了 {changed} 条历史撤控记录。改动前已自动备份。", "success")
+                   detail=f"报送单位改名同步历史数据：{row['name']} → {name}，"
+                          f"共 {changed} 条；改前快照 {snapshot}")
+        flash(f"报送单位已更新；并同步了 {changed} 条历史撤控记录。"
+              f"改动前的快照已存为 backup/{snapshot}，需要回退时用它替换 data.db。", "success")
     else:
         log_action("update", "sys_submit_unit", uid, before=before, after=row_snapshot("sys_submit_unit", uid))
         flash("报送单位已更新。", "success")

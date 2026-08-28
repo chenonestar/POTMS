@@ -68,8 +68,9 @@ POTMS/
 ├── utils/                    # 工具函数
 │   ├── validators.py         # 身份证 / 日期 / 出行区间校验
 │   ├── helpers.py            # 分页 / 复姓 / 日志（含变更快照）
+│   ├── textref.py            # 按文字引用的配置项：使用量 / 改名同步 / 删除守卫
 │   ├── security.py           # bcrypt 密码哈希与校验
-│   ├── backup.py             # 每日自动备份 + 保留30天
+│   ├── backup.py             # 每日自动备份 + 改前快照 + 保留30天
 │   ├── excel_import.py       # Excel 批量导入
 │   └── excel_export.py       # openpyxl 表格生成
 ├── static/js/regions.js      # 省市区三级联动数据
@@ -198,7 +199,7 @@ pyinstaller --onefile ^
 |---|---|---|
 | `data.db` | SQLite 数据库（全部业务数据） | ✅ 必须 |
 | `uploads/` | PDF 附件 | ✅ 必须 |
-| `backup/` | 每日自动备份（保留最近 30 天） | 可选 |
+| `backup/` | 每日自动备份 + 批量改数据前的快照（均保留最近 30 天） | 可选 |
 | `exports/` | 临时 Excel 导出文件 | 否 |
 | `.secret_key` | 会话密钥（持久化，避免重启后登录失效） | 建议随库一起备份 |
 
@@ -242,6 +243,24 @@ SQLite 数据库为单文件 `data.db`，备份即复制该文件。
 - 自动清理 **30 天前** 的旧备份。
 - 首页仪表盘显示"最近备份"日期，并提供 **「立即备份」** 手动按钮。
 
+### 改前快照（批量重写历史时自动生成）
+
+少数操作会一次性改掉几百条历史记录——组织架构 / 数据字典 / 报送单位的**改名同步**、
+账户页的**历史经办人回填**、启动时的**历史证件种类订正**。这些操作执行前会自动存一份
+独立快照：
+
+```
+backup/before_<做什么>_YYYYMMDD_HHMMSS.db
+```
+
+例如 `before_org_rename_20260828_143205.db`。它与每日备份**分开存放且从不覆盖**：
+
+- 每日备份一天只有一个文件名，同一天做两次批量改动，第二次会把第一次改之前的那份盖掉；
+- 改前快照精确到秒，两次改动各留各的退路，文件名里的 tag 也直接说明了是哪次改动。
+
+快照文件名会同时出现在**页面提示**和**操作日志**里，需要回退时按下文「从备份恢复」用它
+替换 `data.db` 即可。快照与每日备份一样受 30 天保留期约束。
+
 ### 手动备份（离线冷备）
 
 直接复制数据文件即可：
@@ -271,10 +290,13 @@ xcopy /E /I /Y D:\POTMS\uploads %BACKUP_DIR%\uploads_%DATE%
 当 `data.db` 损坏或误操作需要回退时，按以下三步恢复：
 
 1. **停止应用**：关闭 POTMS.exe（或 `nssm stop POTMS`）。必须先停服，否则数据库文件被占用且 WAL 日志未合并。
-2. **替换数据库**：从 `backup/` 中选择要恢复到的日期，复制覆盖 `data.db`：
+2. **替换数据库**：从 `backup/` 中选择要恢复到的文件——按日期回退用 `data_YYYYMMDD.db`，
+   撤销某次批量改名/回填用对应的 `before_<做什么>_YYYYMMDD_HHMMSS.db`（文件名可在操作
+   日志里查到）——复制覆盖 `data.db`：
 
    ```bat
    copy /Y backup\data_20260701.db data.db
+   REM 或：copy /Y backup\before_org_rename_20260828_143205.db data.db
    del data.db-wal data.db-shm 2>nul   REM 删除旧的 WAL/SHM 残留（若存在）
    ```
 

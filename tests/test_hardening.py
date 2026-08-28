@@ -165,6 +165,45 @@ def test_backup_daily_marker(tmp_path, monkeypatch):
     assert r3["created"] is True
 
 
+def test_change_snapshots_never_overwrite(tmp_path, monkeypatch):
+    """改前快照从不覆盖——同一秒内连着改两次，两份都要留住。
+
+    这份文件的全部价值就在于它是「那一次改动之前」的样子。每日备份一天一个文件名，
+    第二次批量改动会把它盖掉，第一次改错了就再也退不回去——快照不能重蹈覆辙。
+    """
+    monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "d.db"))
+    monkeypatch.setattr(Config, "BACKUP_FOLDER", str(tmp_path / "bk"))
+    (tmp_path / "d.db").write_bytes(b"first")
+    import utils.backup as bk
+
+    a = bk.snapshot_before_change("org_rename")
+    (tmp_path / "d.db").write_bytes(b"second")
+    b = bk.snapshot_before_change("org_rename")     # 同一秒、同一 tag
+
+    assert a != b, f"同 tag 连着两次留下了同名文件，后一份盖掉了前一份：{a}"
+    bak = tmp_path / "bk"
+    assert (bak / a).read_bytes() == b"first", "第一份快照的内容被后来的改动覆盖了"
+    assert (bak / b).read_bytes() == b"second"
+    assert a.startswith("before_org_rename_") and a.endswith(".db"), \
+        f"快照名看不出是哪次改动：{a}"
+
+
+def test_change_snapshots_are_pruned_with_the_dailies(tmp_path, monkeypatch):
+    """快照同样受 30 天保留期约束，否则备份目录只进不出。"""
+    monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "d.db"))
+    monkeypatch.setattr(Config, "BACKUP_FOLDER", str(tmp_path / "bk"))
+    bak = tmp_path / "bk"; bak.mkdir()
+    (bak / "before_org_rename_20200101_101010.db").write_bytes(b"old")
+    (bak / "before_org_rename_20991231_101010.db").write_bytes(b"new")
+    (bak / "notes.txt").write_text("不是备份文件，别碰")
+
+    import utils.backup as bk
+    assert bk.prune_old_backups() == 1
+    assert not (bak / "before_org_rename_20200101_101010.db").exists()
+    assert (bak / "before_org_rename_20991231_101010.db").exists()
+    assert (bak / "notes.txt").exists(), "清理动了不属于备份的文件"
+
+
 def test_logs_export_by_year(logged_in):
     c = logged_in
     # 上面 fixture 的登录/建档已产生日志；取当前本地年份导出

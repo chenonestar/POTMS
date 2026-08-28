@@ -249,7 +249,7 @@ def _legacy_operator_counts(username: str) -> dict:
 def backfill_operator() -> ResponseReturnValue:
     """把业务表里等于登录账号的经办人，批量改成真实姓名。"""
     from utils.helpers import log_action
-    from utils.backup import run_daily_backup
+    from utils.backup import snapshot_before_change
 
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE username = ?",
@@ -266,9 +266,10 @@ def backfill_operator() -> ResponseReturnValue:
         flash("姓名与登录账号相同，无需回填。", "info")
         return redirect(url_for("auth.account"))
 
-    # 不可逆的批量写入，先留一份退路
+    # 不可逆的批量写入，先留一份退路。用独立的带时间戳快照而不是每日备份：
+    # 每日备份同一天会被覆盖，而这份要能一直指向「这次回填之前」那个状态。
     try:
-        run_daily_backup(force=True)               # force：当天已备过也要再备，因为马上要改数据
+        snapshot = snapshot_before_change("operator_backfill")
     except Exception as exc:                       # noqa: BLE001 - 备份失败就别动数据
         flash(f"自动备份失败（{exc}），已中止回填。请手动备份 data.db 后重试。", "danger")
         return redirect(url_for("auth.account"))
@@ -284,7 +285,9 @@ def backfill_operator() -> ResponseReturnValue:
     db.commit()
 
     log_action("update", "users", user["id"],
-               detail=f"历史经办人回填：{user['username']} → {full_name}，共 {changed} 条")
+               detail=f"历史经办人回填：{user['username']} → {full_name}，共 {changed} 条；"
+                      f"改前快照 {snapshot}")
     flash(f"已把 {changed} 条历史记录的经办人由「{user['username']}」更新为「{full_name}」。"
-          "操作日志保持原样（审计需要登录账号）。", "success")
+          "操作日志保持原样（审计需要登录账号）。"
+          f"改动前的快照已存为 backup/{snapshot}。", "success")
     return redirect(url_for("auth.account"))

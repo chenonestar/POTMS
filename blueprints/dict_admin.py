@@ -152,9 +152,12 @@ def edit(dict_id) -> ResponseReturnValue:
               "存的是文字本身。请在编辑框里选择历史数据是否一并更新——不勾选就只改"
               "下拉选项，历史数据仍是旧文字，按新值筛选一条也搜不到。", "warning")
         return redirect(url_for("dict_admin.index"))
-    if syncing and (err := backup_before_bulk_edit()):
-        flash(err, "danger")
-        return redirect(url_for("dict_admin.index"))
+    snapshot = None
+    if syncing:
+        snapshot, err = backup_before_bulk_edit("dict_rename")
+        if err:
+            flash(err, "danger")
+            return redirect(url_for("dict_admin.index"))
 
     before = dict(row)
     db.execute("UPDATE sys_dict SET value = ?, sort_order = ? WHERE id = ?", (value, sort_order, dict_id))
@@ -165,8 +168,9 @@ def edit(dict_id) -> ResponseReturnValue:
         log_action("update", "sys_dict", dict_id, before=before,
                    after=row_snapshot("sys_dict", dict_id),
                    detail=f"{cat['label']}改名同步历史数据：{row['value']} → {value}，"
-                          f"共 {changed} 条（{describe_refs(counts)}）")
-        flash(f"字典项已更新；并同步了 {changed} 条历史数据。改动前已自动备份。", "success")
+                          f"共 {changed} 条（{describe_refs(counts)}）；改前快照 {snapshot}")
+        flash(f"字典项已更新；并同步了 {changed} 条历史数据。"
+              f"改动前的快照已存为 backup/{snapshot}，需要回退时用它替换 data.db。", "success")
     else:
         log_action("update", "sys_dict", dict_id, before=before, after=row_snapshot("sys_dict", dict_id))
         flash("字典项已更新。", "success")

@@ -94,15 +94,18 @@ def sync_refs(refs, old: str, new: str) -> int:
     return changed
 
 
-def backup_before_bulk_edit() -> str | None:
-    """批量重写历史前强制备份，成功返回 None，失败返回给用户看的原因。
+def backup_before_bulk_edit(tag: str) -> tuple[str | None, str | None]:
+    """批量重写历史前存一份改前快照，返回 (文件名, 错误信息)，两者恰有一个为 None。
 
     改名同步是不可逆的批量写入：几百条历史记录同时被改掉，改错了没有 undo。
     备份失败就别动数据——这是第 1 批经办人回填定下的规矩，三处改名同步照办。
+
+    用的是独立的带时间戳快照（backup/before_<tag>_YYYYMMDD_HHMMSS.db）而不是
+    每日备份：同一天做两次改名同步，两份改前快照都要留得住，否则第二次的备份会
+    盖掉第一次改之前的那一份，第一次改错了就再也退不回去了。
     """
-    from utils.backup import run_daily_backup
+    from utils.backup import snapshot_before_change
     try:
-        run_daily_backup(force=True)   # force：当天已备过也要再备，因为马上要改数据
+        return snapshot_before_change(tag), None
     except Exception as exc:           # noqa: BLE001 - 备份失败就别动数据
-        return f"自动备份失败（{exc}），已中止同步。请手动备份 data.db 后重试。"
-    return None
+        return None, f"自动备份失败（{exc}），已中止同步。请手动备份 data.db 后重试。"

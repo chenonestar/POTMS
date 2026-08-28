@@ -103,6 +103,11 @@ def _backups():
     return sorted(os.listdir(Config.BACKUP_FOLDER)) if os.path.isdir(Config.BACKUP_FOLDER) else []
 
 
+def _snapshots(tag=""):
+    """改前快照：backup/before_<tag>_YYYYMMDD_HHMMSS.db。"""
+    return [f for f in _backups() if f.startswith("before_" + tag)]
+
+
 def _arm_backup_check(cl):
     """先取好 CSRF 令牌，再清空备份目录，返回令牌。
 
@@ -158,16 +163,42 @@ def test_org_rename_syncs_history_with_backup_and_log(c):
     html = c.post("/org/2/edit", data={"csrf_token": tok, "name": "工程技术部",
                                        "parent_id": "1", "sync_history": "1"},
                   follow_redirects=True).get_data(as_text=True)
-    assert "同步了" in html and "已自动备份" in html
+    assert "同步了" in html and "改动前的快照已存为" in html
 
     assert _scalar("SELECT name FROM sys_org WHERE id=2") == "工程技术部"
     assert _scalar("SELECT department FROM certificates WHERE id=1") == "工程技术部"
     assert _scalar("SELECT department FROM travel_details WHERE id=1") == "工程技术部"
 
-    assert _backups(), "批量重写历史之前没有备份——改错了没有退路"
+    snaps = _snapshots("org_rename")
+    assert len(snaps) == 1, f"批量重写历史之前没留下改前快照：{_backups()}"
+    assert snaps[0] in html, "页面没告诉操作员这份快照叫什么，出事时不知道拿哪个文件回退"
     detail = _log_details()[0]
     assert "技术部" in detail and "工程技术部" in detail and "2 条" in detail, \
         f"日志说不清改了什么：{detail}"
+    assert snaps[0] in detail, f"日志里没记下改前快照叫什么：{detail}"
+
+
+def test_each_sync_keeps_its_own_snapshot(c):
+    """同一天做两次同步，要留下两份快照——这正是不用每日备份的原因。
+
+    每日备份一天一个文件名，第二次同步会把它覆盖掉，于是「第一次改之前」的样子
+    就再也拿不回来了；而那恰恰是留这份备份要防的事。改前快照带到秒的时间戳且
+    从不覆盖，两次改动各有各的退路。
+    """
+    tok = _arm_backup_check(c)
+    c.post("/org/2/edit", data={"csrf_token": tok, "name": "工程技术部",
+                                "parent_id": "1", "sync_history": "1"}, follow_redirects=True)
+    c.post("/submit-unit/1/edit",
+           data={"csrf_token": tok, "name": "某某市国资委", "contact": "王五",
+                 "phone": "13800000000", "sort_order": "0", "sync_history": "1"},
+           follow_redirects=True)
+
+    snaps = _snapshots()
+    assert len(snaps) == 2, f"两次同步只留下 {len(snaps)} 份快照：{_backups()}"
+    assert len(set(snaps)) == 2, f"两份快照重名，后一份把前一份盖掉了：{snaps}"
+    # 文件名要能看出各自是哪次改动，不然出事时得逐个打开猜
+    assert any("org_rename" in f for f in snaps) and \
+           any("submit_unit_rename" in f for f in snaps), f"快照名分不出是哪次改动：{snaps}"
 
 
 def test_org_rename_refuses_sync_when_name_is_ambiguous(c):
@@ -243,7 +274,7 @@ def test_text_backed_dict_rename_syncs_all_referencing_tables(c):
            follow_redirects=True)
     assert _scalar("SELECT political_status FROM personnel_filing WHERE id=1") == "普通群众"
     assert _scalar("SELECT political_status FROM decontrol_filing WHERE id=1") == "普通群众"
-    assert _backups(), "批量重写历史之前没有备份"
+    assert _snapshots("dict_rename"), f"批量重写历史之前没留下改前快照：{_backups()}"
     assert any("普通群众" in d and "政治面貌" in d for d in _log_details()), \
         f"日志里没有这次同步：{_log_details()[:3]}"
 
@@ -286,7 +317,7 @@ def test_submit_unit_rename_syncs_decontrol_records(c):
            follow_redirects=True)
     assert _scalar("SELECT name FROM sys_submit_unit WHERE id=1") == "某某市国资委"
     assert _scalar("SELECT submit_unit_name FROM decontrol_filing WHERE id=1") == "某某市国资委"
-    assert _backups(), "批量重写历史之前没有备份"
+    assert _snapshots("submit_unit_rename"), f"批量重写历史之前没留下改前快照：{_backups()}"
     assert any("某某市国资委" in d for d in _log_details()), "日志里没有这次同步"
 
 

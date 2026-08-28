@@ -62,8 +62,10 @@
             <ul class="small text-muted">
                 <li>只改业务表（信息表 / 备案表 / 证照 / 出行 / 撤控 / 证件领用）的经办人字段。</li>
                 <li><strong>操作日志不动</strong>——审计需要登录账号。</li>
-                <li>执行前会自动备份一次 data.db 到 backup 目录，整件事也会记进操作日志。</li>
-                <li><strong>此操作不可撤销</strong>，请确认姓名填写正确后再点。</li>
+                <li>执行前会把 data.db 存一份改前快照到 <code>backup/before_operator_backfill_…&#8203;.db</code>，
+                    整件事也会记进操作日志（含快照文件名）。</li>
+                <li><strong>此操作不可撤销</strong>，请确认姓名填写正确后再点。改错了就停服，
+                    用那份快照替换 data.db 再重启。</li>
             </ul>
             <form method="POST" action="{{ url_for('auth.backfill_operator') }}"
                   onsubmit="return confirm('确定把 {{ legacy.total }} 条历史记录的经办人改为「{{ full_name }}」吗？此操作不可撤销。');">

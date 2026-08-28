@@ -58,6 +58,8 @@ def edit(org_id) -> ResponseReturnValue:
     # 改名要不要带上历史数据，得先问清楚。业务表里存的是名字的文字，不改则历史
     # 数据留在旧名下（同一个单位在统计里裂成两个），改则是批量重写历史。
     counts = count_refs(ORG_REFS, old) if name != old else []
+    syncing = bool(counts) and bool(request.form.get("sync_history"))
+    snapshot = None
     if counts and not request.form.get("sync_history"):
         flash(f"「{old}」已被 {describe_refs(counts)} 引用。改名前请在重命名框里选择"
               "历史数据是否一并更新——不勾选就只改组织树，历史数据仍留在旧名下。", "warning")
@@ -65,7 +67,7 @@ def edit(org_id) -> ResponseReturnValue:
 
     # 同名节点存在时无法按文字区分是谁的历史。「技术部」在两个单位下各有一个，
     # 一条 UPDATE 会把两边都扫走，而这不是用户要的。宁可不同步，也不能改错别人的。
-    if counts and request.form.get("sync_history"):
+    if syncing:
         clash = db.execute(
             "SELECT COUNT(*) FROM sys_org WHERE name = ? AND id != ?", (old, org_id)
         ).fetchone()[0]
@@ -73,19 +75,21 @@ def edit(org_id) -> ResponseReturnValue:
             flash(f"组织树上还有 {clash} 个节点同叫「{old}」，历史数据按文字分不出属于哪一个，"
                   "已中止同步。请先把重名的节点改成可区分的名称。", "danger")
             return redirect(url_for("organization.index"))
-        if err := backup_before_bulk_edit():
+        snapshot, err = backup_before_bulk_edit("org_rename")
+        if err:
             flash(err, "danger")
             return redirect(url_for("organization.index"))
 
     db.execute("UPDATE sys_org SET name = ?, parent_id = ? WHERE id = ?", (name, parent_id, org_id))
     db.commit()
 
-    if counts and request.form.get("sync_history"):
+    if syncing:
         changed = sync_refs(ORG_REFS, old, name)
         log_action("update", "sys_org", org_id,
                    detail=f"组织改名同步历史数据：{old} → {name}，共 {changed} 条"
-                          f"（{describe_refs(counts)}）")
-        flash(f"已更新：{name}；并同步了 {changed} 条历史数据。改动前已自动备份。", "success")
+                          f"（{describe_refs(counts)}）；改前快照 {snapshot}")
+        flash(f"已更新：{name}；并同步了 {changed} 条历史数据。"
+              f"改动前的快照已存为 backup/{snapshot}，需要回退时用它替换 data.db。", "success")
     else:
         log_action("update", "sys_org", org_id, detail=name)
         flash(f"已更新：{name}", "success")
