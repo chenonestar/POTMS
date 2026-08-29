@@ -159,11 +159,11 @@
         <li><a href="#s11">11　界面入口条件</a></li>
         <li><a href="#s12">12　提示文案规约</a></li>
         <li class="grp">第五部分　通用功能</li>
-        <li><a href="#s13">13　导出 / 打印 / 查询 / 导入 / 日志 / 备份</a> <span class="todo">（第 3 批）</span></li>
+        <li><a href="#s13">13　导出 / 打印 / 查询 / 导入 / 日志 / 备份</a></li>
         <li class="grp">第六部分　非功能需求</li>
-        <li><a href="#s14">14　安全 / 性能 / 可用性 / 兼容性 / 技术栈</a> <span class="todo">（第 3 批）</span></li>
+        <li><a href="#s14">14　安全 / 性能 / 可用性 / 兼容性 / 技术栈</a></li>
         <li class="grp">第七部分　自检</li>
-        <li><a href="#s15">15　需求评审清单与交付自检清单</a> <span class="todo">（第 3 批）</span></li>
+        <li><a href="#s15">15　需求评审清单与交付自检清单</a></li>
     </ol>
 </div>
 
@@ -1589,16 +1589,277 @@
 
 <!-- ===================== 第五 / 六 / 七部分（第 3 批） ===================== -->
 <div class="part">第五部分　通用功能</div>
-<section id="s13"><h2>13、导出 / 打印 / 查询 / 导入 / 日志 / 备份</h2>
-<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 3 批补齐。）</p></div></section>
+
+<section id="s13">
+<h2>13、导出 / 打印 / 查询 / 导入 / 日志 / 备份</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>这些「每个模块都有一份」的功能，<strong>各自的口径是什么</strong>。</dd>
+<dt>不写的代价</dt>
+<dd>通用功能最容易被写成一句「支持导出 Excel」就过去了，然后每个模块各实现一遍，口径各不相同。本项目踩到的是<strong>「页面上看到的」和「导出出来的」不一致</strong>——盘库清单页做了筛选，导出如果自己重新查一遍库，两份东西就对不上，而拿去核对实体的正是导出那一份。<br>
+现在的做法是：<u>数据由页面算好后传进导出函数，导出不重新查</u>（<code>export_cert_stock(operator, in_stock, lent_out)</code>），并有两条测试钉住「导出与页面同源」「导出遵守筛选」。</dd>
+<dt>怎么填</dt>
+<dd>对每一项通用功能写清三样：<strong>覆盖哪些模块 / 数据从哪儿来 / 有没有保留期</strong>。<br>
+「数据从哪儿来」是关键：<u>凡是页面上有筛选的，导出必须与页面同源</u>，否则迟早对不上。<br>
+「保留期」也别漏——导出文件和备份文件都是只增不减的，而且都含敏感数据。</dd>
+</dl></div></details>
+
+<h3>13.1 Excel 导出（7 类 + 日志归档）</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:180px">路由</th><th style="width:150px">导出内容</th><th>范围与口径</th></tr></thead>
+<tbody>
+<tr><td><code>/export/info</code></td><td>人员信息登记表</td><td rowspan="6">统一支持三种范围，并把范围写进文件里的说明行（<code>_scope_note</code>）：<br>·<strong>全量</strong>（无参数）<br>·<strong>按筛选</strong>（沿用列表页当前的 <code>where</code> 与参数）<br>·<strong>选中行</strong>（<code>?ids=1,2,3</code>）<br>文件名里带经办人<u>真实姓名</u>（<code>operator_name()</code>）——这是交给人看的产物。</td></tr>
+<tr><td><code>/export/filing</code></td><td>备案人员</td></tr>
+<tr><td><code>/export/certificate</code></td><td>证照台账</td></tr>
+<tr><td><code>/export/travel</code></td><td>出国申请</td></tr>
+<tr><td><code>/export/decontrol</code></td><td>撤控备案</td></tr>
+<tr><td><code>/export/issuance</code></td><td>证件领用单</td></tr>
+<tr><td><code>/export/cert-stock</code></td><td><strong>证件盘库清单</strong></td>
+    <td><span class="badge b-p1">口径特殊</span> 这一份<u>不重新查库</u>：<code>in_stock</code> / <code>lent_out</code> 由盘库页算好后直接传进 <code>export_cert_stock()</code>，筛选参数与页面完全一致。理由是这份表要拿去和柜子里的实体证逐本核对，<strong>纸上的清单与屏幕上的清单必须是同一份</strong>。<br>测试：<span class="badge b-done">test_stock_export_lists_the_same_documents</span> <span class="badge b-done">test_stock_export_respects_the_filter</span></td></tr>
+<tr><td><code>/logs/export?year=YYYY</code></td><td>操作日志年度归档</td>
+    <td>按年份导出审计副本，<u>库内日志仍完整保留</u>（归档不是清理）。年份必须是 4 位数字，否则退回并提示。<br><span class="badge b-p2">口径注意</span> 日志<u>内容</u>里的「操作人」一列是<strong>登录账号</strong>而不是真实姓名——那是审计口径，与文件名上的真实姓名是两回事。</td></tr>
+</tbody></table></div>
+<p>导出文件落在 <code>exports/</code>，<strong>保留 7 天</strong>后自动清理（<code>_EXPORT_RETENTION_DAYS</code>）。清理的理由不只是磁盘：这些文件含身份证号等敏感数据，只增不减地堆在目录里本身就是风险。单个文件清理失败不影响本次导出。</p>
+
+<h3>13.2 打印（6 类单据 + 批量）</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:130px">print_type</th><th>打印标题</th><th style="width:250px">说明</th></tr></thead>
+<tbody>
+<tr><td><code>info</code></td><td>备案人员信息登记表</td><td rowspan="6">路由 <code>/print/&lt;type&gt;/&lt;id&gt;</code>，新标签打开，走浏览器打印。<br>批量打印 <code>/print/batch/&lt;type&gt;?ids=1,2,3</code>，一次排版多份。<br>记录不存在时一律 flash + 重定向回对应列表，<u>不 500</u>；类型不认识时提示「不支持的打印类型」。</td></tr>
+<tr><td><code>filing</code></td><td>因私事出国（境）人员登记备案表</td></tr>
+<tr><td><code>certificate</code></td><td>因私出国（境）备案人员证照登记表</td></tr>
+<tr><td><code>travel</code></td><td>因私出国（境）人员明细表</td></tr>
+<tr><td><code>decontrol</code></td><td>因私事出国（境）人员撤控备案表</td></tr>
+<tr><td><code>issuance</code></td><td>因私出国（境）证件领用登记表</td></tr>
+</tbody></table></div>
+<div class="footnote"><strong>领用单的打印是特例：</strong>它要 JOIN 备案表取工作单位，还要逐行把证件种类编码换成中文（<code>_types_label</code>），塞不进其余五类共用的「表名 → 标题」映射，所以在批量打印里单开一条分支。<u>打印件上会明确标注「无签名」</u>，不让未签名的记录与已签名的混为一谈。<br>盘库清单另有自己的打印样式（表头跨页重复、每行留勾选框、页脚印出恒等式），见 10.4。</div>
+
+<h3>13.3 查询</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:140px">层次</th><th style="width:200px">位置</th><th>口径</th></tr></thead>
+<tbody>
+<tr><td><strong>全局搜索</strong></td><td><code>/search?q=</code></td>
+    <td>一次搜遍四个模块：备案人员（姓名拼接 / 身份证）、证照台账（姓名 / 三个号码）、出国申请（姓名 / 目的地 / 证件号）、撤控备案（姓名 / 身份证 / 撤控原因）。<strong>每个模块最多 50 条</strong>（<code>_LIMIT</code>）——它是「快速定位」，不是报表。</td></tr>
+<tr><td><strong>列表页筛选</strong></td><td>各模块 <code>build_filters()</code></td>
+    <td>每个模块一个函数，同时服务列表页与该模块的导出，<u>筛选条件只写一次</u>。出国明细的 <code>?passport_status=overdue</code> 直接用 <code>_overdue_ids()</code> 的集合，与首页那个数同源。</td></tr>
+<tr><td><strong>分页</strong></td><td><code>list_all()</code> / <code>paginate()</code></td>
+    <td>业务列表<strong>全量下发、前端按视口窗口化</strong>（500 人量级够用，且换页不丢筛选）；只有操作日志走服务端分页（<code>PAGE_SIZE_LOGS = 10</code>，因为每行含多行变更详情）。<code>PAGE_SIZE = 12</code>。</td></tr>
+</tbody></table></div>
+
+<h3>13.4 导入</h3>
+<div class="card">
+<p>只有<strong>一个</strong>导入入口：<code>/import/</code>，导入<u>备案人员</u>。仅接受 <code>.xlsx</code>；模板从 <code>/import/template</code> 下载。</p>
+<p>解析结果分成三段回报：总条数、成功条数、逐行错误清单（<u>哪一行、哪一列、什么错</u>）。成功与失败分别 flash 一条，错误清单在页面下方完整列出。整个过程写一条 <code>import</code> 操作日志，记下 <code>total / success / errors</code>。</p>
+<p style="margin-bottom:0">其余模块<strong>没有导入</strong>——证照、出国申请、领用单都涉及号码比对与签名，批量灌入的风险大于收益。这是有意的边界，不是没做完。</p>
+</div>
+
+<h3>13.5 操作日志</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:130px">方面</th><th>做法</th></tr></thead>
+<tbody>
+<tr><td>记什么</td><td><code>operator / action / target_type / target_id / detail / ip_address / created_at / snapshot</code>。删除与关键更新附<strong>整行 JSON 快照</strong>（before / after）。</td></tr>
+<tr><td>动作类型</td><td>实际写入库的有 <strong>10 种</strong>：<code>create</code> 新建 · <code>update</code> 修改 · <code>delete</code> 删除 · <code>cancel</code> 取消行程 · <code>restore</code> 恢复行程 · <code>void</code> 作废 · <code>import</code> 导入 · <code>export</code> 导出 · <code>backup</code> 备份 · <code>lock</code> 登录锁定。</td></tr>
+<tr><td>怎么看变更</td><td>列表页把 <code>snapshot</code> 解析成「字段 → 旧值 → 新值」并<strong>翻成中文字段名</strong>（<code>logs.FIELD_LABELS</code>，50 余项）。看日志的人不必认识列名。<br>操作人一列显示成「张三（admin）」——姓名从 <code>users</code> 表现查，查不到（账号已改名或删除）就只显示账号。</td></tr>
+<tr><td>筛选</td><td>按动作类型、目标类型、日期范围。<br><span class="badge b-p2">现状不一致</span> 筛选下拉与实际写入的取值<strong>对不齐</strong>，见下方 13.5 附注。</td></tr>
+<tr><td>能力边界</td><td><strong>只可查，不能一键回滚。</strong>日志是追溯手段，不是撤销手段——真要退回去，用 <code>backup/</code> 里的快照文件（见 9.3）。</td></tr>
+</tbody></table></div>
+
+<div class="card warning">
+<p><strong>13.5 附注：筛选下拉与实际写入的取值对不齐（本次评审新发现）</strong></p>
+<p>把代码里所有 <code>log_action()</code> 的前两个参数枚举出来，与日志页两个下拉框的选项一比，有三处对不上：</p>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">问题</th><th style="width:230px">实际写入</th><th>下拉里有什么</th></tr></thead>
+<tbody>
+<tr><td><strong>证照 CRUD 筛不出来</strong><br><span class="badge b-p1">影响最大</span></td>
+    <td>新建 / 修改 / 删除证照写的是 <code>target_type = "certificate"</code>（<u>单数</u>）；导出证照写的是 <code>"certificates"</code>（<u>复数</u>）</td>
+    <td>下拉只有「证照登记表 = <code>certificates</code>」。<strong>按它筛，只能筛出导出记录，筛不到任何一条增删改</strong>——而增删改才是查日志时最要看的。</td></tr>
+<tr><td>作废筛不出来</td><td><code>action = "void"</code>（领用单作废）</td><td>动作下拉 9 项，<u>没有 <code>void</code></u>。</td></tr>
+<tr><td>四类目标筛不出来</td><td><code>cert_issuance</code>（领用单）、<code>sys_org</code>（组织架构）、<code>database</code>（备份）、<code>operation_logs</code>（日志归档导出）</td><td>目标下拉 9 项，这四个都不在其中。</td></tr>
+</tbody></table></div>
+<p style="margin-bottom:0">日志<u>本身记全了</u>，丢失的只是筛选能力——不翻页找就看不到。记入 15.3。</p>
+</div>
+
+<h3>13.6 备份</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:130px">种类</th><th style="width:230px">文件名</th><th>触发与保留</th></tr></thead>
+<tbody>
+<tr><td><strong>每日备份</strong></td><td><code>backup/data_YYYYMMDD.db</code></td>
+    <td>访问首页时触发检查，当天已备份则跳过（<code>run_daily_backup()</code>）；首页有「立即备份」按钮可强制一次。<u>不依赖任何定时任务服务</u>——单机常驻、办公时间开着，首页是必经之路。保留 <strong>30 天</strong>（<code>RETAIN_DAYS</code>）。</td></tr>
+<tr><td><strong>改前快照</strong></td><td><code>backup/before_&lt;tag&gt;_YYYYMMDD_HHMMSS.db</code></td>
+    <td>三处改名同步前强制生成，<strong>永不覆盖</strong>（同秒同标签自动追加序号）。备份失败即中止，不动数据。同样按 30 天清理。<br><u><code>latest_backup()</code> 刻意只扫 <code>data_*</code></u>——首页显示的「最近备份」应当是每日备份，不该被一次改名操作顶掉。</td></tr>
+<tr><td><strong>恢复</strong></td><td>—</td><td><span class="badge b-p1">系统内无入口</span> README 上的手工三步：停服务 → 用快照文件替换 <code>data.db</code> → 启服务。见第 15 章欠账。</td></tr>
+</tbody></table></div>
+</section>
 
 <div class="part">第六部分　非功能需求</div>
-<section id="s14"><h2>14、安全 / 性能 / 可用性 / 兼容性 / 技术栈</h2>
-<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 3 批补齐。）</p></div></section>
+
+<section id="s14">
+<h2>14、安全 / 性能 / 可用性 / 兼容性 / 技术栈</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>这些不写在功能清单里、但<strong>会决定架构长什么样</strong>的约束。</dd>
+<dt>不写的代价</dt>
+<dd>非功能需求写得空（「系统应具备良好的安全性和性能」）等于没写。它的价值全在<strong>具体数值和由此推出的决策</strong>：<u>1 个用户</u>推出「不做角色权限、不做并发控制」；<u>500 人量级</u>推出「列表全量下发、全表扫描可接受」；<u>内网离线</u>推出「不引 CDN、图表用内联 SVG」——包括这份文档本身也必须离线可看。<br>反过来，本项目吃过一次亏的是<strong>运行环境</strong>那一栏：没写清「构建机是 Windows」，于是 <code>Path.write_text()</code> 不带 <code>encoding=</code> 在本地（UTF-8）全绿、在 CI（cp1252）炸掉，同一个根因一周内咬了两次。<u>环境差异要当成一条非功能需求写出来。</u></dd>
+<dt>怎么填</dt>
+<dd>每一条非功能需求都写成「<strong>取值 → 由此推出的设计决策</strong>」两栏。写不出第二栏的，说明这条约束还没想清楚，或者它根本不重要。</dd>
+</dl></div></details>
+
+<h3>14.1 安全</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">项</th><th style="width:230px">做法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>密码存储</td><td>bcrypt</td><td>旧哈希用户<u>登录成功后透明升级为 bcrypt</u>，不需要重设密码。</td></tr>
+<tr><td>登录锁定</td><td>连续失败 <strong>5</strong> 次锁 <strong>10</strong> 分钟</td>
+    <td>按 IP 计数（<code>_MAX_LOGIN_FAILS</code> / <code>_LOCK_MINUTES</code>）。还剩几次会在提示里说出来：「用户名或密码错误（再失败 3 次将锁定 10 分钟）」。锁定动作写一条 <code>lock</code> 操作日志，记下尝试的用户名与 IP。</td></tr>
+<tr><td>CSRF</td><td>自实现，<u>不依赖 Flask-WTF</u></td>
+    <td><code>utils/csrf.py</code>：会话级随机令牌，暴露到 <code>&lt;meta name="csrf-token"&gt;</code> 与各表单隐藏域；<code>before_request</code> 阶段对所有非安全方法（POST/PUT/PATCH/DELETE）做<strong>常量时间比对</strong>，不通过 400。选自实现的理由是打包体积——单文件 exe 分发，少一个依赖是一个。</td></tr>
+<tr><td>会话</td><td>1 小时超时</td><td><code>HTTPONLY</code> 与 <code>SAMESITE=Lax</code> <strong>显式声明</strong>，不依赖框架或浏览器的默认行为。</td></tr>
+<tr><td><code>SECRET_KEY</code></td><td>持久化到数据目录 <code>.secret_key</code></td>
+    <td>否则每次重启都会让所有登录态失效。取不到写权限时退化为随机值（会话失效但不影响功能），<u>不因此崩掉</u>。可用环境变量覆盖。</td></tr>
+<tr><td>上传限制</td><td>10 MB，<strong>仅 PDF</strong></td><td><code>MAX_CONTENT_LENGTH</code> / <code>ALLOWED_EXTENSIONS</code>。</td></tr>
+<tr><td>手写签名</td><td>默认强制</td>
+    <td>签名是「本人确实领了 / 还了」的凭证；允许留空，这条记录就只剩经办人的一面之词。<strong>放宽必须是明确的选择</strong>（<code>POTMS_REQUIRE_SIGNATURE=0</code>），不能是默认值。放宽后签名板仍显示，未签名的记录在详情页与打印件上明确标注。</td></tr>
+<tr><td>敏感数据</td><td>导出文件 7 天清理</td><td>身份证号等敏感信息不在 <code>exports/</code> 长期堆积。<code>data.db</code> / <code>uploads/</code> / <code>exports/</code> / <code>backup/</code> / <code>.secret_key</code> 全部 gitignore。</td></tr>
+<tr><td>错误页</td><td>中文 404 / 500</td>
+    <td>500 同时把堆栈记进应用日志。<u>错误页处理器本身有兜底</u>：单文件 exe 被清理掉解压目录后模板会一起消失，渲染 <code>errors/404.html</code> 抛 <code>TemplateNotFound</code> 会把 404 升级成 500、500 再抛一次——所以模板渲染失败时退回纯文本，至少让浏览器拿到正确的状态码。</td></tr>
+</tbody></table></div>
+
+<h3>14.2 性能与规模</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:190px">取值</th><th>由此推出的设计决策</th></tr></thead>
+<tbody>
+<tr><td>并发用户 <strong>1</strong></td><td>SQLite 单文件足够；不做连接池、不做行级锁、不做乐观并发控制；不做角色权限体系。</td></tr>
+<tr><td>在控人员 <strong>500 量级</strong></td><td>业务列表<u>全量下发 + 前端按视口窗口化</u>，不做服务端分页（换页不丢筛选，交互也更简单）；全表扫描的统计查询可以接受——四档去向每次进首页都实时算，<strong>不缓存</strong>，因为逾期是随时间变化的（7.4 那条橙色边）。</td></tr>
+<tr><td>索引 <strong>10 个</strong></td><td><code>personnel_filing(id_number, status)</code>、<code>travel_details(personnel_filing_id)</code>、<code>certificates(personnel_filing_id)</code>、<code>decontrol_filing(personnel_filing_id)</code>、<code>attachments(travel_id)</code>、<code>operation_logs(created_at)</code>、<code>cert_issuance(travel_id, personnel_filing_id, status)</code>。都建在<u>实际用于筛选与 JOIN</u>的列上。</td></tr>
+<tr><td>操作日志单独分页</td><td><code>PAGE_SIZE_LOGS = 10</code>（每行含多行变更详情），业务列表 <code>PAGE_SIZE = 12</code>。</td></tr>
+</tbody></table></div>
+
+<h3>14.3 可用性与部署</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:190px">取值</th><th>由此推出的设计决策</th></tr></thead>
+<tbody>
+<tr><td><strong>内网、完全离线</strong></td><td>前端不引任何 CDN（Bootstrap 5 与图标随包分发）；文档里的图一律用<u>内联 SVG</u>，不依赖图表库——包括本文。</td></tr>
+<tr><td>单机常驻</td><td>每日备份挂在首页访问上触发，不依赖定时任务服务。</td></tr>
+<tr><td>生产服务器</td><td><strong>waitress</strong>（纯 Python WSGI，8 线程）；未安装时退回内置服务器并在控制台提示。端口由 <code>POTMS_PORT</code> 指定，默认 5000。</td></tr>
+<tr><td>数据目录</td><td><code>POTMS_BASE</code> 环境变量优先（与其余四版一致，便于把数据放到程序目录外，如服务账户无写权限或指向共享盘）；未设置且打包为单文件 exe 时用 <strong>exe 所在目录</strong>——不能用临时解压目录，那个目录退出即删。</td></tr>
+<tr><td>时区</td><td>库内统一存 UTC，展示时按 <code>DISPLAY_TZ_OFFSET_HOURS</code>（默认 +8）换算；可用 <code>POTMS_TZ_OFFSET</code> 覆盖。</td></tr>
+<tr><td><span class="badge b-p1">运行环境差异</span></td>
+    <td><strong>构建机是 Windows，开发机是 Linux。</strong>凡是读写文本文件的地方<u>必须显式写 <code>encoding="utf-8"</code></u>——不写时 Windows 用 cp1252，遇到中文直接 <code>UnicodeEncodeError</code>。本项目为此炸过两次 CI（一次在产品代码、一次在测试代码，相隔一周）。这不是编码风格问题，是一条非功能需求。</td></tr>
+</tbody></table></div>
+
+<h3>14.4 技术栈</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">层</th><th style="width:200px">选型</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>Web 框架</td><td>Flask 3</td><td>蓝图 13 个。</td></tr>
+<tr><td>数据库</td><td>SQLite3（标准库）</td><td>免安装、单文件、可直接拷走备份。</td></tr>
+<tr><td>前端</td><td>Bootstrap 5 + Jinja2</td><td>无前端构建步骤，无 npm。</td></tr>
+<tr><td>Excel</td><td>openpyxl</td><td>导入导出共用。</td></tr>
+<tr><td>密码</td><td>bcrypt</td><td></td></tr>
+<tr><td>WSGI</td><td>waitress</td><td>纯 Python，跨平台，无需编译。</td></tr>
+<tr><td>打包</td><td>PyInstaller 单文件 exe</td><td>CI 在 Python 3.12 上构建。</td></tr>
+<tr><td>测试</td><td>pytest，<strong>224 个用例</strong></td><td>19 个测试文件，全部通过。</td></tr>
+</tbody></table></div>
+
+<h3>14.5 五版并行的约束</h3>
+<div class="card warning">
+<p>同一套业务由 <strong>5 种语言</strong>各实现一遍：<u>Python 是源头</u>，另有 Go / Rust / .NET / Java 四版（<code>potms-go</code> / <code>potms-rust</code> / <code>potms-dotnet</code> / <code>potms-java</code>）。五版<strong>共享同一个 <code>data.db</code></strong>。</p>
+<p>由此产生两条硬约束：</p>
+<ul class="styled">
+    <li><strong>schema 只有一个源头。</strong><code>database.py</code> 生成 .NET 与 Java 两版的 schema 文件，CI 用 <code>gen-schema.py --check</code> / <code>gen-schema-java.py --check</code> 守着，改了不同步就构建失败。</li>
+    <li><strong>任何一版的破坏，其余四版都要承受。</strong>因为共享一个库——一版能删掉被引用的证照、能带证撤控，另外四版就都得面对这个坏数据。这是第 15 章那条最高优先级欠账的全部理由。</li>
+</ul>
+<p style="margin-bottom:0">CI 共 6 个工作流：五版各一个构建 + 一个 <code>release.yml</code>（五版一次出齐）。</p>
+</div>
+</section>
 
 <div class="part">第七部分　自检</div>
-<section id="s15"><h2>15、需求评审清单与交付自检清单</h2>
-<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 3 批补齐：对接《开发经验教训总结》第十节与第十一节。）</p></div></section>
+
+<section id="s15">
+<h2>15、需求评审清单与交付自检清单</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>这份需求<strong>写完了没有</strong>；这批代码<strong>能不能交</strong>。</dd>
+<dt>不写的代价</dt>
+<dd>本项目返工六批，事后逐条回查，<u>其中五批的根都能在需求文档里找到</u>：定义了两条领证路径却只给了一条的逾期口径；给了仪表盘卡片名称却没给单位；列了「证件移交日期 选填」却没写它的业务前提。这些不是「没想到」，是<strong>想到了一半，而没有任何机制逼着把另一半问完</strong>。<br>清单就是那个机制。它的价值不在于列了多少条，而在于每一条都对应一次真实的返工——凭空想出来的检查项，评审时没人当真。</dd>
+<dt>怎么填</dt>
+<dd>两张表分开：<strong>评审清单</strong>问的是「文档写全了吗」，在动手前用；<strong>交付自检清单</strong>问的是「这批改动能交吗」，在提交前用。<br>每一条后面标出<u>它对应本项目哪一次返工</u>——这是让人愿意用它的唯一办法。<br>再加第三张：<strong>已知欠账</strong>。清单如果只有「应该做到」而没有「还没做到」，它就变成了自我表扬。</dd>
+</dl></div></details>
+
+<h3>15.1 需求评审清单（动手之前）</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:40px">#</th><th style="width:330px">检查项</th><th style="width:70px">对应章</th><th>对应过的返工</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>写了「非目标」吗？</strong>至少 6 条，且具体到会被误解的程度。</td><td>1.4</td><td>三项分布统计算了一年、从未显示过</td></tr>
+<tr><td>2</td><td><strong>凡是可数的，都标了单位吗？</strong>人 / 本 / 条。</td><td>2</td><td>首页三个不同单位的数并排，出现「逾期 3 &gt; 领用中 2」</td></tr>
+<tr><td>3</td><td><strong>每张表标了「台账」还是「单据」吗？</strong>同名列在两类表里行为相反。</td><td>2.2 / 5</td><td>改名不同步证照台账（第 6 批）</td></tr>
+<tr><td>4</td><td><strong>业务上的每条分支路径，都各自给了口径吗？</strong>不是给了路径就够——每条路径的告警、统计、校验都要单独写一遍。</td><td>2.3</td><td>路径 B 整类掉出逾期告警</td></tr>
+<tr><td>5</td><td><strong>画了实体关系图，而且画出了非外键的连接吗？</strong>文字引用、编号比对都要有线。</td><td>4</td><td>配置表改名 / 删除静默破坏历史（第 5 批三处）</td></tr>
+<tr><td>6</td><td><strong>每一列标了性质吗？</strong>录入 / 派生 / 定格 / 跟人走 / 系统。</td><td>5</td><td>出行表证件号码两个写入方打架</td></tr>
+<tr><td>7</td><td><strong>每个下拉写清了库里存编码还是存文字吗？</strong></td><td>6</td><td>字典改名同步（第 5 批 B4）</td></tr>
+<tr><td>8</td><td><strong>每个有状态的对象都画了状态机吗？</strong>包括<u>数据库里没有状态列、但业务上真实存在</u>的那些。</td><td>7</td><td>「一本证的去向」从未被识别为状态机</td></tr>
+<tr><td>9</td><td><strong>每条状态迁移都问过「能不能回来」吗？</strong>写「无」的要论证是设计还是遗漏。</td><td>7 / 9</td><td>撤控是单向门（第 5 批 B2）</td></tr>
+<tr><td>10</td><td><strong>填了跨表影响矩阵吗？</strong>先把「联动写入」「守卫」两栏全填「无」，再逐行质问一遍。</td><td>8</td><td>第 4 / 5 / 6 批<u>全部</u></td></tr>
+<tr><td>11</td><td><strong>每个统计数字写了来源函数、恒等式、守着它的测试吗？</strong></td><td>10</td><td>「证件在库」数的是申请条数不是证的本数</td></tr>
+<tr><td>12</td><td><strong>每个按钮写了什么时候该灰、灰了显示什么吗？</strong></td><td>11</td><td>领用登记按钮永远亮着，点进去才被挡</td></tr>
+<tr><td>13</td><td><strong>每条拒绝类提示，照着做一遍走得通吗？</strong></td><td>12</td><td>「请先作废相关领用记录」——照做仍被挡</td></tr>
+<tr><td>14</td><td><strong>非功能需求每条都写了「由此推出的设计决策」吗？</strong>写不出的说明没想清。</td><td>14</td><td>构建机与开发机的编码差异，两次炸 CI</td></tr>
+<tr><td>15</td><td><strong>有一张「已知欠账」清单吗？</strong>写「暂时不做」比写「应当支持」诚实。</td><td>15.3</td><td>—</td></tr>
+</tbody></table></div>
+
+<h3>15.2 交付自检清单（提交之前）</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:40px">#</th><th style="width:330px">检查项</th><th>为什么</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>每个新测试都验证过「撤掉修复会变红」吗？</strong>而且要<u>朝一个合理的错误方向改</u>，不是整块删掉。</td>
+    <td>整块删掉往往会让别的断言先炸，看起来红了，其实没验证到这条。这是本项目最有价值的一条实践。</td></tr>
+<tr><td>2</td><td><strong>造的数据能分辨出对错吗？</strong>断言写对了不等于测到了。</td>
+    <td><code>⊆</code> 的用例里如果数据恰好相等，写成 <code>=</code> 也全绿。本项目补了一个「还没到期的新办」样本才让它变成真子集。</td></tr>
+<tr><td>3</td><td><strong>断言的范围够窄吗？</strong>别拿整页 HTML 断言「不包含某人」。</td><td>姓名在页面上到处都是（近期出行、表格行本身），整页断言既会误报也会漏报。</td></tr>
+<tr><td>4</td><td><strong>用了秒级精度的字段做「有没有改动」的判断吗？</strong></td><td><code>updated_at</code> 是秒级的，同一秒内的两次写入分辨不出来——本项目为此写坏过一个测试。改用 flash 文本或日志条数断言。</td></tr>
+<tr><td>5</td><td><strong>同一个判据是不是只有一个实现？</strong>页面高亮、筛选、首页数字、导出，四处必须共用一个函数。</td><td>已撤控人员的排除当初差点只加在筛选那一侧。</td></tr>
+<tr><td>6</td><td><strong>改了一处之后，问过「还有哪里也是这样」吗？</strong></td><td>同一个编码根因在一周内咬了两次；同一批修复目前还在四个实现里等着（见 15.3 第一条）。</td></tr>
+<tr><td>7</td><td><strong>所有读写文本文件的地方都写了 <code>encoding="utf-8"</code> 吗？</strong></td><td>Windows CI 用 cp1252，本地全绿、CI 炸掉。</td></tr>
+<tr><td>8</td><td><strong>改了 schema 就重新生成了 .NET / Java 两份吗？</strong></td><td>CI 有 <code>--check</code> 守着，但本地先跑一遍省一轮往返。</td></tr>
+<tr><td>9</td><td><strong>真的打开浏览器看过吗？</strong>测试全绿不等于界面对。</td>
+    <td>「首页有两张卡都叫证照逾期未还」「单位不一致」「新办 ≠ 逾期」——这三处连续被<u>人眼</u>发现，没有一处是测试或自审发现的。</td></tr>
+<tr><td>10</td><td><strong>动过没有纳入版本控制的文件吗？</strong>改之前先备份。</td><td>本项目在一次「撤掉修复看会不会红」的实验里损坏过一个未跟踪的模板文件，<code>git checkout</code> 救不回来。</td></tr>
+<tr><td>11</td><td><strong>本文档跟着改了吗？</strong>文档落后于代码就等于错。</td><td>上一版需求文档正是这么烂掉的。</td></tr>
+</tbody></table></div>
+
+<h3>15.3 已知欠账</h3>
+<div class="card danger">
+<div class="scroll-x"><table>
+<thead><tr><th style="width:70px">优先级</th><th style="width:300px">欠什么</th><th>影响</th></tr></thead>
+<tbody>
+<tr><td><span class="badge b-p1">高</span></td>
+    <td><strong>第 4–6 批与仪表盘四档改造只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
+    <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。</td></tr>
+<tr><td><span class="badge b-p2">中</span></td><td><code>release.yml</code>（425 行，五版一次出齐）<strong>从来没有真正跑过一次</strong></td>
+    <td>真到发版那天才第一次跑，是最不该冒的险。应当先拿一个测试 tag 空跑一遍。</td></tr>
+<tr><td><span class="badge b-p2">中</span></td><td>仓库里<strong>没有约定文档</strong>（<code>CLAUDE.md</code> / <code>CONTRIBUTING.md</code>）</td>
+    <td>「Python 为源头」「schema 改了要重新生成两份」「新测试必须验证会红」这些规矩全靠口头传，换人就断。<u>本文的第 0 章与第 15 章接住了一部分，但工程约定仍然没有落纸。</u></td></tr>
+<tr><td><span class="badge b-p2">中</span></td><td><strong>操作日志的筛选下拉与实际写入的取值对不齐</strong>（本次评审新发现）</td>
+    <td>最要紧的一处：证照的增删改写的是 <code>target_type="certificate"</code>（单数），而下拉里只有 <code>certificates</code>（复数）——<u>按「证照登记表」筛，一条增删改也筛不出来</u>。另有 <code>void</code> 动作与 <code>cert_issuance</code> / <code>sys_org</code> / <code>database</code> / <code>operation_logs</code> 四类目标不在下拉里。日志本身记全了，丢的是筛选能力。详见 13.5 附注。</td></tr>
+<tr><td><span class="badge b-p2">中</span></td><td><strong>首页两行统计口径不可比</strong>（本次评审新发现）</td>
+    <td>第一行「证照登记（人）」是 <code>COUNT(*) FROM certificates</code>，不按 <code>status</code> 过滤；第二行四档只算在控人员。撤控一个人，他的台账行仍计入第一行，但他的证已退出「在库」。<u>页面上没有任何东西说明这一点。</u>待确认：加说明文字，还是统一口径。</td></tr>
+<tr><td><span class="badge b-p3">低</span></td><td><strong>证件种类两处叫法不一</strong>（本次评审新发现）</td>
+    <td>字典 <code>cert_type</code> 的 <code>01</code> 是「因私护照」，台账槽位标签是「普通护照」。现在只是措辞不一致，一旦有人写按名称匹配的代码（导入校验、报表归类、跨版本对齐）就会变成真 bug。</td></tr>
+<tr><td><span class="badge b-p3">低</span></td><td><strong>删除出国申请的确认框没讲后果</strong>（本次评审新发现）</td>
+    <td>只说「确定要删除 张三 的出国申请记录吗？」，没提附件文件会一并从磁盘删除且不可恢复。按本文 12.1 规约一不合格。</td></tr>
+<tr><td><span class="badge b-p3">低</span></td><td>系统内<strong>没有「从备份恢复」的入口</strong></td>
+    <td>真出事时操作员要停服、找文件、改文件名（README 三步），容易再出错。</td></tr>
+<tr><td><span class="badge b-p3">低</span></td><td>Go 与 Python 版<strong>没有版本号字符串</strong></td>
+    <td>拿到一个 exe 无法判断是哪次构建的。</td></tr>
+</tbody></table></div>
+</div>
+
+<div class="rule"><strong>这份文档自己也在这张清单上。</strong>
+第 15.3 里标着「本次评审新发现」的四条，是<u>写这份文档的过程中撞见的</u>——把口径、入口条件、提示文案逐条对着代码抄一遍，本身就是一次评审。这也是本文第 0 章那条「写现状，不写理想」的收益：<strong>只要坚持写实际的样子，写的过程就会撞见不一致</strong>；一旦允许写「应当如何」，这三处就会被顺手抹平，谁也不会知道。</div>
+</section>
 
 <p style="text-align:center;color:var(--text-muted);font-size:13px;margin-top:50px">
 — 因私出国（境）人员审批管理系统 · 系统需求与分析文档 V2.0 · 编制于 2026-08-29 —
