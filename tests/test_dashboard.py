@@ -178,7 +178,7 @@ def test_decontrolled_certificate_is_not_in_stock(c):
     台账行还留着是为了留痕（第 5 批 B1 给它标了「已撤控 · 移交」），
     不是因为证还在。
     """
-    assert "E3" not in c.get("/certificate/stock").get_data(as_text=True)
+    assert _cell("E3") not in c.get("/certificate/stock").get_data(as_text=True)
 
 
 def test_monthly_issuance_card_is_gone(c):
@@ -221,8 +221,19 @@ def test_stock_list_names_every_document(c):
     """首页那个数只能核对总数；盘库清单要能逐本对，所以必须一本一行。"""
     html = c.get("/certificate/stock").get_data(as_text=True)
     for no in ("E2", "C1", "T1"):
-        assert no in html, f"应在库的 {no} 没列出来"
-    assert "E1" in html, "借出未还的那本也要列，否则对不上时不知道去哪儿了"
+        assert _cell(no) in html, f"应在库的 {no} 没列出来"
+    assert _cell("E1") in html, "借出未还的那本也要列，否则对不上时不知道去哪儿了"
+
+
+def _cell(cert_no):
+    """证件号码在盘库清单里的渲染形态：<code>E1</code>。
+
+    不能拿裸的 "E1" 去 html.find()——页面上还有一个**随机 CSRF 令牌**
+    （token_urlsafe(32)，43 个字符），它有约 1% 的概率恰好包含 "E1" 这样的
+    两字符片段。撞上了，find() 命中的就是令牌里那两个字符，与表格毫无关系，
+    断言随机翻车。这条不是假想：把 bcrypt 成本调低重跑整套时真的撞到过一次。
+    """
+    return f"<code>{cert_no}</code>"
 
 
 def _stock_row(html, cert_no):
@@ -231,10 +242,11 @@ def _stock_row(html, cert_no):
     整页断言分不清「在库」出现在哪一行——页面上到处都是这两个词（筛选下拉、
     说明、统计徽章）。要看的是**这本证那一行的去向列**。
     """
-    i = html.find(cert_no)
+    i = html.find(_cell(cert_no))
     assert i != -1, f"清单里找不到 {cert_no}"
     start = html.rfind("<tr", 0, i)
     end = html.find("</tr>", i)
+    assert start != -1 and end != -1, f"{cert_no} 不在任何表格行里"
     return html[start:end]
 
 
@@ -254,14 +266,15 @@ def test_stock_list_marks_where_each_document_is(c):
 def test_stock_list_can_be_filtered(c):
     """500 人的柜子，按种类、姓名或去向分批盘是常态。"""
     only_hm = c.get("/certificate/stock?cert_type=往来港澳通行证").get_data(as_text=True)
-    assert "C1" in only_hm and "E2" not in only_hm
+    assert _cell("C1") in only_hm and _cell("E2") not in only_hm
 
     only_yi = c.get("/certificate/stock?search=乙").get_data(as_text=True)
-    assert "E2" in only_yi and "C1" not in only_yi
+    assert _cell("E2") in only_yi and _cell("C1") not in only_yi
 
     only_out = c.get("/certificate/stock?status=借出未还").get_data(as_text=True)
-    assert "E1" in only_out, "「借出未还」筛不出借出的那本"
-    assert "E2" not in only_out and "C1" not in only_out, "「借出未还」把在库的也筛出来了"
+    assert _cell("E1") in only_out, "「借出未还」筛不出借出的那本"
+    assert _cell("E2") not in only_out and _cell("C1") not in only_out, \
+        "「借出未还」把在库的也筛出来了"
 
 
 def test_stock_page_and_dashboard_agree(c):
