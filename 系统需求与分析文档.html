@@ -1758,7 +1758,13 @@
 <tr><td>数据目录</td><td><code>POTMS_BASE</code> 环境变量优先（与其余四版一致，便于把数据放到程序目录外，如服务账户无写权限或指向共享盘）；未设置且打包为单文件 exe 时用 <strong>exe 所在目录</strong>——不能用临时解压目录，那个目录退出即删。</td></tr>
 <tr><td>时区</td><td>库内统一存 UTC，展示时按 <code>DISPLAY_TZ_OFFSET_HOURS</code>（默认 +8）换算；可用 <code>POTMS_TZ_OFFSET</code> 覆盖。</td></tr>
 <tr><td><span class="badge b-p1">运行环境差异</span></td>
-    <td><strong>构建机是 Windows，开发机是 Linux。</strong>凡是读写文本文件的地方<u>必须显式写 <code>encoding="utf-8"</code></u>——不写时 Windows 用 cp1252，遇到中文直接 <code>UnicodeEncodeError</code>。本项目为此炸过两次 CI（一次在产品代码、一次在测试代码，相隔一周）。这不是编码风格问题，是一条非功能需求。</td></tr>
+    <td><strong>构建机是 Windows，开发机是 Linux。</strong><u>凡是可能出现中文的输出口，都必须显式指定 UTF-8</u>——不指定时 Windows 用 cp1252，遇到中文直接 <code>UnicodeEncodeError</code>；本地全绿、CI 炸掉。<strong>这不是编码风格问题，是一条非功能需求。</strong><br>
+        本项目为此炸过<strong>三次</strong> CI，而且规则是被一次次撑大的：<br>
+        ①产品代码 <code>Path.write_text()</code> 写中文没给 <code>encoding=</code>；<br>
+        ②一周后，测试代码同样的写法——于是定下「读写文本<u>文件</u>必须显式 <code>encoding</code>」；<br>
+        ③工具脚本 <code>print()</code> 中文到 <strong>stdout</strong>——<u>规则里的「文件」两个字没把它盖住</u>。这一次尤其难看：schema 本来是同步的，卡住的只是那句「同步 ✓」的成功提示，而调用方按退出码判断，报的是「schema 不同步」。<br>
+        所以规则从「文件」扩到「所有输出口」：写文件给 <code>encoding=</code>，脚本开头 <code>sys.stdout.reconfigure(encoding="utf-8")</code>，用 <code>subprocess</code> 捕获输出时两头都要写 <code>encoding="utf-8"</code>。<br>
+        <span class="badge b-done">test_generator_output_survives_a_non_utf8_console</span> 用 <code>PYTHONIOENCODING=cp1252</code> 在任何平台上复现 Windows 的条件。</td></tr>
 </tbody></table></div>
 
 <h3>14.4 技术栈</h3>

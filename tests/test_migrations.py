@@ -111,8 +111,45 @@ def test_generated_schemas_are_in_sync_with_database_py():
 
     root = pathlib.Path(__file__).resolve().parent.parent
     for tool in ("potms-dotnet/tools/gen-schema.py", "potms-java/tools/gen-schema-java.py"):
+        # 显式 encoding="utf-8"：脚本的输出全是中文，而 text=True 在 Windows 上
+        # 按 locale（cp1252）解码，会把提示信息糊成乱码甚至解不出来。
+        # 脚本那一侧也已经把 stdout 重设为 UTF-8——两头都要说同一种编码。
         r = subprocess.run([sys.executable, str(root / tool), "--check"],
-                           cwd=root, capture_output=True, text=True)
+                           cwd=root, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         assert r.returncode == 0, (
             f"{tool} --check 失败：\n{r.stdout}{r.stderr}"
             f"\n改了 database.py 的 SCHEMA 或 SEED_DICT，就要重新跑一遍生成脚本。")
+
+
+def test_generator_output_survives_a_non_utf8_console():
+    """生成脚本的中文输出，在默认编码不是 UTF-8 的终端上也得打得出来。
+
+    上一条测试自己把 Windows CI 弄红了：schema 明明是同步的，脚本却在
+    `print("Schema.cs 与 database.py 同步 ✓")` 上抛 UnicodeEncodeError——
+    Windows 标准输出默认 cp1252，编不出「与」和「✓」，退出码 1，
+    于是断言认定「不同步」。**卡住的只是那句成功提示。**
+
+    这是本项目第三次栽在「默认编码不是 UTF-8」上：
+      1) 产品代码 Path.write_text 写中文没给 encoding；
+      2) 测试代码同样的写法；
+      3) 这次是工具脚本的 stdout。
+    前两次的规矩是「读写文本文件必须显式 encoding」——它没覆盖 stdout。
+    所以规矩要扩成：**凡是可能出现中文的输出口，都要显式指定 UTF-8。**
+
+    用 PYTHONIOENCODING=cp1252 在任何平台上复现 Windows 的条件。
+    """
+    import os
+    import pathlib
+    import subprocess
+    import sys
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    for tool in ("potms-dotnet/tools/gen-schema.py", "potms-java/tools/gen-schema-java.py"):
+        r = subprocess.run([sys.executable, str(root / tool), "--check"],
+                           cwd=root, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", env=env)
+        assert "UnicodeEncodeError" not in (r.stdout + r.stderr), (
+            f"{tool} 在 cp1252 终端上打印中文炸了：\n{r.stdout}{r.stderr}")
+        assert r.returncode == 0, f"{tool} --check 失败：\n{r.stdout}{r.stderr}"

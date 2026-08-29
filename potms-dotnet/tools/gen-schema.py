@@ -15,6 +15,15 @@ import os
 import re
 import sys
 
+# 本脚本的每一句输出都是中文。Windows 上标准输出的默认编码是 cp1252，
+# 直接 print 中文会抛 UnicodeEncodeError——**哪怕 schema 本来是同步的**，
+# 卡住的只是那句「同步 ✓」。控制台里通常看不出来，一旦被别的进程用管道
+# 捕获（例如 pytest 里 subprocess.run(capture_output=True)）就必炸。
+# 这是本项目第三次栽在「默认编码不是 UTF-8」上，前两次分别在产品代码和测试代码。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SRC = os.path.join(ROOT, "database.py")
 DST = os.path.join(ROOT, "potms-dotnet", "src", "POTMS", "Data", "Schema.cs")
