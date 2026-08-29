@@ -195,7 +195,10 @@ def test_change_snapshots_are_pruned_with_the_dailies(tmp_path, monkeypatch):
     bak = tmp_path / "bk"; bak.mkdir()
     (bak / "before_org_rename_20200101_101010.db").write_bytes(b"old")
     (bak / "before_org_rename_20991231_101010.db").write_bytes(b"new")
-    (bak / "notes.txt").write_text("不是备份文件，别碰")
+    # encoding 必须显式给：不给就用平台默认编码，Linux 上是 UTF-8（能写），
+    # Windows 运行器上是 cp1252（编不了中文，直接 UnicodeEncodeError）。
+    # CI 打的是 Windows 包，本地是 Linux，这种差异只会在 CI 上炸。
+    (bak / "notes.txt").write_text("不是备份文件，别碰", encoding="utf-8")
 
     import utils.backup as bk
     assert bk.prune_old_backups() == 1
