@@ -79,14 +79,14 @@ def _scalar(sql, args=()):
 
 
 def _overdue_count(cl):
-    """首页「证件逾期未还」那张数字卡上的数。
+    """首页逾期那张卡上的数（单位：本）。
 
-    首页原来还有一张列名单的卡，可以按姓名断言；那张卡与这张数字卡是同一份数据，
+    首页原来还有一张列名单的卡，可以按姓名断言；那张卡与数字卡是同一份数据，
     重复了，已删。现在名单在出国明细列表上，首页只留这个数。
     """
     html = cl.get("/").get_data(as_text=True)
-    m = re.search(r'>(\d+)</div>\s*<small class="text-muted">证件逾期未还', html)
-    assert m, "首页上找不到「证件逾期未还」这张卡"
+    m = re.search(r'>(\d+)</div>\s*<small class="text-muted">其中逾期（本）', html)
+    assert m, "首页上找不到逾期那张卡"
     return int(m.group(1))
 
 

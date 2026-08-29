@@ -8,7 +8,6 @@ from auth import login_required
 from database import get_db
 from utils.backup import run_daily_backup, latest_backup
 from utils.helpers import log_action
-from utils.validators import is_cert_overdue, is_new_cert_overdue
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -37,7 +36,6 @@ def index() -> ResponseReturnValue:
     _, backup_date = latest_backup()
 
     db = get_db()
-    today = datetime.now().strftime("%Y%m%d")
 
     # 基础统计
     total_active = db.execute("SELECT COUNT(*) FROM personnel_filing WHERE status = 'active'").fetchone()[0]
@@ -51,40 +49,25 @@ def index() -> ResponseReturnValue:
     # 500 人、单用户的规模上，分布统计更像报表需求，放首页每天看意义不大；
     # .NET 与 Java 两版早已按这个口径不查也不显示，此处与它们对齐。
 
-    # ——— 证件流转状态（在库 / 领用中 / 逾期未还）———
-    cert_in_storage = db.execute(
-        "SELECT COUNT(*) FROM travel_details WHERE passport_collect_date IS NULL OR passport_collect_date = ''"
-    ).fetchone()[0]
-    # 已领用未归还的证件（正常/取消行程均含在内），用于「领用中」与「逾期未还」两个数字。
-    # 首页只报数字，名单与应还日期在出国明细列表上（点卡片过去），这里不再取姓名。
-    in_use_rows = db.execute(
-        "SELECT passport_collect_date, passport_return_date, "
-        "actual_return_date, travel_end, trip_status, cancel_date "
-        "FROM travel_details "
-        "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
-        "AND (passport_return_date IS NULL OR passport_return_date = '')"
-        # 已撤控人员不进告警，口径见 blueprints/travel.py 的 _ACTIVE_ONLY
-        " AND EXISTS (SELECT 1 FROM personnel_filing pf "
-        "             WHERE pf.id = travel_details.personnel_filing_id AND pf.status = 'active')"
-    ).fetchall()
-    cert_in_use = len(in_use_rows)
-    # 逾期未还：已领用 + 未归还 + 超过归还工作日时限（正常 10 / 取消 5）
-    cert_overdue = sum(1 for r in in_use_rows if is_cert_overdue(r, today))
-    # 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
-    # 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
-    # blueprints/travel.py:_registered_cert_travel_ids 与 is_new_cert_overdue。
-    from blueprints.travel import _registered_cert_travel_ids
-    registered = _registered_cert_travel_ids()
-    for r in db.execute(
-        "SELECT id, need_new_passport, actual_return_date, travel_end, "
-        "trip_status, cancel_date, passport_collect_date FROM travel_details "
-        "WHERE need_new_passport = '是' "
-        "  AND (passport_collect_date IS NULL OR passport_collect_date = '')"
-        "  AND EXISTS (SELECT 1 FROM personnel_filing pf "
-        "              WHERE pf.id = travel_details.personnel_filing_id AND pf.status = 'active')"
-    ).fetchall():
-        if is_new_cert_overdue({**dict(r), "cert_registered": r["id"] in registered}, today):
-            cert_overdue += 1
+    # ——— 证件去向（四档，全部按「本」算）———
+    #
+    # 单位统一成「本」，是为了让「在库」这个数能真的拿去和保管处柜子里的实体证核对。
+    # 原来这一行数的是**出国申请条数**，于是：没提过申请的人，他的证在柜子里躺着却
+    # 一本都没被数进去；而路径B 那种「证在人手上但没有领用记录」的，又被算进了
+    # 「在库」。数字自相矛盾到「逾期」比「领用中」还大。
+    #
+    # 两个恒等式撑着这四个数，任何一个不成立都说明口径出了问题：
+    #   在库 + 借出未还 = 在控人员台账登记的总本数
+    #   逾期 ⊆ 借出未还 + 新办未入库
+    from blueprints.certificate import stock_split
+    from blueprints.travel import new_making_travel_ids, _overdue_ids
+    in_stock, lent_out, orphan_nos = stock_split()
+    cert_in_stock = len(in_stock)
+    cert_lent_out = len(lent_out)
+    cert_new_making = len(new_making_travel_ids())
+    # 逾期直接用出国明细那一套判据，不在这里另算一遍：首页的数与列表的
+    # 「?passport_status=overdue」筛出来的行数必须永远一致。
+    cert_overdue = len(_overdue_ids())
 
     # ——— 近期出行（按出行日期排序） ———
     recent_travel = db.execute(
@@ -94,24 +77,17 @@ def index() -> ResponseReturnValue:
         "travel_start DESC, created_at DESC LIMIT 5"
     ).fetchall()
 
-    # ——— 证件领用 ———
-    iss_pending = db.execute(
-        "SELECT COUNT(*) FROM cert_issuance WHERE status = 'issued'").fetchone()[0]
-    iss_this_month = db.execute(
-        "SELECT COUNT(*) FROM cert_issuance WHERE status != 'voided' AND issue_date LIKE ?",
-        (datetime.now().strftime("%Y%m") + "%",)).fetchone()[0]
-
     return render_template(
         "dashboard.html",
-        iss_pending=iss_pending,
-        iss_this_month=iss_this_month,
         total_active=total_active,
         total_decontrolled=total_decontrolled,
         total_certificates=total_certificates,
         total_travel=total_travel,
-        cert_in_storage=cert_in_storage,
-        cert_in_use=cert_in_use,
+        cert_in_stock=cert_in_stock,
+        cert_lent_out=cert_lent_out,
+        cert_new_making=cert_new_making,
         cert_overdue=cert_overdue,
+        orphan_nos=orphan_nos,
         recent_travel=recent_travel,
         backup_date=backup_date,
     )

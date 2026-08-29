@@ -102,6 +102,25 @@ _ACTIVE_ONLY = (
 )
 
 
+def new_making_travel_ids() -> set:
+    """路径B：做证出去了、新证还没进证照台账的出行 id（只算在控人员）。
+
+    这批证**存在于现实，却不在证照台账里**——它是本人凭同意申办函自己去公安办的，
+    从没进过保管处，号码也还没录进台账。所以盘库时它既不在「在库」里，也不在
+    「借出未还」里（那两档说的都是台账上有的证），必须单独成一档，否则
+    「在库 + 借出未还 = 台账总本数」这个用来对账的恒等式就会被它打破。
+
+    判据与逾期告警同源（_registered_cert_travel_ids）：号码进了台账即视为已交回入库。
+    这里不带时间条件——「还没交回」与「已经逾期」是两回事，逾期是本集合的子集。
+    """
+    registered = _registered_cert_travel_ids()
+    rows = get_db().execute(
+        "SELECT id FROM travel_details WHERE need_new_passport = '是' "
+        "  AND COALESCE(trip_status, 'normal') != 'cancelled'" + _ACTIVE_ONLY
+    ).fetchall()
+    return {r[0] for r in rows if r[0] not in registered}
+
+
 def _overdue_ids() -> set:
     """全量计算「证件逾期未交回」记录的 id 集合。
 

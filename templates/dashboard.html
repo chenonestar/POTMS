@@ -89,62 +89,65 @@
     </div>
 </div>
 
-<!-- 证件流转状态（点击跳转出国明细的对应筛选） -->
+<!-- 证件去向：四档全部按「本」算。在库 + 借出未还 = 在控人员台账登记总本数 -->
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <a href="{{ url_for('travel.list', passport_status='storage') }}" class="text-decoration-none">
-            <div class="card text-center">
+    <div class="col-md-3">
+        <a href="{{ url_for('certificate.stock') }}" class="text-decoration-none">
+            <div class="card text-center h-100">
                 <div class="card-body py-3">
-                    <div class="fs-4 fw-bold text-success">{{ cert_in_storage }}</div>
-                    <small class="text-muted">证件在库 <i class="bi bi-chevron-right small"></i></small>
+                    <div class="fs-4 fw-bold text-success">{{ cert_in_stock }}</div>
+                    <small class="text-muted">在库（本）<i class="bi bi-chevron-right small"></i></small>
+                    <div class="small text-muted mt-1" style="font-size:11px">点开可逐本盘库</div>
                 </div>
             </div>
         </a>
     </div>
-    <div class="col-md-4">
-        <a href="{{ url_for('travel.list', passport_status='inuse') }}" class="text-decoration-none">
-            <div class="card text-center">
+    <div class="col-md-3">
+        <a href="{{ url_for('issuance.list', status='issued') }}" class="text-decoration-none">
+            <div class="card text-center h-100">
                 <div class="card-body py-3">
-                    <div class="fs-4 fw-bold text-primary">{{ cert_in_use }}</div>
-                    <small class="text-muted">证件领用中 <i class="bi bi-chevron-right small"></i></small>
+                    <div class="fs-4 fw-bold text-primary">{{ cert_lent_out }}</div>
+                    <small class="text-muted">借出未还（本）<i class="bi bi-chevron-right small"></i></small>
+                    <div class="small text-muted mt-1" style="font-size:11px">凭领用单从保管处借出</div>
                 </div>
             </div>
         </a>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <a href="{{ url_for('travel.list', need_new_passport='是') }}" class="text-decoration-none">
+            <div class="card text-center h-100">
+                <div class="card-body py-3">
+                    <div class="fs-4 fw-bold text-warning">{{ cert_new_making }}</div>
+                    <small class="text-muted">新办未入库（本）<i class="bi bi-chevron-right small"></i></small>
+                    <div class="small text-muted mt-1" style="font-size:11px">做证人员自办，尚未交回</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
         <a href="{{ url_for('travel.list', passport_status='overdue') }}" class="text-decoration-none">
-            <div class="card text-center">
+            <div class="card text-center h-100">
                 <div class="card-body py-3">
                     <div class="fs-4 fw-bold text-danger">{{ cert_overdue }}</div>
-                    <small class="text-muted">证件逾期未还 <i class="bi bi-chevron-right small"></i></small>
+                    <small class="text-muted">其中逾期（本）<i class="bi bi-chevron-right small"></i></small>
+                    <div class="small text-muted mt-1" style="font-size:11px">超过应还期限</div>
                 </div>
             </div>
         </a>
     </div>
 </div>
 
-<div class="row mb-4">
-    <div class="col-md-4">
-        <a href="{{ url_for('issuance.list', status='issued') }}" class="text-decoration-none">
-            <div class="card text-center">
-                <div class="card-body py-3">
-                    <div class="fs-4 fw-bold text-warning">{{ iss_pending }}</div>
-                    <small class="text-muted">已领用待归还 <i class="bi bi-chevron-right small"></i></small>
-                </div>
-            </div>
-        </a>
-    </div>
-    <div class="col-md-4">
-        <a href="{{ url_for('issuance.list') }}" class="text-decoration-none">
-            <div class="card text-center">
-                <div class="card-body py-3">
-                    <div class="fs-4 fw-bold text-primary">{{ iss_this_month }}</div>
-                    <small class="text-muted">本月证件领用 <i class="bi bi-chevron-right small"></i></small>
-                </div>
-            </div>
-        </a>
+{% if orphan_nos %}
+<div class="alert alert-warning d-flex align-items-start py-2">
+    <i class="bi bi-exclamation-triangle me-2 mt-1"></i>
+    <div class="small">
+        有 {{ orphan_nos|length }} 条借出记录的证件号码在证照台账里找不到：
+        {% for n in orphan_nos %}<code>{{ n }}</code>{{ '、' if not loop.last }}{% endfor %}。
+        这不影响「在库」的数，但说明台账与领用记录对不上——多半是台账那本被改过号码或删掉了，
+        请到<a href="{{ url_for('issuance.list', status='issued') }}">证件领用</a>核对。
     </div>
 </div>
+{% endif %}
 
 <div class="row">
     <!-- 近期出行 -->

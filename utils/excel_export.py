@@ -256,6 +256,40 @@ def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) 
 
 
 # =========================================================================
+# 3.5 证件盘库清单
+# =========================================================================
+HEADERS_STOCK = ["核对", "序号", "去向", "单位", "部门", "持证人",
+                 "证件种类", "证件号码", "有效期至", "上交日期"]
+NOTES_STOCK = (
+    "口径：在控人员证照台账上登记的每一本证，按「去向」分为应在库与借出未还。"
+    "已撤控人员的证不在此表（撤控以证件收缴移交为前提）；"
+    "做证人员自办、尚未交回入库的新证也不在此表（还没进过台账与柜子）。"
+)
+
+
+def export_cert_stock(operator: str, in_stock, lent_out) -> str:
+    """盘库清单导出。数据由调用方算好传入——口径只有 certificate.stock_split 一处，
+    这里再查一遍就等于开了第二套判据。"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "证件盘库清单"
+    _style_header(ws, "因私出国（境）证件盘库清单", HEADERS_STOCK)
+
+    i = 3
+    for label, items in (("应在库", in_stock), ("借出未还", lent_out)):
+        for n, it in enumerate(items, 1):
+            for col, val in enumerate(
+                ["", n, label, it["unit"], it["department"], it["name"],
+                 it["cert_type"], it["cert_no"], it["expiry"], it["submit_date"]], 1):
+                ws.cell(row=i, column=col, value=val)
+            i += 1
+
+    _style_data(ws, 3, i - 1, len(HEADERS_STOCK))
+    _auto_width(ws, len(HEADERS_STOCK))
+    return _save_and_return(ws, "证件盘库清单", operator, NOTES_STOCK)
+
+
+# =========================================================================
 # 4. 因私出国（境）人员明细表
 # =========================================================================
 HEADERS_TRAVEL = [

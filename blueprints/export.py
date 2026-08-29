@@ -8,6 +8,7 @@ from utils.excel_export import (
     export_personnel_info,
     export_personnel_filing,
     export_certificates,
+    export_cert_stock,
     export_travel_details,
     export_decontrol,
     export_issuance,
@@ -87,6 +88,34 @@ def certificate_export() -> ResponseReturnValue:
     except Exception as e:
         flash(f"导出失败: {e}", "danger")
         return redirect(url_for("certificate.list"))
+
+
+@export_bp.route("/export/cert-stock")
+@login_required
+def cert_stock_export() -> ResponseReturnValue:
+    """盘库清单导出。筛选条件与页面一致，导出的就是屏幕上那份。"""
+    from blueprints.certificate import stock_split, CERT_SLOTS
+    try:
+        search = request.args.get("search", "").strip().lower()
+        type_filter = request.args.get("cert_type", "").strip()
+        in_stock, lent_out, _ = stock_split()
+
+        def keep(it):
+            if type_filter and it["cert_type"] != type_filter:
+                return False
+            if search:
+                return search in f"{it['name']}{it['cert_no']}{it['unit']}{it['department']}".lower()
+            return True
+
+        in_stock = [i for i in in_stock if keep(i)]
+        lent_out = [i for i in lent_out if keep(i)]
+        filepath, filename = export_cert_stock(_operator(), in_stock, lent_out)
+        log_action("export", "certificates",
+                   detail=f"{filename}（应在库 {len(in_stock)} 本，借出未还 {len(lent_out)} 本）")
+        return send_file(filepath, as_attachment=True, download_name=filename)
+    except Exception as e:
+        flash(f"导出失败: {e}", "danger")
+        return redirect(url_for("certificate.stock"))
 
 
 @export_bp.route("/export/travel")

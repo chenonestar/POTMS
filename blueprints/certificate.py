@@ -1,6 +1,8 @@
 """证照登记蓝图 — 护照 / 港澳通行证 / 台湾通行证"""
 from __future__ import annotations
 
+from datetime import datetime
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask.typing import ResponseReturnValue
 
@@ -92,6 +94,45 @@ def list() -> ResponseReturnValue:
         has_passport=has_passport, has_hm=has_hm, has_tw=has_tw,
         expired_set={(e[0], e[1]) for e in expired},
         expired_map={e[0]: e for e in expired},
+    )
+
+
+@certificate_bp.route("/certificate/stock")
+@login_required
+def stock() -> ResponseReturnValue:
+    """盘库清单：应当在保管处的每一本证，一本一行，供打开柜子逐本核对。
+
+    首页那张「在库 N 本」只能核对总数——少一本多一本，看不出是哪一本。
+    这页给的是清单本身：按单位 / 部门 / 姓名排序（柜子一般也这么放），
+    打印出来每行留一个勾选框，边点边划。
+
+    「借出未还」那一堆一并列在下面：盘库时手里这份清单要能回答「柜子里没有的
+    那几本，去哪儿了」，否则对不上时还得再翻一次系统。
+    """
+    search = request.args.get("search", "").strip()
+    type_filter = request.args.get("cert_type", "").strip()
+
+    in_stock, lent_out, orphan_nos = stock_split()
+
+    def keep(it):
+        if type_filter and it["cert_type"] != type_filter:
+            return False
+        if search:
+            hay = f"{it['name']}{it['cert_no']}{it['unit']}{it['department']}".lower()
+            return search.lower() in hay
+        return True
+
+    return render_template(
+        "certificate/stock.html",
+        in_stock=[i for i in in_stock if keep(i)],
+        lent_out=[i for i in lent_out if keep(i)],
+        total_in_stock=len(in_stock),
+        total_lent_out=len(lent_out),
+        orphan_nos=orphan_nos,
+        search=search,
+        type_filter=type_filter,
+        cert_types=[label for label, *_ in CERT_SLOTS],
+        printed_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
     )
 
 
@@ -283,6 +324,60 @@ CERT_SLOTS = (
     ("往来港澳通行证", "hm_pass_no", "hm_pass_expiry", "hm_pass_submit_date"),
     ("大陆居民往来台湾通行证", "tw_pass_no", "tw_pass_expiry", "tw_pass_submit_date"),
 )
+
+
+def lent_out_numbers() -> set:
+    """当前借出未还的证件号码。
+
+    领用记录是「这本证现在在谁手上」的权威来源——出国申请上的领用/归还日期是它
+    回写的派生字段，绕道那边数会多一个可能不同步的环节。
+    一次申请只能领一本证（见 issuance._validate_form），所以一条记录就是一本。
+    """
+    return {(r[0] or "").strip() for r in get_db().execute(
+        "SELECT cert_nos FROM cert_issuance WHERE status = 'issued'").fetchall()
+        if (r[0] or "").strip()}
+
+
+def stock_split():
+    """把在控人员台账上的每一本证分成「在库」与「借出未还」两堆。
+
+    返回 (in_stock, lent_out, orphan_numbers)，前两者是一本一行的字典列表。
+
+    三条口径，都是为了让「在库」这个数能真的拿去和柜子里的实体证核对：
+
+    - **按号码槽算，不按台账行算。**一行最多放三本（护照 / 港澳 / 台湾）。
+      一个人借走护照，另外两本还在柜子里，按行算就全丢了。
+    - **只算在控人员。**撤控以证件收缴移交为前提（移交日期是必填项，见
+      decontrol._validate_form），那些证已经交出去了，不在柜子里。台账行还留着
+      是为了留痕，不是因为证还在。
+    - **路径B 新办未入库的不在此列。**那本证还没进台账，也从没进过柜子，
+      单独一档，见 travel.new_making_travel_ids。
+
+    orphan_numbers 是「有借出记录、号码却不在任何在控人员台账里」的那些。
+    它不影响在库数（本来就没算进去），但说明数据对不上，该报出来让人去查。
+    """
+    lent = lent_out_numbers()
+    rows = get_db().execute(
+        "SELECT c.*, pf.status AS filing_status FROM certificates c "
+        "JOIN personnel_filing pf ON pf.id = c.personnel_filing_id "
+        "WHERE pf.status = 'active' "
+        "ORDER BY c.unit, c.department, c.name, c.id").fetchall()
+
+    in_stock, lent_out, seen = [], [], set()
+    for r in rows:
+        for label, no_col, exp_col, sub_col in CERT_SLOTS:
+            no = (r[no_col] or "").strip()
+            if not no:
+                continue
+            seen.add(no)
+            item = {
+                "cert_id": r["id"], "personnel_filing_id": r["personnel_filing_id"],
+                "unit": r["unit"], "department": r["department"], "name": r["name"],
+                "cert_type": label, "cert_no": no,
+                "expiry": r[exp_col] or "", "submit_date": r[sub_col] or "",
+            }
+            (lent_out if no in lent else in_stock).append(item)
+    return in_stock, lent_out, sorted(lent - seen)
 
 
 def _existing_cert_id(personnel_filing_id):
