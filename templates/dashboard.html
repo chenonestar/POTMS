@@ -89,14 +89,14 @@
     </div>
 </div>
 
-<!-- 证照状态（点击跳转出国明细） -->
+<!-- 证件流转状态（点击跳转出国明细的对应筛选） -->
 <div class="row g-3 mb-4">
     <div class="col-md-4">
         <a href="{{ url_for('travel.list', passport_status='storage') }}" class="text-decoration-none">
             <div class="card text-center">
                 <div class="card-body py-3">
                     <div class="fs-4 fw-bold text-success">{{ cert_in_storage }}</div>
-                    <small class="text-muted">证照在库 <i class="bi bi-chevron-right small"></i></small>
+                    <small class="text-muted">证件在库 <i class="bi bi-chevron-right small"></i></small>
                 </div>
             </div>
         </a>
@@ -106,7 +106,7 @@
             <div class="card text-center">
                 <div class="card-body py-3">
                     <div class="fs-4 fw-bold text-primary">{{ cert_in_use }}</div>
-                    <small class="text-muted">证照领用中 <i class="bi bi-chevron-right small"></i></small>
+                    <small class="text-muted">证件领用中 <i class="bi bi-chevron-right small"></i></small>
                 </div>
             </div>
         </a>
@@ -116,7 +116,7 @@
             <div class="card text-center">
                 <div class="card-body py-3">
                     <div class="fs-4 fw-bold text-danger">{{ cert_overdue }}</div>
-                    <small class="text-muted">证照逾期未还 <i class="bi bi-chevron-right small"></i></small>
+                    <small class="text-muted">证件逾期未还 <i class="bi bi-chevron-right small"></i></small>
                 </div>
             </div>
         </a>
@@ -143,61 +143,6 @@
                 </div>
             </div>
         </a>
-    </div>
-</div>
-
-<div class="row">
-    <!-- 证件逾期未还 -->
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <strong><i class="bi bi-exclamation-diamond text-danger"></i> 证件逾期未还</strong>
-                <span class="badge bg-danger">{{ overdue|length }}</span>
-            </div>
-            <div class="card-body">
-                {% if overdue %}
-                <ul class="list-group list-group-flush">
-                    {% for o in overdue %}
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span>{{ o.name }}{% if o.trip_status == 'cancelled' %} <span class="badge bg-warning text-dark">取消行程</span>{% endif %}</span>
-                        <span class="text-danger fw-bold">应还: {{ o.deadline }}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-muted text-center py-3">无逾期未还</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <!-- 证照到期预警 -->
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <strong><i class="bi bi-hourglass-split text-warning"></i> 证照到期预警</strong>
-                <span>
-                    <span class="badge bg-warning text-dark">{{ expiring|length }}</span>
-                    <a href="{{ url_for('certificate.list') }}" class="small text-decoration-none ms-2">证照台账 <i class="bi bi-chevron-right small"></i></a>
-                </span>
-            </div>
-            <div class="card-body">
-                {% if expiring %}
-                <ul class="list-group list-group-flush">
-                    {% for e in expiring %}
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span>{{ e.name }} <span class="text-muted small">{{ e.type }}</span></span>
-                        <span class="{{ 'text-danger fw-bold' if e.days <= 7 else 'text-warning-emphasis' }}">
-                            {{ e.expiry[:4] }}-{{ e.expiry[4:6] }}-{{ e.expiry[6:8] }} 到期（剩 {{ e.days }} 天）
-                        </span>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-muted text-center py-3">{{ warn_days }} 天内无到期证照</p>
-                {% endif %}
-            </div>
-        </div>
     </div>
 </div>
 

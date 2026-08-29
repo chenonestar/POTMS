@@ -78,6 +78,18 @@ def _scalar(sql, args=()):
     return v[0] if v else None
 
 
+def _overdue_count(cl):
+    """首页「证件逾期未还」那张数字卡上的数。
+
+    首页原来还有一张列名单的卡，可以按姓名断言；那张卡与这张数字卡是同一份数据，
+    重复了，已删。现在名单在出国明细列表上，首页只留这个数。
+    """
+    html = cl.get("/").get_data(as_text=True)
+    m = re.search(r'>(\d+)</div>\s*<small class="text-muted">证件逾期未还', html)
+    assert m, "首页上找不到「证件逾期未还」这张卡"
+    return int(m.group(1))
+
+
 def _between(html, start, end):
     """截出页面上某一块，避免拿整页做「不包含某人」的断言。
 
@@ -112,14 +124,10 @@ def _decontrol_1(handover="20260301"):
 # B1 撤控后的告警与台账
 # ---------------------------------------------------------------------------
 def test_dashboard_overdue_drops_decontrolled_person(c):
-    """首页「证件逾期未还」不再点名已撤控的人——这条告警没人处理得掉。"""
-    card = lambda: _between(c.get("/").get_data(as_text=True), "证件逾期未还", "近期出行")
-    assert "撤控张三" in card(), "前提不成立：撤控前首页本就没报这个人"
-
+    """首页「证件逾期未还」不再把已撤控的人算进去——这条告警没人处理得掉。"""
+    assert _overdue_count(c) == 2, "前提不成立：撤控前首页本就没把两个人都算上"
     _decontrol_1()
-    after = card()
-    assert "撤控张三" not in after, "已撤控人员仍出现在首页逾期告警里"
-    assert "在控李四" in after, "把在控人员的告警也一并抹掉了"
+    assert _overdue_count(c) == 1, "已撤控人员仍被算进首页逾期数（或把在控的也一并抹掉了）"
 
 
 def test_travel_list_drops_decontrolled_overdue(c):
@@ -176,12 +184,11 @@ def test_revoked_person_is_back_in_business(c):
     撤控把人从所有在办入口里摘掉了（发起撤控的下拉只列 active，告警口径也只认
     active）。撤销如果只把字段改回去而没让这些地方重新认他，等于没撤销。
     """
-    card = lambda: _between(c.get("/").get_data(as_text=True), "证件逾期未还", "近期出行")
     _decontrol_1()
-    assert "撤控张三" not in card()
+    assert _overdue_count(c) == 1
 
     c.post("/decontrol/7/revoke", data={"csrf_token": _tok(c)}, follow_redirects=True)
-    assert "撤控张三" in card(), "撤销后逾期告警没有回来"
+    assert _overdue_count(c) == 2, "撤销后逾期告警没有回来"
     # 撤控列表页的「发起撤控」下拉只列 active 人员
     picker = _between(c.get("/decontrol/").get_data(as_text=True),
                       'id="decPersonSelect"', "</select>")

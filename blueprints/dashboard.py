@@ -1,15 +1,14 @@
 """首页仪表盘 — 统计概览 + 待办告警"""
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from flask import Blueprint, render_template, redirect, url_for, flash
 from flask.typing import ResponseReturnValue
 
 from auth import login_required
-from config import Config
 from database import get_db
 from utils.backup import run_daily_backup, latest_backup
 from utils.helpers import log_action
-from utils.validators import is_cert_overdue, is_new_cert_overdue, cert_overdue_deadline
+from utils.validators import is_cert_overdue, is_new_cert_overdue
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -39,9 +38,6 @@ def index() -> ResponseReturnValue:
 
     db = get_db()
     today = datetime.now().strftime("%Y%m%d")
-    # 用配置里的阈值，别在这里另写一个 30：首页与证照台账报的必须是同一批证，
-    # 两处各拿一个天数，调了配置就只有一处跟着变，用的人无从判断哪个才算数。
-    warn_date = (datetime.now() + timedelta(days=Config.CERT_EXPIRY_WARN_DAYS)).strftime("%Y%m%d")
 
     # 基础统计
     total_active = db.execute("SELECT COUNT(*) FROM personnel_filing WHERE status = 'active'").fetchone()[0]
@@ -55,13 +51,14 @@ def index() -> ResponseReturnValue:
     # 500 人、单用户的规模上，分布统计更像报表需求，放首页每天看意义不大；
     # .NET 与 Java 两版早已按这个口径不查也不显示，此处与它们对齐。
 
-    # ——— 证照状态分类 ———
+    # ——— 证件流转状态（在库 / 领用中 / 逾期未还）———
     cert_in_storage = db.execute(
         "SELECT COUNT(*) FROM travel_details WHERE passport_collect_date IS NULL OR passport_collect_date = ''"
     ).fetchone()[0]
-    # 已领用未归还的证件（正常/取消行程均含在内），用于「使用中」与「逾期」判定
+    # 已领用未归还的证件（正常/取消行程均含在内），用于「领用中」与「逾期未还」两个数字。
+    # 首页只报数字，名单与应还日期在出国明细列表上（点卡片过去），这里不再取姓名。
     in_use_rows = db.execute(
-        "SELECT id, name, passport_collect_date, passport_return_date, "
+        "SELECT passport_collect_date, passport_return_date, "
         "actual_return_date, travel_end, trip_status, cancel_date "
         "FROM travel_details "
         "WHERE passport_collect_date IS NOT NULL AND passport_collect_date != '' "
@@ -72,21 +69,14 @@ def index() -> ResponseReturnValue:
     ).fetchall()
     cert_in_use = len(in_use_rows)
     # 逾期未还：已领用 + 未归还 + 超过归还工作日时限（正常 10 / 取消 5）
-    overdue = []
-    for r in in_use_rows:
-        if is_cert_overdue(r, today):
-            overdue.append({
-                "name": r["name"],
-                "deadline": cert_overdue_deadline(r),
-                "trip_status": r["trip_status"] or "normal",
-            })
+    cert_overdue = sum(1 for r in in_use_rows if is_cert_overdue(r, today))
     # 路径B（做证）没有领用记录，上面那批取数条件（passport_collect_date 非空）
     # 一条都抓不到。它们按「新证是否已进入证照台账」判，口径见
     # blueprints/travel.py:_registered_cert_travel_ids 与 is_new_cert_overdue。
     from blueprints.travel import _registered_cert_travel_ids
     registered = _registered_cert_travel_ids()
     for r in db.execute(
-        "SELECT id, name, need_new_passport, actual_return_date, travel_end, "
+        "SELECT id, need_new_passport, actual_return_date, travel_end, "
         "trip_status, cancel_date, passport_collect_date FROM travel_details "
         "WHERE need_new_passport = '是' "
         "  AND (passport_collect_date IS NULL OR passport_collect_date = '')"
@@ -94,41 +84,7 @@ def index() -> ResponseReturnValue:
         "              WHERE pf.id = travel_details.personnel_filing_id AND pf.status = 'active')"
     ).fetchall():
         if is_new_cert_overdue({**dict(r), "cert_registered": r["id"] in registered}, today):
-            overdue.append({
-                "name": r["name"],
-                "deadline": cert_overdue_deadline(r),
-                "trip_status": r["trip_status"] or "normal",
-            })
-    overdue.sort(key=lambda x: x["deadline"])
-    cert_overdue = len(overdue)
-
-    # ——— 证照到期预警 ———
-    # 到期预警同样只看在控人员：人都撤控了，他那本证到不到期与本单位无关，
-    # 报出来只会把真正要办的事淹掉。
-    cert_expiry_warnings = db.execute(
-        "SELECT c.name, c.passport_expiry, c.hm_pass_expiry, c.tw_pass_expiry "
-        "FROM certificates c "
-        "JOIN personnel_filing pf ON pf.id = c.personnel_filing_id "
-        "WHERE pf.status = 'active'"
-    ).fetchall()
-    expiring = []
-    for row in cert_expiry_warnings:
-        for key, label in [
-            ("passport_expiry", "普通护照"),
-            ("hm_pass_expiry", "往来港澳通行证"),
-            ("tw_pass_expiry", "大陆居民往来台湾通行证"),
-        ]:
-            expiry = row[key]
-            if expiry and today <= expiry <= warn_date:
-                # 带上还剩几天：光看一个日期还得心算，而这张卡要回答的就是「有多急」
-                # 按自然日相减，不能拿 datetime 直接减：那样带上了当前时刻，
-                # 5 天后到期会算成「剩 4 天」——早报一天没坏处，但数字对不上日期
-                # 就会让人怀疑这张卡到底准不准。
-                days = (datetime.strptime(expiry, "%Y%m%d").date() - datetime.now().date()).days
-                expiring.append({"name": row["name"], "type": label,
-                                 "expiry": expiry, "days": max(days, 0)})
-    # 最先到期的排在最前——这张卡是「接下来要办什么」，不是一份名册
-    expiring.sort(key=lambda x: x["expiry"])
+            cert_overdue += 1
 
     # ——— 近期出行（按出行日期排序） ———
     recent_travel = db.execute(
@@ -156,9 +112,6 @@ def index() -> ResponseReturnValue:
         cert_in_storage=cert_in_storage,
         cert_in_use=cert_in_use,
         cert_overdue=cert_overdue,
-        expiring=expiring,
-        warn_days=Config.CERT_EXPIRY_WARN_DAYS,
-        overdue=overdue,
         recent_travel=recent_travel,
         backup_date=backup_date,
     )

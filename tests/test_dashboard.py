@@ -1,12 +1,17 @@
-"""首页告警：证照到期预警卡，以及不再白算没人用的统计。
+"""首页仪表盘：一件事只报一次，不算没人看的数。
 
-首页原来只报「证件逾期未还」——逾期是已经出事了。**还来得及办**的那件事（证照快到
-期，该提醒本人去换发）只在证照台账页有，得点进去才看得到，首页上一个字都没有。
-更别扭的是：`expiring` 这份数据首页一直在算，算完直接扔掉，从第一版起就没渲染过。
+首页原来七张卡，里面藏着两对重复：
 
-同时扔掉的还有 by_unit / by_political / by_rank 三项分布统计——同样从没渲染过，
-每进一次首页白跑三个查询。500 人、单用户的规模上分布统计更像报表需求，
-.NET 与 Java 两版早已不查也不显示，这里与它们对齐。
+- 「证照逾期未还」数字卡与「证件逾期未还」名单卡，同一份 overdue 数据，一个取长度
+  一个列名单，措辞还不一样（证照 / 证件）。
+- 「证照在库 / 领用中 / 逾期未还」这三个讲的是**证件借出归还的流转**，数据来自出国
+  申请上由领用记录回写的派生字段，业务上该叫「证件」；「证照」在本系统里特指证照
+  台账（这个人有哪几本证）。三处都用错了词。
+
+另有一张「证照到期预警」卡，按业务本身就不需要：证件只有凭出国申请才领得出去，
+没有申请，证到期了也不会被领出去换证，只能在库里放着。算了不看的数，删掉。
+
+现在的口径：**首页只报数字，名单与应还日期在出国明细列表上**（点数字卡过去）。
 """
 import re
 import sqlite3
@@ -26,7 +31,7 @@ def _day(n):
 
 @pytest.fixture()
 def c(tmp_path, monkeypatch):
-    """三个人：护照 5 天后到期、25 天后到期、以及一个已撤控的 5 天后到期。"""
+    """三个人：两个已领用且逾期未还（一个在控、一个已撤控），一个证在库没领。"""
     monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "t.db"))
     up = tmp_path / "up"; up.mkdir()
     monkeypatch.setattr(Config, "UPLOAD_FOLDER", str(up))
@@ -35,13 +40,10 @@ def c(tmp_path, monkeypatch):
     import database
     database.init_db(); database.run_migrations(); database.seed_data()
 
+    long_ago = _day(-120)
     db = sqlite3.connect(Config.DATABASE)
-    people = [
-        (1, "急张三", _day(5), "active"),
-        (2, "缓李四", _day(25), "active"),
-        (3, "撤控王五", _day(5), "decontrolled"),
-    ]
-    for pid, nm, expiry, status in people:
+    people = [(1, "逾期甲", "active"), (2, "撤控乙", "decontrolled"), (3, "在库丙", "active")]
+    for pid, nm, status in people:
         db.execute("INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,"
                    "id_number,residence,political_status,work_unit,position_or_title,"
                    "supervisor_unit,status,operator) VALUES (?,?,'','男','19900101',?,"
@@ -50,7 +52,18 @@ def c(tmp_path, monkeypatch):
         db.execute("INSERT INTO certificates (id,personnel_filing_id,unit,department,name,"
                    "passport_no,passport_expiry,passport_submit_date,operator) "
                    "VALUES (?,?,'总部','技术部',?,?,?,'20250101','admin')",
-                   (pid, pid, nm, f"E1000000{pid}", expiry))
+                   (pid, pid, nm, f"E900000{pid}", _day(10)))   # 都是 10 天后到期
+    # 1、2 号：领用后逾期未还；3 号：没领，证在库
+    for pid, nm in ((1, "逾期甲"), (2, "撤控乙")):
+        db.execute("INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,"
+                   "position,id_number,destination_passport,category,travel_dates,travel_start,"
+                   "travel_end,need_new_passport,passport_collect_date,operator) VALUES "
+                   "(?,?,'总部','技术部',?,'科长',?,'美国/护照','01','历史批次',?,?,'否',?,'admin')",
+                   (pid, pid, nm, _VALID_ID, long_ago, long_ago, long_ago))
+    db.execute("INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,"
+               "position,id_number,destination_passport,category,travel_dates,"
+               "need_new_passport,operator) VALUES (3,3,'总部','技术部','在库丙','科长',?,"
+               "'美国/护照','01','2026/09/01-2026/09/10','否','admin')", (_VALID_ID,))
     db.commit(); db.close()
 
     from app import create_app
@@ -60,63 +73,64 @@ def c(tmp_path, monkeypatch):
     return cl
 
 
-def _card(cl):
-    """截出「证照到期预警」那张卡。整页断言会被别处的姓名糊弄。"""
-    html = cl.get("/").get_data(as_text=True)
-    assert "证照到期预警" in html, "首页没有到期预警卡"
-    return html.split("证照到期预警", 1)[1].split("近期出行计划", 1)[0]
+def _stat(html, label):
+    """取出某张数字卡上的数。数字在标签前面一行，一起匹配才不会取错卡。"""
+    m = re.search(r'>(\d+)</div>\s*<small class="text-muted">' + label, html)
+    assert m, f"首页上找不到「{label}」这张卡"
+    return int(m.group(1))
 
 
-def test_expiry_card_lists_people_by_urgency(c):
-    """最先到期的排最前——这张卡是「接下来要办什么」，不是一份名册。"""
-    card = _card(c)
-    assert "急张三" in card and "缓李四" in card
-    assert card.index("急张三") < card.index("缓李四"), "没有按到期先后排"
-    assert "普通护照" in card, "没说明是哪一类证件"
+# ---------------------------------------------------------------------------
+# 一件事只报一次
+# ---------------------------------------------------------------------------
+def test_overdue_is_reported_in_exactly_one_place(c):
+    """逾期只有一个入口。原来数字卡与名单卡各报一次，同一份数据说两遍。"""
+    html = c.get("/").get_data(as_text=True)
+    assert html.count("逾期未还") == 1, \
+        f"首页上「逾期未还」出现了 {html.count('逾期未还')} 次，同一件事报了不止一遍"
 
 
-def test_expiry_card_shows_days_left(c):
-    """光给一个日期还得心算，而这张卡要回答的就是「有多急」。"""
-    card = _card(c)
-    assert "剩 5 天" in card, f"没标出剩余天数：{card[:500]}"
-    # 一周之内的要显眼，否则和还有三周的混在一起就失去了排序的意义
-    urgent = card.split("急张三", 1)[1].split("</li>", 1)[0]
-    assert "text-danger" in urgent, "七天内到期的没有标红"
+def test_overdue_card_counts_and_links_to_the_list(c):
+    """数字卡要能点过去看名单——名单不在首页了，这条路就不能断。"""
+    html = c.get("/").get_data(as_text=True)
+    assert _stat(html, "证件逾期未还") == 1, "逾期数只该算在控的那一个"
+    assert "passport_status=overdue" in html, "逾期卡没有指向出国明细的逾期筛选"
 
 
-def test_expiry_card_respects_configured_threshold(c, monkeypatch):
-    """阈值取 Config.CERT_EXPIRY_WARN_DAYS，不是首页自己写死的 30。
+def test_in_use_excludes_decontrolled(c):
+    """「领用中」不把已撤控人员算进去。
 
-    首页与证照台账报的必须是同一批证。两处各写一个天数，调了配置就只有一处
-    跟着变，用的人无从判断哪个才算数。
+    撤控的前提就是证件已收缴移交；这种状态只可能是守卫上线前的历史数据，
+    算进在办数字里只会让人去找一个找不到的人。
     """
-    monkeypatch.setattr(Config, "CERT_EXPIRY_WARN_DAYS", 10)
-    card = _card(c)
-    assert "急张三" in card, "5 天后到期的在 10 天阈值内，却没报出来"
-    assert "缓李四" not in card, "25 天后到期的超出了 10 天阈值，仍被报出来"
-    assert "10 天内无到期证照" not in card, "有该报的却显示成了空"
+    assert _stat(c.get("/").get_data(as_text=True), "证件领用中") == 1
 
 
-def test_decontrolled_person_is_not_warned_about(c):
-    """人都撤控了，他那本证到不到期与本单位无关（第 5 批 B1 的口径）。
+def test_cards_say_certificate_not_ledger(c):
+    """在库 / 领用中 / 逾期未还讲的是证件的借出归还，不是证照台账。
 
-    撤控意味着证已收缴移交，这条预警没人处理得掉，报出来只会把真正要办的事淹掉。
+    「证照」在本系统里特指证照台账（这个人有哪几本证），「证件」才是流转中的那本。
     """
-    assert "撤控王五" not in _card(c)
+    html = c.get("/").get_data(as_text=True)
+    for wrong in ("证照在库", "证照领用中", "证照逾期未还"):
+        assert wrong not in html, f"首页仍在用「{wrong}」——这三张卡讲的是证件流转"
+    for right in ("证件在库", "证件领用中", "证件逾期未还"):
+        assert right in html, f"首页缺少「{right}」"
 
 
-def test_empty_state_names_the_threshold(c):
-    """没有要办的事时也要说清楚「多少天内没有」，否则不知道这卡到底看的什么。"""
-    db = sqlite3.connect(Config.DATABASE)
-    db.execute("UPDATE certificates SET passport_expiry = ?", (_day(3650),))
-    db.commit(); db.close()
-    assert "30 天内无到期证照" in _card(c)
+# ---------------------------------------------------------------------------
+# 不算没人看的数
+# ---------------------------------------------------------------------------
+def test_expiry_warning_is_gone_from_dashboard(c):
+    """到期预警不该在首页：证件只有凭出国申请才领得出去，没有申请，证到期了
+    也不会被领出去换证，只能在库放着——这条预警在首页上没有可采取的行动。"""
+    assert "到期预警" not in c.get("/").get_data(as_text=True)
 
 
-def test_dashboard_does_not_compute_unused_statistics(c):
-    """没人渲染的统计就不该算——每进一次首页白跑三个查询，其中一个还带 JOIN。
+def test_dashboard_computes_nothing_it_does_not_render(c):
+    """算了不渲染的数，等于每进一次首页白跑一次查询。
 
-    断言的是模板上下文而不是页面文字：这三项本来就没渲染过，只看页面永远是绿的，
+    断言的是模板上下文而不是页面文字：这些变量本来就不渲染，只看页面永远是绿的，
     测不出「查询还在不在」。
     """
     from flask import template_rendered
@@ -138,6 +152,15 @@ def test_dashboard_does_not_compute_unused_statistics(c):
         template_rendered.disconnect(record, app)
 
     assert seen, "没抓到首页的模板上下文，这条用例什么也没验证"
-    for dead in ("by_unit", "by_political", "by_rank"):
-        assert dead not in seen, f"{dead} 仍在算并传给模板，而模板从没用过它"
-    assert "expiring" in seen, "到期预警的数据没传给模板"
+    for dead in ("expiring", "warn_days", "overdue", "by_unit", "by_political", "by_rank"):
+        assert dead not in seen, f"{dead} 仍在算并传给模板，而模板不用它"
+    assert "cert_overdue" in seen, "逾期数没传给模板"
+
+
+def test_certificate_ledger_keeps_its_own_expiry_banner(c):
+    """删的只是首页那张卡，证照台账页自己的到期提示不动。
+
+    台账页是「管证」的地方，在那里看到期是有意义的（换发要提前安排）；
+    首页是「今天要办什么」，两者不是一回事。
+    """
+    assert "即将到期" in c.get("/certificate/").get_data(as_text=True)
