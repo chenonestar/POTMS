@@ -100,7 +100,7 @@
     <div class="kpi blue"><div class="num">5</div><div class="lbl">语言实现（Py/Go/Rust/.NET/Java）</div></div>
     <div class="kpi green"><div class="num">546</div><div class="lbl">自动化测试（五版合计）</div></div>
     <div class="kpi amber"><div class="num">6</div><div class="lbl">规则同步批次</div></div>
-    <div class="kpi red"><div class="num">8</div><div class="lbl">被抓出来的「假绿」用例</div></div>
+    <div class="kpi red"><div class="num">9</div><div class="lbl">被抓出来的「假绿」用例</div></div>
 </div>
 
 <div class="toc">
@@ -250,6 +250,40 @@
     <p>历史数据回填带了幂等守卫（「这条已经处理过就跳过」），这是对的——避免重复执行。但后来发现<strong>回填的推断逻辑本身写错了</strong>（把所有证件种类一律推定为护照）。</p>
     <p>把推断逻辑改对之后，<strong>对已经回填过的库毫无作用</strong>：那些行已经被标记为「处理过」，永远不会再被碰。错的数据会一直躺在那里。</p>
     <p><strong>做法：</strong>修复一个「一次性数据处理」的逻辑时，必须同时问一句<strong>「已经被错误处理过的存量怎么办」</strong>。本项目的解法是另加一条订正迁移，判据卡死在「回填自己产的行」上（备注是那句原文、且没有签名），改完备注即自然失配，不需要版本表。</p>
+</div>
+
+<h3>3.4 断言写对了，但造的数据分辨不出对错</h3>
+<div class="card danger">
+    <p>这是比「断言太松」更隐蔽的一种。断言本身完全正确，<strong>是 fixture 里的数据凑巧让它失去了鉴别力</strong>——代码写错了，它照样绿。</p>
+
+    <p>首页四档证件去向有一条恒等式：<code>逾期 ⊆ 借出未还 + 新办未入库</code>。用例照着写了：</p>
+    <pre><span class="c"># 断言没毛病</span>
+assert 逾期 &lt;= 借出未还 + 新办未入库</pre>
+    <p>可当时 fixture 里只有两个「在外」的样本，<strong>两个都已经超期</strong>。于是实际数据是
+    <code>逾期 2 ≤ 借出 1 + 新办 1 = 2</code>——恰好取等号。这条断言在这组数据下，
+    <strong>代码把 <code>⊆</code> 实现成 <code>=</code> 也照样通过</strong>：只要把「新办未入库」不加时间条件地
+    一律当成逾期，数字仍是 2 ≤ 2。补一个「做证批下来、下个月才出发」的样本（在外，但还没到期）之后，
+    变成 <code>2 ≤ 3</code> 的真子集，那种错法立刻转红。</p>
+
+    <p>回头看，前面表里有两条其实是同一个病：</p>
+    <ul class="styled">
+        <li><strong>申请人锁定</strong>——换人的目标对象「一本证都没有」，于是先被另一条校验挡下。
+            锁定完全失效也测不出来。少的是「目标对象持有证件」这个样本属性。</li>
+        <li><strong>两次同步各留快照</strong>——两次改动用了<strong>不同的 tag</strong>，文件名天然不撞，
+            「同名加序号」的防覆盖逻辑删掉也照样绿。少的是「同一秒、同一 tag」这个样本。</li>
+    </ul>
+
+    <div class="rule">写完一条断言，接着问一句：<strong>「什么样的数据能让这条断言在代码错的时候仍然通过？」</strong>
+    如果答得出来，而 fixture 恰好就是那种数据，就补一个反例样本进去。
+    尤其是 <code>⊆</code> / <code>≤</code> / 「A 是 B 的子集」这类关系——<strong>必须造出严格小于的情形</strong>，
+    取等号的数据检验不了子集关系。</div>
+
+    <p><strong>还有一层值得记下：</strong>本项目里这类问题<strong>没有一次是测试自己发现的</strong>，
+    全都是有人追问「这个数到底怎么算的」时才浮出来。「撤掉修复必须变红」能抓住断言太松，
+    但抓不住样本不足——因为撤掉修复之后，那组数据仍然产不出差异。
+    <strong>补的办法是撤修复时刻意往<em>错的方向</em>改</strong>（比如把「超期才算逾期」改成「没入库就算逾期」），
+    而不只是把修复整段删掉：删掉往往退回一个明显崩坏的状态，反而容易红；
+    改成一个「看起来也说得通的错法」，才真的在考验用例。</p>
 </div>
 </section>
 
@@ -504,6 +538,8 @@
         <tr><td class="nowrap"><span class="badge b-win">测试</span></td><td>造数用<strong>相对今天</strong>的日期，不写死；进程级状态显式重置或串行化</td></tr>
         <tr><td class="nowrap"><span class="badge b-win">测试</span></td><td>断言「不包含某人」时，先确认<strong>页面确实是那个页面</strong>、并且把范围<strong>截到那一块</strong>再断言</td></tr>
         <tr><td class="nowrap"><span class="badge b-win">测试</span></td><td>回归实验本身要验证：改坏之后先确认改动真的落进去了，再跑测试</td></tr>
+        <tr><td class="nowrap"><span class="badge b-win">测试</span></td><td>写完断言问一句「<strong>什么样的数据能让它在代码错时仍然通过</strong>」；<code>⊆</code>/<code>≤</code> 这类关系必须造出<strong>严格小于</strong>的样本，取等号检验不了子集</td></tr>
+        <tr><td class="nowrap"><span class="badge b-win">测试</span></td><td>撤修复时往<strong>错的方向改</strong>，不只是整段删掉——删掉容易退回明显崩坏的状态，改成「看起来也说得通的错法」才真在考验用例</td></tr>
         <tr><td class="nowrap"><span class="badge b-open">界面</span></td><td>每条拒绝提示，把「按提示做一遍」在脑子里走完——走得通吗？</td></tr>
         <tr><td class="nowrap"><span class="badge b-open">界面</span></td><td>办不了的事不给入口；给了就得说清为什么灰</td></tr>
         <tr><td class="nowrap"><span class="badge b-open">界面</span></td><td>前置校验放在<strong>进表单之前</strong>，不让人填完再说不行</td></tr>
