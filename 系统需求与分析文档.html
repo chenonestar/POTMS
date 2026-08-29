@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>因私出国（境）人员审批管理系统 — 系统需求与分析文档 V2.0</title>
+<style>
+    :root{
+        --primary:#1a5276; --primary-light:#2980b9; --bg:#f8f9fa; --card-bg:#fff;
+        --border:#dee2e6; --text:#2c3e50; --text-muted:#6c757d; --accent:#e67e22;
+        --success:#27ae60; --warning:#f39c12; --danger:#c0392b; --info:#2980b9;
+        --shadow:0 2px 8px rgba(0,0,0,.08); --radius:8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:"Microsoft YaHei","PingFang SC","Helvetica Neue",Arial,sans-serif;
+        background:var(--bg);color:var(--text);line-height:1.8;}
+    .cover{background:linear-gradient(135deg,#0d2b45 0%,#1a5276 40%,#1a6e5c 100%);
+        color:#fff;padding:80px 60px 64px;text-align:center;position:relative;overflow:hidden;}
+    .cover h1{font-size:36px;font-weight:700;letter-spacing:1px;margin-bottom:14px;}
+    .cover .subtitle{font-size:17px;opacity:.85;font-weight:300;letter-spacing:3px;}
+    .cover .meta{margin-top:40px;font-size:14px;opacity:.7;}
+    .cover .verdict{margin-top:28px;display:inline-block;background:rgba(255,255,255,.14);
+        border:1px solid rgba(255,255,255,.3);border-radius:40px;padding:10px 30px;font-size:16px;font-weight:600;}
+    .container{max-width:1120px;margin:0 auto;padding:40px 30px 80px;}
+    .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0 40px;}
+    .kpi{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:22px;text-align:center;box-shadow:var(--shadow);}
+    .kpi .num{font-size:34px;font-weight:800;line-height:1.1;}
+    .kpi .lbl{font-size:13px;color:var(--text-muted);margin-top:6px;}
+    .kpi.green .num{color:var(--success);} .kpi.blue .num{color:var(--primary-light);}
+    .kpi.amber .num{color:var(--warning);} .kpi.red .num{color:var(--danger);}
+    .part{margin:56px 0 28px;padding:14px 22px;background:linear-gradient(90deg,#1a5276,#2980b9 70%,rgba(41,128,185,0));
+        color:#fff;border-radius:var(--radius);font-size:20px;font-weight:700;letter-spacing:2px;}
+    section{margin-bottom:44px;}
+    section h2{font-size:24px;color:var(--primary);border-left:5px solid var(--accent);
+        padding-left:16px;margin-bottom:20px;}
+    section h3{font-size:18px;color:var(--primary-light);margin:26px 0 12px;
+        padding-bottom:6px;border-bottom:1px dashed var(--border);}
+    section h4{font-size:15px;color:var(--primary);margin:18px 0 8px;}
+    .card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:22px 26px;margin-bottom:20px;box-shadow:var(--shadow);}
+    .card.info{border-left:4px solid var(--primary-light);}
+    .card.warning{border-left:4px solid var(--accent);}
+    .card.success{border-left:4px solid var(--success);}
+    .card.danger{border-left:4px solid var(--danger);}
+    p{margin-bottom:10px;}
+    table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:14px;}
+    thead th{background:var(--primary);color:#fff;padding:10px 12px;text-align:left;
+        font-weight:600;white-space:nowrap;}
+    tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+    tbody tr:nth-child(even){background:#f5f7fa;}
+    tbody tr:hover{background:#eaf2f8;}
+    .scroll-x{overflow-x:auto;margin:14px 0 20px;}
+    .scroll-x table{margin:0;}
+    table.matrix{font-size:13px;} table.matrix td{padding:8px 10px;}
+    table.matrix td:first-child{font-weight:600;white-space:nowrap;background:#eef3f7;}
+    .wrap{white-space:normal;}
+    .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;
+        font-weight:700;color:#fff;white-space:nowrap;}
+    .b-done{background:var(--success);} .b-p1{background:var(--danger);}
+    .b-p2{background:var(--warning);} .b-p3{background:var(--text-muted);} .b-new{background:var(--primary-light);}
+    .b-guard{background:var(--danger);} .b-sync{background:var(--primary-light);}
+    .b-frozen{background:var(--text-muted);} .b-derive{background:var(--accent);}
+    ul.styled,ol.styled{padding-left:22px;margin:8px 0 14px;}
+    ul.styled li,ol.styled li{margin-bottom:7px;}
+    ul.styled li::marker{color:var(--primary-light);}
+    code{background:#e8e8e8;padding:1px 6px;border-radius:3px;font-size:13px;
+        font-family:Consolas,"Courier New",monospace;}
+    .footnote{background:#fff9e6;border:1px solid #f0d060;border-radius:6px;
+        padding:14px 20px;margin:18px 0;font-size:14px;}
+    .footnote strong{color:var(--accent);}
+    .rule{background:#eef7f1;border:1px solid #bfe3cd;border-left:4px solid var(--success);
+        border-radius:6px;padding:12px 20px;margin:14px 0;font-size:14px;}
+    .rule strong{color:var(--success);}
+    .toc{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);
+        padding:24px 32px;margin-bottom:40px;box-shadow:var(--shadow);}
+    .toc h2{font-size:20px;color:var(--primary);border-bottom:2px solid var(--primary-light);
+        padding-bottom:10px;margin-bottom:14px;}
+    .toc ol{padding-left:0;list-style:none;} .toc li{padding:4px 0 4px 18px;}
+    .toc a{color:var(--text);text-decoration:none;} .toc a:hover{color:var(--primary-light);}
+    .toc .grp{font-weight:700;color:var(--primary);margin-top:12px;padding:4px 0;}
+    .toc .todo{color:var(--text-muted);font-size:12px;}
+    /* 折叠式批注：这一节怎么填 */
+    details.howto{background:#f4f8fb;border:1px solid #cfe0ec;border-left:4px solid var(--primary-light);
+        border-radius:6px;padding:10px 18px;margin:0 0 20px;}
+    details.howto summary{cursor:pointer;font-weight:600;color:var(--primary);font-size:14px;list-style:none;}
+    details.howto summary::-webkit-details-marker{display:none;}
+    details.howto summary::before{content:"▸ ";}
+    details.howto[open] summary::before{content:"▾ ";}
+    details.howto .body{padding-top:10px;margin-top:8px;border-top:1px dashed #cfe0ec;font-size:14px;}
+    details.howto dl{margin:0;}
+    details.howto dt{font-weight:700;color:var(--primary-light);margin-top:10px;}
+    details.howto dd{margin:2px 0 0 0;}
+    /* 图 */
+    .diagram{background:#fff;border:1px solid var(--border);border-radius:var(--radius);
+        padding:18px 14px 10px;margin:18px 0;box-shadow:var(--shadow);overflow-x:auto;}
+    .diagram svg{display:block;margin:0 auto;}
+    .diagram .cap{font-size:13px;color:var(--text-muted);text-align:center;margin-top:10px;}
+    svg text{font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;font-size:13px;fill:#2c3e50;}
+    svg .ttl{font-size:14px;font-weight:700;}
+    svg .lbl{font-size:11.5px;fill:#5a6570;}
+    svg .lbl-warn{font-size:11.5px;fill:#c0392b;font-weight:600;}
+    svg .st{fill:#eaf2f8;stroke:#2980b9;stroke-width:1.6;}
+    svg .st-ok{fill:#eafaf1;stroke:#27ae60;stroke-width:1.6;}
+    svg .st-warn{fill:#fdf2e9;stroke:#e67e22;stroke-width:1.6;}
+    svg .st-bad{fill:#fdedec;stroke:#c0392b;stroke-width:1.6;}
+    svg .st-out{fill:#f1f2f4;stroke:#95a5a6;stroke-width:1.4;stroke-dasharray:5 3;}
+    svg .edge{stroke:#7f8c8d;stroke-width:1.5;fill:none;marker-end:url(#ar);}
+    svg .edge-red{stroke:#c0392b;stroke-width:1.5;fill:none;marker-end:url(#ar-r);}
+    svg .edge-time{stroke:#e67e22;stroke-width:1.5;fill:none;stroke-dasharray:6 3;marker-end:url(#ar-o);}
+    svg .box{fill:#fff;stroke:#dee2e6;stroke-width:1;}
+    @media print{
+        body{background:#fff;}
+        .card,.diagram{box-shadow:none;break-inside:avoid;}
+        .cover{padding:40px 30px;}
+        details.howto{border-left-color:#999;} details.howto[open] .body{display:block;}
+        section{break-inside:auto;} h2,h3{break-after:avoid;}
+    }
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <h1>因私出国（境）人员审批管理系统</h1>
+    <p class="subtitle">系 统 需 求 与 分 析 文 档</p>
+    <div class="verdict">写现状，不写理想 &nbsp;·&nbsp; 每一条规则都能追到代码与测试</div>
+    <p class="meta">文档版本：V2.0 &nbsp;|&nbsp; 编制日期：2026-08-29 &nbsp;|&nbsp; 基线：main 分支（第 6 批 + 仪表盘四档改造后） &nbsp;|&nbsp; 密级：内部</p>
+</div>
+
+<div class="container">
+
+<!-- ===================== 目录 ===================== -->
+<div class="toc">
+    <h2>目 录</h2>
+    <ol>
+        <li class="grp">第 0 部分　模板说明</li>
+        <li><a href="#s0">0　怎么用这份文档</a></li>
+        <li class="grp">第一部分　全局</li>
+        <li><a href="#s1">1　项目概述与边界（含非目标）</a></li>
+        <li><a href="#s2">2　术语表</a></li>
+        <li><a href="#s3">3　用户角色</a></li>
+        <li class="grp">第二部分　静态结构</li>
+        <li><a href="#s4">4　实体关系图</a> <span class="todo">（第 2 批）</span></li>
+        <li><a href="#s5">5　业务模块与字段表</a> <span class="todo">（第 2 批）</span></li>
+        <li><a href="#s6">6　数据字典与枚举</a> <span class="todo">（第 2 批）</span></li>
+        <li class="grp">第三部分　动态行为</li>
+        <li><a href="#s7">7　状态机</a></li>
+        <li><a href="#s8">8　跨表影响矩阵</a></li>
+        <li><a href="#s9">9　异常与回退路径</a></li>
+        <li class="grp">第四部分　呈现与口径</li>
+        <li><a href="#s10">10　统计口径定义</a> <span class="todo">（第 2 批）</span></li>
+        <li><a href="#s11">11　界面入口条件</a> <span class="todo">（第 2 批）</span></li>
+        <li><a href="#s12">12　提示文案规约</a> <span class="todo">（第 2 批）</span></li>
+        <li class="grp">第五部分　通用功能</li>
+        <li><a href="#s13">13　导出 / 打印 / 查询 / 导入 / 日志 / 备份</a> <span class="todo">（第 3 批）</span></li>
+        <li class="grp">第六部分　非功能需求</li>
+        <li><a href="#s14">14　安全 / 性能 / 可用性 / 兼容性 / 技术栈</a> <span class="todo">（第 3 批）</span></li>
+        <li class="grp">第七部分　自检</li>
+        <li><a href="#s15">15　需求评审清单与交付自检清单</a> <span class="todo">（第 3 批）</span></li>
+    </ol>
+</div>
+
+<!-- 共享的箭头定义（供全页 SVG 复用） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#7f8c8d"/></marker>
+    <marker id="ar-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/></marker>
+    <marker id="ar-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#e67e22"/></marker>
+</defs></svg>
+
+
+<!-- ===================== 第 0 部分 ===================== -->
+<div class="part">第 0 部分　模板说明</div>
+
+<section id="s0">
+<h2>0、怎么用这份文档</h2>
+
+<div class="card info">
+<p>这份文档有<strong>两个身份</strong>，读的时候要分清：</p>
+<ul class="styled">
+    <li><strong>身份一：POTMS 现行口径的权威说明。</strong>正文写的全是这个系统<u>此刻真实的样子</u>——每一条状态迁移都对应一个真实存在的路由，每一处守卫都对应一个真实存在的函数，每一个统计数字都对应一个真实存在的判据函数和守着它的测试。</li>
+    <li><strong>身份二：下一个项目写需求分析的模板。</strong>每一章开头有一个可折叠的「<strong>▸ 这一节怎么填</strong>」，讲的是这一章存在的理由：它回答什么问题、不写会付出什么代价（都是本项目付过的）、以及怎么填。</li>
+</ul>
+<p>换项目复用时：<strong>折叠块留下，正文全换</strong>。章节骨架是通用的，正文是 POTMS 专有的。</p>
+</div>
+
+<h3>0.1 三条硬规矩</h3>
+
+<div class="rule"><strong>规矩一：写现状，不写理想。</strong>
+文档里不出现「应当」「建议」「后续可以」。写不出现状的地方，说明那件事根本没做——那就写进第 15 章的欠账清单，而不是用一句「应当」把它糊过去。
+本项目上一版需求文档正是死在这条上：它写着「证件移交日期&nbsp;<code>DATE</code>&nbsp;选填」，而代码里这一栏早已改成必填；写着仪表盘有「在库 / 领用中 / 逾期未还」三张卡，而实际是四档且单位全变了。读文档的人照着做，做出来的是一个不存在的系统。</div>
+
+<div class="rule"><strong>规矩二：每一条规则都要能追回去。</strong>
+状态机的每条边写清<u>触发它的路由</u>；矩阵的每个格子写清<u>执行它的函数</u>；每个统计数字写清<u>算它的函数 + 它满足的恒等式 + 守着它的测试</u>。追不回去的条目，要么是想当然，要么是已经腐烂了。</div>
+
+<div class="rule"><strong>规矩三：判据只写一次。</strong>
+同一个业务判断（「谁算逾期」「哪些申请还能开领用单」「一本证在不在库」）在系统里只能有一个函数，所有调用方共用。文档同理：判据的定义只在一处展开，别处一律引用，不复述。
+这条是本项目返工次数最多的一条教训，详见《开发经验教训总结》<a href="开发经验教训总结.html#s9">第九节</a>。</div>
+
+<h3>0.2 折叠批注的用法</h3>
+<p>每一章正文之前的折叠块统一是三段式：</p>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">段落</th><th>写什么</th></tr></thead>
+<tbody>
+<tr><td>回答什么问题</td><td>这一章存在的唯一理由。答不上来的章节就该删——凑齐八股会让真正重要的内容被稀释。</td></tr>
+<tr><td>不写的代价</td><td>本项目为漏写这一章付过的具体代价（第几批返工、返了什么）。这是折叠块里最有说服力的部分，也是最难在新项目里凭空编出来的部分——所以要在复盘当天就写下来。</td></tr>
+<tr><td>怎么填</td><td>可操作的步骤与验收标准。</td></tr>
+</tbody></table></div>
+
+<h3>0.3 与本仓库其他文档的关系</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:230px">文档</th><th style="width:110px">性质</th><th>关系</th></tr></thead>
+<tbody>
+<tr><td><code>系统需求与分析文档.html</code><br><span class="badge b-new">本文</span></td><td>现行口径</td>
+    <td>需求与系统分析合一。<strong>与代码冲突时以代码为准，并立即回来改本文</strong>——文档落后于代码就等于错。</td></tr>
+<tr><td><code>开发需求文档.html</code></td><td>历史参照</td>
+    <td>第一版需求文档。<strong>已停止维护，不再作为口径依据</strong>，但<u>刻意保留</u>：《开发经验教训总结》第二节逐句引用它来论证「返工的根在需求文档里」，删掉它，那一节就失去了证据。</td></tr>
+<tr><td><code>开发经验教训总结.html</code></td><td>复盘</td>
+    <td>本文的来源。本文新增的第 0、2、4、7、8、9、10、11、12、15 章，每一章都对应它记下的一类返工。</td></tr>
+<tr><td><code>系统评审报告.html</code><br><code>系统优化审定报告.html</code></td><td>阶段评审</td>
+    <td>某一时点的评审结论，属于过程记录，不随代码更新。</td></tr>
+</tbody></table></div>
+
+<div class="footnote"><strong>关于章节顺序：</strong>本文把「动态行为」（状态机 / 影响矩阵 / 回退路径）放在第三部分，紧跟静态结构，而不是像常见模板那样塞到附录。理由很实在：本项目<u>六批返工里有五批出在动态行为上</u>——字段定义几乎没错过，错的全是「这个动作还会影响谁」。</div>
+</section>
+
+
+<!-- ===================== 第一部分 ===================== -->
+<div class="part">第一部分　全局</div>
+
+<section id="s1">
+<h2>1、项目概述与边界</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>这个系统<strong>管到哪儿为止</strong>。不是「它能干什么」——那是功能清单，第 5 章才写；这里要的是那条线：线内的事必须做对，线外的事一件也不做。</dd>
+<dt>不写的代价</dt>
+<dd>没有「非目标」清单，每一次「顺手加个功能」都显得合理。本项目首页曾经计算「按单位 / 按政治面貌 / 按职级」三项分布统计并传给模板，而模板<u>从第一次提交起就没有渲染过它们</u>（用 <code>git log -S</code> 核实）——每进一次首页白跑三个查询，其中一个还带 JOIN。它不是被用坏的，是<strong>一开始就不该进来</strong>：500 人规模的分布统计是报表需求，不是每天看的告警。写清非目标，它在需求阶段就会被挡下。</dd>
+<dt>怎么填</dt>
+<dd>先写「目标」和「使用场景」，再逼自己写满至少 6 条「非目标」。非目标要写<u>具体到会被误解的那种</u>：「不做多用户」不够，要写「不做角色权限体系——<code>users</code> 表不含 role 列，所有登录者权限相同」，否则下一个人会理解成「暂时只有一个用户，将来加角色」，然后按可扩展的方式设计一遍。</dd>
+</dl></div></details>
+
+<h3>1.1 目标</h3>
+<div class="card">
+<p>为一家单位的<strong>因私出国（境）证照保管处</strong>提供全流程台账：从人员备案、证照收缴登记，到出国（境）申请、证件领用与归还，直至人员撤控与证件移交，全部留痕、可查、可导出、可打印。</p>
+<p>核心价值不是「审批」，而是<strong>把每一本证的去向说清楚</strong>——任何时刻都能回答：这本证现在在哪儿、在谁手上、该什么时候回来、有没有超期。</p>
+</div>
+
+<h3>1.2 使用场景与规模假设</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">维度</th><th style="width:200px">取值</th><th>由此推出的设计决策</th></tr></thead>
+<tbody>
+<tr><td>部署环境</td><td>单位内网，<strong>完全离线</strong></td><td>前端不引任何 CDN，图表用内联 SVG，字体用系统字体栈；文档本身（含本文）也必须离线可看。</td></tr>
+<tr><td>并发用户</td><td><strong>1 人</strong>（保管处经办人）</td><td>不做角色权限、不做行级锁、不做乐观并发控制；SQLite 单文件足够。</td></tr>
+<tr><td>数据规模</td><td>在控人员 <strong>500 人量级</strong>，历史记录数千条</td><td>列表页全量下发 + 前端按视口窗口化（<code>list_all()</code>），不做服务端分页；全表扫描的统计查询可以接受。</td></tr>
+<tr><td>运行方式</td><td>单机常驻，办公时间开着</td><td>每日备份挂在首页访问上触发（<code>run_daily_backup()</code>），不依赖定时任务服务。</td></tr>
+<tr><td>数据可靠性要求</td><td>纸质单据为准，系统为台账</td><td>关键单据（领用单）采集手写签名并可打印归档；系统数据可从 <code>backup/</code> 恢复。</td></tr>
+</tbody></table></div>
+
+<h3>1.3 系统边界（在管范围内）</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:180px">管什么</th><th>到哪儿为止</th></tr></thead>
+<tbody>
+<tr><td>人员备案</td><td>登记 → 变更 → 撤控 → 撤销撤控。<strong>不管</strong>人事系统里的入职离职，备案是本系统自己的一份名册。</td></tr>
+<tr><td>证照台账</td><td>收缴入库登记（三类证件，一人一行三个号码槽）→ 号码变更（换发）→ 随撤控移交出库。</td></tr>
+<tr><td>出国（境）申请</td><td>申请登记 → 附件上传 → 行程取消 / 恢复 → 归档。<strong>不管</strong>审批流转本身：审批在线下走纸质，系统记的是审批结果与日期。</td></tr>
+<tr><td>证件领用</td><td>开领用单（手写签名）→ 归还登记（手写签名）→ 作废。<strong>唯一</strong>记录「这本证现在在谁手上」的地方。</td></tr>
+<tr><td>逾期催还</td><td>按工作日算到期日并在首页与列表告警。<strong>不管</strong>通知发送：没有短信、没有邮件、没有站内信，经办人自己看。</td></tr>
+<tr><td>盘库</td><td>出一张「此刻应当躺在柜子里的每一本证」的清单，供与实体核对。</td></tr>
+</tbody></table></div>
+
+<h3>1.4 非目标（明确不做）</h3>
+<div class="card danger">
+<div class="scroll-x"><table>
+<thead><tr><th style="width:220px">不做什么</th><th>为什么，以及别误解成什么</th></tr></thead>
+<tbody>
+<tr><td><strong>角色权限体系</strong></td><td><code>users</code> 表只有 <code>username / password_hash / full_name</code>，<u>没有 role 列</u>。所有登录者权限完全相同。不要理解成「暂时只有一个用户，将来加角色」——按可扩展方式设计会凭空引入一层从不会被用到的判断。</td></tr>
+<tr><td><strong>审批工作流引擎</strong></td><td>不做多级审批、待办流转、会签。审批在线下，系统只记结果字段（审批日期、批号）。</td></tr>
+<tr><td><strong>与外部系统对接</strong></td><td>不对接人事系统、不对接公安出入境系统、不做接口。数据靠人工录入与 Excel 导入。</td></tr>
+<tr><td><strong>报表与分布统计</strong></td><td>首页只放<u>要行动的告警</u>。按单位 / 政治面貌 / 职级的分布统计已从代码中删除（它们曾计算而从未显示）。需要分布，走导出到 Excel 自己透视。</td></tr>
+<tr><td><strong>通知推送</strong></td><td>无短信、无邮件、无消息中心。逾期靠首页与列表页的告警区，经办人上班看得到。</td></tr>
+<tr><td><strong>移动端</strong></td><td>只保证桌面浏览器与打印。页面用 Bootstrap 5 所以在窄屏不会散架，但不为移动端做交互设计。</td></tr>
+<tr><td><strong>附件全文检索</strong></td><td>附件只存文件、分类、批次，按记录挂靠检索，不解析 PDF 内容。</td></tr>
+<tr><td><strong>系统内的备份还原入口</strong></td><td>备份自动做（每日 + 改前快照），<u>还原是手工三步</u>（停服务、换文件、启服务，见 README）。这是一笔<strong>已知欠账</strong>，不是遗漏——见第 9 章。</td></tr>
+</tbody></table></div>
+</div>
+</section>
+
+
+<section id="s2">
+<h2>2、术语表</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>同一个词，在这个项目里<strong>只许有一个意思</strong>。</dd>
+<dt>不写的代价</dt>
+<dd>本项目在「证照 / 证件」上吃过亏：菜单叫「证照台账」，卡片叫「证件在库」，导出叫「证件盘库清单」——同一批东西三个叫法，读界面的人要自己猜是不是一回事。更贵的是<strong>单位</strong>：仪表盘上一度同时摆着三个数，一个的单位是「人」，一个是「出国申请条数」，一个是「本」，摆在一行里看起来可以互相加减，实际上完全不同维度，于是出现了「逾期 3 &gt; 领用中 2」这种逻辑上不可能的组合，一直发布到了首页。术语表不是给外人看的礼节性章节，它是<u>单位一致性的第一道闸</u>。</dd>
+<dt>怎么填</dt>
+<dd>三件事：①每个词一句定义；②<strong>凡是可数的，必须标注单位</strong>（人 / 本 / 条）；③写出「不是什么」——只有正面定义挡不住误用，「借出未还 ≠ 逾期」这种否定句才挡得住。</dd>
+</dl></div></details>
+
+<h3>2.1 主体与单据</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:130px">术语</th><th style="width:60px">单位</th><th>定义 / 不是什么</th></tr></thead>
+<tbody>
+<tr><td><strong>备案人员</strong></td><td>人</td><td>纳入本单位因私出国（境）管理范围的人，表 <code>personnel_filing</code>。状态只有<code>有效 active</code> 与 <code>已撤控 decontrolled</code> 两种。</td></tr>
+<tr><td><strong>信息登记表</strong></td><td>条</td><td>表 <code>personnel_info</code>，人员的基础信息（含部门）。一条信息可被多条备案引用，也可以没有备案引用（孤儿），有专门的清理入口。</td></tr>
+<tr><td><strong>证照台账</strong></td><td>条</td><td>表 <code>certificates</code>，<u>一人一行</u>。<strong>不是</strong>一本证一行——一行里有三个号码槽。所以「证照登记 15 条」的意思是 15 个人有证，不是 15 本证。</td></tr>
+<tr><td><strong>号码槽</strong></td><td>本</td><td>台账一行里的三组「号码 + 有效期 + 上交日期」字段，对应<u>普通护照 / 往来港澳通行证 / 大陆居民往来台湾通行证</u>（代码 <code>certificate.CERT_SLOTS</code>）。<strong>一个非空号码槽 = 一本证</strong>，所有「本」为单位的统计都以此为原子。</td></tr>
+<tr><td><strong>出国（境）申请</strong></td><td>条</td><td>表 <code>travel_details</code>，一次出行一条。行程状态 <code>normal</code> / <code>cancelled</code>。</td></tr>
+<tr><td><strong>领用单</strong></td><td>条</td><td>表 <code>cert_issuance</code>，凭出国申请从保管处借出证件的单据，<u>带本人手写签名</u>。状态 <code>issued</code> / <code>returned</code> / <code>voided</code>。<strong>一次申请一次只能借一本证。</strong></td></tr>
+<tr><td><strong>撤控备案</strong></td><td>条</td><td>表 <code>decontrol_filing</code>，上报「此人不再纳入本单位管理」的单据。<strong>不是</strong>一个状态标记——它是报出去的一张单，所以撤销时是物理删除（见 9.2）。</td></tr>
+</tbody></table></div>
+
+<h3>2.2 台账 vs 单据（本项目最贵的一对概念）</h3>
+<div class="card warning">
+<p><code>certificates</code>、<code>cert_issuance</code>、<code>travel_details</code>、<code>decontrol_filing</code> 四张表里都有 <code>name</code> / <code>unit</code> / <code>department</code> 这几列，<strong>列名一样，正确行为相反</strong>：</p>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:100px">类型</th><th style="width:210px">哪些表</th><th>人员改名 / 改单位时</th><th>理由</th></tr></thead>
+<tbody>
+<tr><td><span class="badge b-sync">台账</span></td><td><code>certificates</code></td><td><strong>必须跟着改</strong>（<code>personnel._sync_certificates</code>）</td>
+    <td>台账记的是「这个人<u>现在</u>手上有哪几本证」。不跟着改，这本证在旧名字下消失、在新名字下也搜不到，两边都找不着。</td></tr>
+<tr><td><span class="badge b-frozen">单据</span></td><td><code>cert_issuance</code><br><code>travel_details</code><br><code>decontrol_filing</code></td><td><strong>必须冻住</strong>（无任何同步）</td>
+    <td>单据是<u>开出去的那张纸</u>，上面印的是开单那天的姓名与单位。事后跟着人改，等于篡改历史凭证——尤其 <code>cert_issuance</code> 上有本人手写签名，改了签名就名不副实。</td></tr>
+</tbody></table></div>
+<p style="margin-top:10px"><strong>判断口诀：</strong>问一句「这条记录有没有被打印出来签过字 / 报出去过？」——有，就是单据，冻住；没有，是台账，跟人走。</p>
+</div>
+
+<h3>2.3 两条领证路径</h3>
+<div class="card">
+<div class="scroll-x"><table>
+<thead><tr><th style="width:110px">路径</th><th style="width:180px">证从哪儿来</th><th>系统里的痕迹</th><th>逾期判据</th></tr></thead>
+<tbody>
+<tr><td><strong>路径 A<br>领用</strong></td><td>本人名下的证原本就<u>收缴在保管处</u>，出国时借出</td>
+    <td>有 <code>cert_issuance</code> 记录；<code>travel_details.passport_collect_date</code> 由领用单派生而非空</td>
+    <td><code>validators.is_cert_overdue</code>：已领用 + 未归还 + 已过到期日</td></tr>
+<tr><td><strong>路径 B<br>做证</strong></td><td>本人凭同意申办函<u>自己去公安办新证</u>，证从没进过保管处</td>
+    <td><strong>没有</strong>领用记录；<code>passport_collect_date</code> <u>永远为空</u>；<code>need_new_passport='是'</code></td>
+    <td><code>validators.is_new_cert_overdue</code>：判据换成「新证号码<u>有没有进证照台账</u>」——进了台账等于已交回收缴（台账登记时上交日期必填）</td></tr>
+</tbody></table></div>
+<div class="footnote"><strong>为什么这一对必须写进术语表：</strong>路径 B 的人<u>风险最高</u>——那本证从办出来起一直在本人手上，单位连见都没见过。而最早只实现了路径 A 的判据，<code>passport_collect_date</code> 为空直接返回 <code>False</code>，于是<strong>整类人从逾期告警里静悄悄地掉了出去</strong>。上一版需求文档 5.1 节写清了两条路径，7.6 节却只给出了一条路径的逾期定义——两条路径是知道的，只是没人把它们和告警口径对上。</div>
+</div>
+
+<h3>2.4 一本证的四种去向（单位统一为「本」）</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:130px">术语</th><th>定义（判据函数）</th><th>不是什么</th></tr></thead>
+<tbody>
+<tr><td><span class="badge" style="background:#27ae60">在库</span></td>
+    <td>在控人员台账上登记、且号码<u>不在</u>当前借出集合里的每一本证。<code>certificate.stock_split()</code> 的第一个返回值。</td>
+    <td>不是「没有出国申请的人数」。它是<strong>可以拿去和柜子里的实体证逐本核对</strong>的那个数。</td></tr>
+<tr><td><span class="badge" style="background:#2980b9">借出未还</span></td>
+    <td>号码出现在 <code>cert_issuance</code> 中 <code>status='issued'</code> 的记录里。<code>certificate.lent_out_numbers()</code>。</td>
+    <td><strong>不等于逾期</strong>。刚借出去、还没到归还期限的，就在这一档里，完全正常。</td></tr>
+<tr><td><span class="badge" style="background:#e67e22">新办未入库</span></td>
+    <td>路径 B：做证的申请中，新证号码尚未进入证照台账的。<code>travel.new_making_travel_ids()</code>。</td>
+    <td><strong>不等于逾期</strong>，也<strong>不在「在库 + 借出未还」里</strong>——这本证存在于现实，却还没进过台账、也没进过柜子，必须单独成一档。</td></tr>
+<tr><td><span class="badge" style="background:#c0392b">逾期未交回</span></td>
+    <td>路径 A 与路径 B 合并，且 <code>今天 &gt; 到期日</code>。<code>travel._overdue_ids()</code>。</td>
+    <td>不是一个独立的「第四堆证」——它是前两档中<u>超了时限</u>的那部分，会与它们重复计数。所以是 <code>⊆</code> 而不是 <code>+</code>。</td></tr>
+</tbody></table></div>
+
+<div class="rule"><strong>两个必须永远成立的恒等式（第 10 章展开）：</strong><br>
+① <code>在库 + 借出未还 = 在控人员台账登记的总本数</code>　（相加式，全等）<br>
+② <code>逾期 ⊆ 借出未还 ∪ 新办未入库</code>　（包含式，<u>不是</u>相加）</div>
+
+<h3>2.5 机制类术语</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">术语</th><th>定义</th></tr></thead>
+<tbody>
+<tr><td><strong>判据</strong></td><td>一条业务判断的<u>唯一权威实现</u>（一个函数）。本文提到某个业务概念时一律指向它的判据函数，不复述条件。</td></tr>
+<tr><td><strong>派生字段</strong></td><td>值不由录入产生、而由别处回算写入的列。本系统的派生字段全部由 <code>issuance._sync_travel_derived()</code> 一处写入：<code>travel_details</code> 的 <code>passport_collect_date</code>、<code>passport_return_date</code>、<code>passport_no</code>。<strong>派生字段的界面必须只读</strong>，否则两个写入方会打架。</td></tr>
+<tr><td><strong>快照（定格）</strong></td><td>单据创建时从别处复制过来、此后永不同步的列（如 <code>decontrol_filing</code> 的姓名 / 身份证 / 工作单位）。它让单据在源记录被删后依然完整可读。</td></tr>
+<tr><td><strong>文字引用</strong></td><td>业务表里存的是配置项<u>当时那个名字的文字本身</u>（<code>certificates.unit = '总部'</code>），而不是外键。这是有意的（单据要定格），代价是配置表不知道自己被谁用着——所以删除与改名都要走 <code>utils/textref.py</code> 的统计与同步。</td></tr>
+<tr><td><strong>孤儿号码</strong></td><td>有借出记录、号码却在任何在控人员台账里都找不到的证件号。<code>stock_split()</code> 的第三个返回值。它不参与任何统计（本来就没被算进去），但必须报出来——盘库时柜子里多出来的证，原因通常在这儿。</td></tr>
+<tr><td><strong>工作日顺延</strong></td><td>到期日算法（<code>validators.add_working_days</code>）。正常行程：实际回国日期（缺省用计划结束日）+ <strong>10 个工作日</strong>；取消行程：取消日期 + <strong>5 个工作日</strong>。见 <code>validators.cert_overdue_deadline</code>。</td></tr>
+<tr><td><strong>经办人</strong></td><td>操作日志与单据上记录的办理人姓名，取自 <code>users.full_name</code>（<code>helpers.operator_name()</code>），不是登录名。</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section id="s3">
+<h2>3、用户角色</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>谁会坐在这个系统前面，他<strong>一天里的动作序列</strong>是什么。</dd>
+<dt>不写的代价</dt>
+<dd>不写角色，「首页放什么」就没有依据。本项目首页曾经堆着分布统计、到期预警、本月领用数、逾期明细——每一张卡单看都「有信息量」，合起来却没有一张能让经办人<u>知道今天该干什么</u>。后来按「经办人打开首页要回答的三个问题」重排，删掉三张、重做四张，才收敛。角色定义就是首页取舍的裁判。</dd>
+<dt>怎么填</dt>
+<dd>角色数量少不是省略的理由——<strong>一个角色也要写</strong>，因为要写的是他的动作序列和判断依据，不是权限矩阵。如果确实只有一个角色，就明确写「不做权限体系」（呼应 1.4），免得后人替你「补全」。</dd>
+</dl></div></details>
+
+<h3>3.1 角色清单</h3>
+<div class="card info">
+<p>本系统<strong>只有一个角色</strong>：<strong>证照保管处经办人</strong>。</p>
+<p><code>users</code> 表结构为 <code>id / username / password_hash / full_name / created_at</code>，<u>不含 role 列</u>，代码中也不存在任何按角色分支的逻辑。所有登录者能做的事完全相同。</p>
+<p><code>full_name</code> 不参与鉴权，它的用途是：单据与操作日志上的「经办人」署名（<code>helpers.operator_name()</code>）。</p>
+</div>
+
+<h3>3.2 经办人的典型动作序列</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:110px">场景</th><th style="width:230px">触发</th><th>动作序列</th></tr></thead>
+<tbody>
+<tr><td><strong>每天开机</strong></td><td>打开首页</td>
+    <td>看四张证件去向卡 → 若「逾期未交回」不为 0，点进出国明细的 <code>?passport_status=overdue</code> 筛选 → 逐个打电话催 → 若有孤儿号码告警，去查数据。</td></tr>
+<tr><td><strong>新人入册</strong></td><td>人事送来材料</td>
+    <td>信息登记表 → 人员备案 → 收缴证件、证照台账登记（填号码 + 有效期 + <u>上交日期</u>）。</td></tr>
+<tr><td><strong>有人要出国</strong></td><td>收到申请表</td>
+    <td>建出国申请 → 上传附件 → <u>分路径</u>：证在库的走「证件领用登记」（本人手写签名）；需做新证的标 <code>need_new_passport='是'</code>，本人自己去公安办。</td></tr>
+<tr><td><strong>有人回国</strong></td><td>本人来交证</td>
+    <td>路径 A：在领用单上办「归还登记」（本人手写签名）；路径 B：把新证号码<u>补录进证照台账</u>并填上交日期——这一步同时就是「已交回」的判据，做完逾期告警自动消失。</td></tr>
+<tr><td><strong>行程黄了</strong></td><td>本人告知不去了</td>
+    <td>在出国申请上「取消行程」（记取消日期）→ 到期日自动改为取消日 + 5 个工作日 → 催证。<u>不要删除申请</u>，删不掉也不该删（见 9.1）。</td></tr>
+<tr><td><strong>有人调走</strong></td><td>人事通知</td>
+    <td>先把证清干净（归还 / 交回入库）→ 发起撤控，填<u>证件移交日期</u>（必填）→ 该人退出所有告警口径与盘库清单。</td></tr>
+<tr><td><strong>定期盘库</strong></td><td>季度 / 年度</td>
+    <td>打开「证件盘库清单」→ 打印「应在库」表 → 打开柜子逐本打勾 → 对不上的去「借出未还」表和孤儿号码告警里找。</td></tr>
+</tbody></table></div>
+
+<h3>3.3 首页只回答三个问题</h3>
+<div class="card success">
+<ol class="styled">
+    <li><strong>柜子里现在应该有多少本证？</strong>（在库，可直接与实体核对）</li>
+    <li><strong>有多少本证不在柜子里，分别是什么情况？</strong>（借出未还 / 新办未入库）</li>
+    <li><strong>其中有多少本该回来而没回来？</strong>（逾期未交回，可点进明细）</li>
+</ol>
+<p>不能归入这三问之一的，一律不上首页。这条规则直接删掉了「本月证件领用数」（是回顾，不是待办）、「证照到期预警」（证只有出国申请才能领出去换发，没有申请时到期也只能在库放着，看了也不能行动）、以及三项分布统计。</p>
+</div>
+</section>
+
+
+<!-- ===================== 第二部分（第 2 批） ===================== -->
+<div class="part">第二部分　静态结构</div>
+
+<section id="s4"><h2>4、实体关系图</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 2 批补齐：内联 SVG 实体关系图，标注外键引用与文字引用两类连线。）</p></div></section>
+
+<section id="s5"><h2>5、业务模块与字段表</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 2 批补齐：12 张表逐列核对，每列标注 录入 / 派生 / 快照(定格) / 台账(跟人走)。）</p></div></section>
+
+<section id="s6"><h2>6、数据字典与枚举</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 2 批补齐：8 类字典，区分「存编码」与「存文字」。）</p></div></section>
+
+
+<!-- ===================== 第三部分 ===================== -->
+<div class="part">第三部分　动态行为</div>
+
+<section id="s7">
+<h2>7、状态机</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>每个对象<strong>有哪些状态、谁能推它换状态、换过去之后还能不能换回来</strong>。</dd>
+<dt>不写的代价</dt>
+<dd>本项目为漏画状态机付了两次钱。<br>
+①<strong>路径 B 掉出告警</strong>：「一本证的去向」从来没被当成一个状态机画出来，于是「新办未入库」这个状态<u>根本没被识别为一个状态</u>——它被默认塞进了「在库」，直接导致这类风险最高的人整个从逾期告警里消失，还让首页出现「逾期 3 &gt; 领用中 2」这种不可能的组合。<br>
+②<strong>撤控是单向门</strong>：撤控只写了 <code>active → decontrolled</code> 这一条边，没人问「撤错了怎么办」。而撤控会把这个人从<u>所有</u>在办入口里摘掉（发起撤控的下拉、出国申请的选人、首页告警全都只认 <code>active</code>），代价不是一条脏数据，是这个人的业务彻底办不了，只能去改库。<br>
+共同的根：<u>没有一张图逼着人把每个状态的入边和出边都数一遍</u>。</dd>
+<dt>怎么填</dt>
+<dd>每个有状态列的表画一张图，外加<strong>业务上真实存在、但数据库里没有对应状态列的那些状态机</strong>——本项目最重要的一张（7.4 一本证的去向）就是这一类，它的状态是<u>算出来的</u>，散在三张表里。<br>
+每张图配一张迁移表，每行必须填满四栏：<strong>触发入口（路由）/ 前置守卫（函数）/ 副作用 / 逆向边</strong>。「逆向边」那一栏写「无」的，全部抄进第 9 章的单向门清单，逐条论证「无」是设计还是遗漏。</dd>
+</dl></div></details>
+
+<h3>7.1 备案人员</h3>
+<div class="diagram">
+<svg viewBox="0 0 860 265" width="860" height="265" role="img" aria-label="备案人员状态机">
+    <text class="ttl" x="12" y="20">备案人员 personnel_filing.status</text>
+
+    <!-- 起点 -->
+    <circle cx="60" cy="105" r="11" fill="#2c3e50"/>
+    <path class="edge" d="M74,105 L146,105"/>
+    <text class="lbl" x="76" y="97">备案登记</text>
+
+    <!-- active -->
+    <rect class="st-ok" x="150" y="72" width="180" height="66" rx="10"/>
+    <text x="240" y="100" text-anchor="middle" font-weight="700">有效 active</text>
+    <text class="lbl" x="240" y="120" text-anchor="middle">（默认值，在办范围内）</text>
+
+    <!-- decontrolled -->
+    <rect class="st-out" x="540" y="72" width="200" height="66" rx="10"/>
+    <text x="640" y="100" text-anchor="middle" font-weight="700">已撤控 decontrolled</text>
+    <text class="lbl" x="640" y="120" text-anchor="middle">（退出所有在办口径）</text>
+
+    <!-- active -> decontrolled -->
+    <path class="edge" d="M330,92 L536,92"/>
+    <text class="lbl" x="433" y="76" text-anchor="middle">撤控 POST /decontrol/new/&lt;filing_id&gt;</text>
+    <text class="lbl-warn" x="433" y="60" text-anchor="middle">守卫：_unsettled_certs() 必须为空 + 证件移交日期必填</text>
+
+    <!-- decontrolled -> active -->
+    <path class="edge" d="M540,124 L334,124"/>
+    <text class="lbl" x="437" y="142" text-anchor="middle">撤销撤控 POST /decontrol/&lt;id&gt;/revoke</text>
+    <text class="lbl" x="437" y="158" text-anchor="middle">（撤控单据物理删除，前快照进操作日志）</text>
+
+    <!-- delete -->
+    <path class="edge-red" d="M240,138 L240,196"/>
+    <rect class="st-bad" x="150" y="196" width="180" height="42" rx="10"/>
+    <text x="240" y="222" text-anchor="middle" font-weight="700">删除（不可恢复）</text>
+    <text class="lbl-warn" x="20" y="170">守卫：名下证照 / 出国明细 /</text>
+    <text class="lbl-warn" x="20" y="186">撤控 / 领用四表计数须为 0</text>
+
+    <!-- 说明框 -->
+    <rect class="box" x="540" y="168" width="308" height="84" rx="6"/>
+    <text class="lbl" x="552" y="188">已撤控后连带发生的事：</text>
+    <text class="lbl" x="552" y="205">· 退出 _ACTIVE_ONLY 管的全部告警口径</text>
+    <text class="lbl" x="552" y="221">· 退出 stock_split()，其证不再计入在库</text>
+    <text class="lbl" x="552" y="237">· 台账行保留并标注「已撤控 + 移交日期」</text>
+</svg>
+<div class="cap">图 7-1　备案人员状态机（虚线框 = 已退出在办范围）</div>
+</div>
+
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">迁移</th><th style="width:190px">触发入口</th><th style="width:230px">前置守卫</th><th>副作用</th><th style="width:80px">逆向边</th></tr></thead>
+<tbody>
+<tr><td>（无）→ 有效</td><td><code>POST /personnel/filing/new</code></td><td>身份证格式与重复校验</td><td>status 取默认值 <code>active</code></td><td>删除（受守卫）</td></tr>
+<tr><td>有效 → 已撤控</td><td><code>POST /decontrol/new/&lt;filing_id&gt;</code></td>
+    <td><code>decontrol._unsettled_certs()</code> 返回空<br><small>①无 <code>status='issued'</code> 的领用记录<br>②无「做证但新证未进台账」的申请</small><br>＋ <code>cert_handover_date</code> 必填</td>
+    <td>INSERT <code>decontrol_filing</code>（含姓名/身份证/单位快照）<br>UPDATE <code>personnel_filing.status</code></td>
+    <td><span class="badge b-done">有</span></td></tr>
+<tr><td>已撤控 → 有效</td><td><code>POST /decontrol/&lt;dec_id&gt;/revoke</code></td><td>记录存在即可</td>
+    <td>DELETE <code>decontrol_filing</code>（物理）<br>UPDATE status 回 <code>active</code><br><code>log_action('delete', …, before=快照)</code></td>
+    <td>再次撤控</td></tr>
+<tr><td>有效 → 删除</td><td><code>POST /personnel/&lt;filing_id&gt;/delete</code></td>
+    <td><code>certificates</code> / <code>travel_details</code> / <code>decontrol_filing</code> / <code>cert_issuance</code> 四表计数<u>全为 0</u></td>
+    <td>DELETE + 前快照进日志</td><td><span class="badge b-p1">无</span></td></tr>
+</tbody></table></div>
+
+<div class="footnote"><strong>守卫为什么放在 GET 上也拦一次：</strong><code>decontrol.new</code> 的证件清障检查在 GET 请求上就执行。让人填完一整张撤控表单再告诉他「你名下还有证没还，不能撤控」，是最没必要的一种为难。</div>
+
+<h3>7.2 出国（境）申请的行程状态</h3>
+<div class="diagram">
+<svg viewBox="0 0 860 210" width="860" height="210" role="img" aria-label="出国申请行程状态机">
+    <text class="ttl" x="12" y="20">出国（境）申请 travel_details.trip_status</text>
+
+    <circle cx="60" cy="95" r="11" fill="#2c3e50"/>
+    <path class="edge" d="M74,95 L146,95"/>
+    <text class="lbl" x="76" y="87">新建申请</text>
+
+    <rect class="st-ok" x="150" y="62" width="180" height="66" rx="10"/>
+    <text x="240" y="90" text-anchor="middle" font-weight="700">正常 normal</text>
+    <text class="lbl" x="240" y="110" text-anchor="middle">到期日 = 回国日 + 10 工作日</text>
+
+    <rect class="st-warn" x="560" y="62" width="200" height="66" rx="10"/>
+    <text x="660" y="90" text-anchor="middle" font-weight="700">已取消 cancelled</text>
+    <text class="lbl" x="660" y="110" text-anchor="middle">到期日 = 取消日 + 5 工作日</text>
+
+    <path class="edge" d="M330,82 L556,82"/>
+    <text class="lbl" x="443" y="66" text-anchor="middle">取消行程 POST /travel/&lt;id&gt;/cancel（记 cancel_date）</text>
+    <path class="edge" d="M560,114 L334,114"/>
+    <text class="lbl" x="447" y="132" text-anchor="middle">恢复行程 POST /travel/&lt;id&gt;/restore（清空 cancel_date）</text>
+
+    <rect class="box" x="105" y="152" width="745" height="46" rx="6"/>
+    <text class="lbl" x="117" y="171">已取消的申请：不再出现在「可办理领用」名单（issuance._eligible_travels），也不再计入「新办未入库」</text>
+    <text class="lbl-warn" x="117" y="189">删除申请：只要该出行下存在任何领用记录（含已作废），一律挡下 —— 领用单上有签名，作废仍须留档</text>
+</svg>
+<div class="cap">图 7-2　出国申请行程状态机</div>
+</div>
+
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">迁移</th><th style="width:190px">触发入口</th><th style="width:230px">前置守卫</th><th>副作用</th><th style="width:80px">逆向边</th></tr></thead>
+<tbody>
+<tr><td>（无）→ 正常</td><td><code>POST /travel/new</code></td><td>字段校验 + 附件必备项（做证与非做证要求不同）</td><td><code>trip_status</code> 取默认 <code>normal</code></td><td>删除（受守卫）</td></tr>
+<tr><td>正常 → 已取消</td><td><code>POST /travel/&lt;id&gt;/cancel</code></td><td>不能重复取消；取消日期格式校验（缺省取今天）</td>
+    <td>写 <code>cancel_date</code>；<strong>到期日算法整个换成「取消日 + 5 工作日」</strong>；退出 <code>_eligible_travels()</code> 与 <code>new_making_travel_ids()</code></td>
+    <td><span class="badge b-done">有</span></td></tr>
+<tr><td>已取消 → 正常</td><td><code>POST /travel/&lt;id&gt;/restore</code></td><td>记录存在即可</td><td>清空 <code>cancel_date</code>，到期日算法换回 10 工作日</td><td>再次取消</td></tr>
+<tr><td>→ 删除</td><td><code>POST /travel/&lt;id&gt;/delete</code></td>
+    <td>该出行下 <code>cert_issuance</code> 记录数<u>为 0</u>（<strong>不看 status，已作废的照样挡</strong>）</td>
+    <td>连带删除附件记录与磁盘文件；前快照进日志</td><td><span class="badge b-p1">无</span></td></tr>
+</tbody></table></div>
+
+<div class="footnote"><strong>「作废了还是删不掉」不是 bug：</strong>提示语最早写的是「请先作废相关领用记录」，照做没有用——守卫不看 status。但这不是判据写漏了：领用单上有本人手写签名，<u>作废是「这次领用作废」，不是「这次领用没发生过」</u>，单子仍要留档、仍然指着这条出行。所以改的是话，不是判据：现在的提示直接说「删不掉，如果没有成行请改用<strong>取消行程</strong>」。参见第 12 章。</div>
+
+<h3>7.3 证件领用单</h3>
+<div class="diagram">
+<svg viewBox="0 0 880 262" width="880" height="262" role="img" aria-label="证件领用单状态机">
+    <text class="ttl" x="12" y="20">证件领用单 cert_issuance.status</text>
+
+    <circle cx="52" cy="120" r="11" fill="#2c3e50"/>
+    <path class="edge" d="M66,120 L126,120"/>
+    <text class="lbl" x="60" y="112">开单</text>
+
+    <rect class="st" x="130" y="88" width="170" height="64" rx="10"/>
+    <text x="215" y="115" text-anchor="middle" font-weight="700">已领用 issued</text>
+    <text class="lbl" x="215" y="135" text-anchor="middle">证在本人手上</text>
+
+    <rect class="st-ok" x="470" y="45" width="170" height="64" rx="10"/>
+    <text x="555" y="72" text-anchor="middle" font-weight="700">已归还 returned</text>
+    <text class="lbl" x="555" y="92" text-anchor="middle">证回到柜子</text>
+
+    <rect class="st-out" x="470" y="160" width="170" height="64" rx="10"/>
+    <text x="555" y="187" text-anchor="middle" font-weight="700">已作废 voided</text>
+    <text class="lbl" x="555" y="207" text-anchor="middle">登记有误，留档不销</text>
+
+    <path class="edge" d="M300,105 L466,80"/>
+    <text class="lbl" x="304" y="64">归还登记（手写签名）</text>
+    <text class="lbl" x="304" y="80">归还日期 ≥ 领用日期</text>
+
+    <path class="edge" d="M300,135 L466,180"/>
+    <text class="lbl" x="268" y="188">作废（原因必填）</text>
+
+    <path class="edge" d="M510,109 L510,156"/>
+    <text class="lbl" x="518" y="138">已归还也可作废</text>
+
+    <rect class="box" x="668" y="45" width="200" height="179" rx="6"/>
+    <text class="lbl" x="680" y="65">开单前置（三条同时满足）：</text>
+    <text class="lbl" x="680" y="83">· 必须挂在一条出国申请上</text>
+    <text class="lbl" x="680" y="100">· 该申请行程未取消</text>
+    <text class="lbl" x="680" y="117">· 该申请下无未归还的领用单</text>
+    <text class="lbl" x="680" y="134">　（open_issuance_travel_ids）</text>
+    <text class="lbl-warn" x="680" y="158">无逆向边：</text>
+    <text class="lbl" x="680" y="176">· 已作废 → 任何状态：无</text>
+    <text class="lbl" x="680" y="193">· 已归还 → 已领用：无</text>
+    <text class="lbl" x="680" y="210">　（再借一次＝开一张新单）</text>
+</svg>
+<div class="cap">图 7-3　证件领用单状态机</div>
+</div>
+
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">迁移</th><th style="width:190px">触发入口</th><th style="width:230px">前置守卫</th><th>副作用</th><th style="width:80px">逆向边</th></tr></thead>
+<tbody>
+<tr><td>（无）→ 已领用</td><td><code>POST /issuance/new</code></td>
+    <td>必须选一条出国申请；行程非 <code>cancelled</code>；该申请不在 <code>issuance.open_issuance_travel_ids()</code> 中；手写签名（<code>POTMS_REQUIRE_SIGNATURE</code> 可放宽）</td>
+    <td><code>_sync_travel_derived()</code> 回写出行表 <code>passport_collect_date</code> / <code>passport_no</code>；该号码进入「借出未还」；出国申请列表的「证件领用登记」按钮变灰</td>
+    <td>作废</td></tr>
+<tr><td>已领用 → 已归还</td><td><code>GET/POST /issuance/&lt;id&gt;/return</code></td>
+    <td>当前必须是 <code>issued</code>；归还日期必填且不早于领用日期；归还手写签名</td>
+    <td><code>_sync_travel_derived()</code> 回写 <code>passport_return_date</code>（仅当该出行下未作废记录<u>全部</u>已归还）；该号码回到「在库」；逾期告警消失</td>
+    <td><span class="badge b-p1">无</span></td></tr>
+<tr><td>任意 → 已作废</td><td><code>POST /issuance/&lt;id&gt;/void</code></td><td>作废原因必填；不能重复作废</td>
+    <td><code>_sync_travel_derived()</code> 重算派生日期（全部作废则清空）；<strong>号码退出「借出未还」</strong>；<u>但出国申请仍然删不掉</u></td>
+    <td><span class="badge b-p1">无</span></td></tr>
+<tr><td>（改证件种类）</td><td><code>POST /issuance/&lt;id&gt;/cert-types</code></td>
+    <td><code>issuance.can_fix_cert_types()</code>：<strong>仅限无签名的记录</strong></td>
+    <td>只改 <code>cert_types</code>，不改状态</td><td>—</td></tr>
+</tbody></table></div>
+
+<div class="footnote"><strong>为什么「无签名才让改种类」：</strong>模块约束是「签名一经保存不可编辑」——签名签的就是「我领了这几样证件」，事后改种类会让那个签名名不副实，那种记录只能作废重录。但历史回填行本来就没有签名（老库里没采集过），作废重录也走不通（新建领用强制签名，而历史记录压根没有签名可采）。判据用「无签名」而不是「备注是回填串」，放宽模式下手工登记的记录同样适用。</div>
+
+<h3>7.4 一本证的去向 <span class="badge b-p1">最关键的一张</span></h3>
+<div class="card warning">
+<p>这张状态机<strong>在数据库里没有对应的状态列</strong>——一本证此刻处于哪一档，是由三张表算出来的。正因为它没有列，它在最初的设计里<u>整个缺席</u>，「新办未入库」这一档从未被识别为一个状态，直接造成了本项目最严重的一次口径事故。</p>
+<p>下图中每个方框的定义都指向一个真实的判据函数，<strong>橙色虚线箭头是唯一一条不由人触发、而由时间触发的边</strong>。</p>
+</div>
+
+<div class="diagram">
+<svg viewBox="0 0 900 480" width="900" height="480" role="img" aria-label="一本证的去向状态机">
+    <text class="ttl" x="12" y="22">一本证的去向（单位：本；状态由三张表算出，数据库里没有状态列）</text>
+
+    <!-- 未登记 -->
+    <rect class="st-out" x="20" y="55" width="160" height="64" rx="10"/>
+    <text x="100" y="82" text-anchor="middle" font-weight="700">未登记</text>
+    <text class="lbl" x="100" y="101" text-anchor="middle">台账里没有这个号码</text>
+
+    <!-- 在库 -->
+    <rect class="st-ok" x="330" y="55" width="200" height="70" rx="10"/>
+    <text x="430" y="80" text-anchor="middle" font-weight="700">在库</text>
+    <text class="lbl" x="430" y="98" text-anchor="middle">在控台账登记 且 不在借出集合</text>
+    <text class="lbl" x="430" y="114" text-anchor="middle">stock_split() → in_stock</text>
+
+    <!-- 借出未还 -->
+    <rect class="st" x="660" y="55" width="220" height="70" rx="10"/>
+    <text x="770" y="80" text-anchor="middle" font-weight="700">借出未还</text>
+    <text class="lbl" x="770" y="98" text-anchor="middle">号码在 cert_issuance</text>
+    <text class="lbl" x="770" y="114" text-anchor="middle">status='issued'（lent_out_numbers）</text>
+
+    <!-- 新办未入库 -->
+    <rect class="st-warn" x="20" y="215" width="200" height="70" rx="10"/>
+    <text x="120" y="240" text-anchor="middle" font-weight="700">新办未入库</text>
+    <text class="lbl" x="120" y="258" text-anchor="middle">路径B：号码尚未进台账</text>
+    <text class="lbl" x="120" y="274" text-anchor="middle">new_making_travel_ids()</text>
+
+    <!-- 随撤控出库 -->
+    <rect class="st-out" x="330" y="215" width="200" height="70" rx="10"/>
+    <text x="430" y="240" text-anchor="middle" font-weight="700">随撤控移交出库</text>
+    <text class="lbl" x="430" y="258" text-anchor="middle">退出全部统计与盘库清单</text>
+    <text class="lbl" x="430" y="274" text-anchor="middle">（台账行保留，仅为留痕）</text>
+
+    <!-- 逾期 -->
+    <rect class="st-bad" x="660" y="215" width="220" height="70" rx="10"/>
+    <text x="770" y="240" text-anchor="middle" font-weight="700">逾期未交回</text>
+    <text class="lbl" x="770" y="258" text-anchor="middle">今天 &gt; 到期日（_overdue_ids）</text>
+    <text class="lbl" x="770" y="274" text-anchor="middle">⊆ 借出未还 ∪ 新办未入库</text>
+
+    <!-- 未登记 → 在库 -->
+    <path class="edge" d="M180,87 L326,87"/>
+    <text class="lbl" x="186" y="78">台账登记号码 + 上交日期</text>
+
+    <!-- 未登记 → 新办未入库 -->
+    <path class="edge" d="M45,119 L45,211"/>
+    <text class="lbl" x="58" y="150">路径B 做证：证从公安</text>
+    <text class="lbl" x="58" y="166">直接到本人手上，</text>
+    <text class="lbl" x="58" y="182">从没进过台账与柜子</text>
+
+    <!-- 新办未入库 → 在库（正交折线） -->
+    <path class="edge" d="M200,215 L200,110 L326,110"/>
+    <text class="lbl" x="208" y="150">把新证号码补录进台账</text>
+    <text class="lbl" x="208" y="166">＝「已交回入库」的判据</text>
+
+    <!-- 在库 ⇄ 借出未还 -->
+    <path class="edge" d="M530,74 L656,74"/>
+    <text class="lbl" x="540" y="66">领用登记</text>
+    <path class="edge" d="M660,108 L534,108"/>
+    <text class="lbl" x="536" y="126">归还登记 / 领用单作废</text>
+
+    <!-- 在库 → 随撤控出库 -->
+    <path class="edge" d="M430,125 L430,211"/>
+    <text class="lbl" x="440" y="152">撤控（证件移交日期必填）</text>
+    <text class="lbl" x="440" y="168">stock_split 只 JOIN active</text>
+
+    <!-- 借出未还 → 逾期（时间边） -->
+    <path class="edge-time" d="M770,125 L770,211"/>
+    <text class="lbl-warn" x="600" y="152">到期日一过，自动落入</text>
+    <text class="lbl-warn" x="600" y="168">（无人工动作）</text>
+
+    <!-- 新办未入库 → 逾期（时间边，绕底走） -->
+    <path class="edge-time" d="M120,285 L120,315 L770,315 L770,289"/>
+    <text class="lbl-warn" x="300" y="332">到期日一过，自动落入（唯一一条不由用户操作触发的迁移）</text>
+
+    <!-- 恒等式 -->
+    <rect class="box" x="20" y="348" width="860" height="118" rx="6"/>
+    <text class="lbl" x="34" y="372" font-weight="700" fill="#1a5276">两个恒等式（任一不成立，即说明口径出了问题）</text>
+    <text class="lbl" x="34" y="396">① 在库 ＋ 借出未还 ＝ 在控人员台账登记的总本数　　相加式，全等；由 test_stock_plus_lent_equals_ledger 守着</text>
+    <text class="lbl" x="34" y="418">② 逾期 ⊆ 借出未还 ∪ 新办未入库　　包含式，不是相加：「还没交回」与「已经逾期」是两回事，后者只是前者中超了时限的那部分</text>
+    <text class="lbl" x="34" y="442">「新办未入库」不出现在①的任何一边 —— 那本证还没进过台账，也从没进过柜子。</text>
+    <text class="lbl" x="34" y="460">它必须单独成一档，否则①会被它打破，而「在库」这个数就再也不能拿去和实体证核对了。</text>
+</svg>
+<div class="cap">图 7-4　一本证的去向（橙色虚线 = 由时间触发的迁移，无人工动作）</div>
+</div>
+
+<div class="scroll-x"><table>
+<thead><tr><th style="width:190px">迁移</th><th style="width:200px">触发</th><th style="width:210px">判据 / 守卫</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>未登记 → 在库</td><td>证照台账登记 / 编辑号码</td><td>号码槽非空；上交日期必填</td><td>「在台账里」在本系统中<strong>等价于「已交回收缴」</strong>——这个等价关系是路径 B 判据的全部基础。</td></tr>
+<tr><td>在库 → 借出未还</td><td><code>POST /issuance/new</code></td><td>见 7.3</td><td>领用单是「这本证现在在谁手上」的<u>权威来源</u>；出国申请上的领用日期只是它的派生字段。</td></tr>
+<tr><td>借出未还 → 在库</td><td>归还登记 <u>或</u> 领用单作废</td><td><code>lent_out_numbers()</code> 只看 <code>status='issued'</code></td><td>作废也会让号码回到「在库」——因为那条领用被宣告无效，证按理就在柜子里。</td></tr>
+<tr><td>新办未入库 → 在库</td><td>把新证号码<strong>补录进证照台账</strong></td><td><code>travel._registered_cert_travel_ids()</code>：出行表上的号码出现在该人台账三个号码槽之一</td><td>这一步同时消掉路径 B 的逾期告警。判据在台账侧和告警侧<u>是同一个函数</u>。</td></tr>
+<tr><td>在库 / 借出未还 → 出库</td><td><code>POST /decontrol/new/&lt;id&gt;</code></td><td><code>_unsettled_certs()</code> 为空 + 移交日期必填</td><td><code>stock_split()</code> 只 JOIN <code>pf.status='active'</code>，整行退出。台账行<u>保留</u>是为了留痕，不是因为证还在。</td></tr>
+<tr><td>借出未还 → 逾期<br>新办未入库 → 逾期</td><td><span class="badge" style="background:#e67e22">时间</span>（无人工动作）</td>
+    <td><code>今天 &gt; cert_overdue_deadline(row)</code><br>正常行程：回国日 + 10 工作日<br>取消行程：取消日 + 5 工作日</td>
+    <td>系统里<u>唯一</u>一条不由用户操作触发的状态迁移。它不写库，每次查询实时算——所以任何缓存这个数的做法都会立刻过期。</td></tr>
+<tr><td>台账行删除</td><td><code>POST /certificate/&lt;id&gt;/delete</code></td>
+    <td><code>certificate._cert_references()</code>：三个号码槽逐个查 <code>travel_details.passport_no</code> 与 <code>cert_issuance.cert_nos</code></td>
+    <td>删掉一条被引用的台账，<strong>会让那条出行当场变回「逾期未交回」</strong>——因为路径 B 的判据就是「号码在不在台账里」。守卫的判据是「<u>号码</u>有没有被引用」，不是「这条记录属于谁」。</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section id="s8">
+<h2>8、跨表影响矩阵</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>每一个写操作，<strong>除了改它自己那张表，还会碰到谁</strong>。</dd>
+<dt>不写的代价</dt>
+<dd>本项目第 4、5、6 三批返工<u>全部</u>是这一章的漏项，没有例外：<br>
+· 备案人员改名，证照台账不跟着改 → 这本证在旧名字下消失、新名字下也搜不到；<br>
+· 组织架构改名，8 处业务表里的文字引用不动 → 同一个部门在统计里裂成两个，两边都不全；<br>
+· 撤控一个人，告警口径不跟着收 → 挂出一条<u>谁也处理不掉</u>的死账；<br>
+· 删除证照台账，不查引用 → 已签字的领用凭证上印着这个号码，台账里却查无此证。<br>
+每一条都不是「写错了」，是<strong>压根没想到还有别人</strong>。而它们全都能被这一张表逼出来：矩阵是空的格子最多的那种表，填不满就说明没想清楚。</dd>
+<dt>怎么填</dt>
+<dd>行 = 每一个会写库的操作（<u>包括配置项的改名和删除</u>——本项目最隐蔽的三处就在这儿）；列固定五栏：<strong>直接写入 / 联动写入 / 影响哪些判据与统计 / 守卫函数 / 逆向边</strong>。<br>
+填法有个诀窍：<u>先把「联动写入」和「守卫」两栏全填「无」，然后逐行质问一遍「真的无吗」</u>。直接顺着想容易漏，被质问就容易想起来。<br>
+验收标准：矩阵里每一个非「无」的格子，都能点到一个函数名；每一个「无」，都要经得起一句「为什么不需要」。</dd>
+</dl></div></details>
+
+<h3>8.1 人员类操作</h3>
+<div class="scroll-x"><table class="matrix">
+<thead><tr><th style="width:145px">操作</th><th style="width:135px">直接写入</th><th style="width:190px">联动写入</th><th style="width:200px">影响的判据 / 统计</th><th>守卫</th></tr></thead>
+<tbody>
+<tr><td>备案人员<br>改<strong>姓名</strong></td><td><code>personnel_filing</code></td>
+    <td><span class="badge b-sync">同步</span> <code>certificates.name</code><br><small><code>personnel._sync_certificates()</code></small><br><span class="badge b-frozen">冻结</span> travel / issuance / decontrol</td>
+    <td>台账按姓名搜索、按姓名排序；盘库清单</td>
+    <td>无（改名本身不受限）；仅在确有改动时写一条 <code>log_action('update','certificate',…)</code></td></tr>
+<tr><td>备案人员<br>改<strong>工作单位</strong></td><td><code>personnel_filing.work_unit</code></td>
+    <td><span class="badge b-sync">同步</span> <code>certificates.unit</code></td>
+    <td>台账按单位筛选；盘库清单排序（<code>ORDER BY c.unit, c.department, …</code>）</td><td>同上</td></tr>
+<tr><td>人员信息<br>改<strong>部门</strong></td><td><code>personnel_info.department</code></td>
+    <td><span class="badge b-sync">同步</span> <code>certificates.department</code></td>
+    <td>台账按部门筛选；盘库清单排序</td><td>同上</td></tr>
+<tr><td><strong>删除</strong>备案人员</td><td>DELETE <code>personnel_filing</code></td><td>无</td><td>全部人数统计</td>
+    <td><span class="badge b-guard">硬守卫</span> 四表计数须全为 0：<code>certificates</code> / <code>travel_details</code> / <code>decontrol_filing</code> / <code>cert_issuance</code>（均为 NOT NULL 外键，裸 DELETE 会静默失败）</td></tr>
+<tr><td><strong>删除</strong>信息登记表</td><td>DELETE <code>personnel_info</code></td><td>无</td><td>孤儿清理列表的计数</td>
+    <td><span class="badge b-guard">硬守卫</span> 无任何 <code>personnel_filing.personnel_info_id</code> 引用</td></tr>
+<tr><td><strong>撤控</strong></td><td>INSERT <code>decontrol_filing</code><br>UPDATE <code>status='decontrolled'</code></td>
+    <td>无（撤控单自带姓名 / 身份证 / 单位<span class="badge b-frozen">快照</span>）</td>
+    <td><strong>大面积</strong>：<code>_ACTIVE_ONLY</code> 管的全部告警（首页逾期、出行列表红条、<code>?passport_status=overdue</code> 筛选）、<code>new_making_travel_ids()</code>、<code>stock_split()</code>（其证退出在库）、证照到期预警、「发起撤控」下拉</td>
+    <td><span class="badge b-guard">硬守卫</span> <code>_unsettled_certs()</code> 为空 ＋ 移交日期必填</td></tr>
+<tr><td><strong>撤销撤控</strong></td><td>DELETE <code>decontrol_filing</code><br>UPDATE <code>status='active'</code></td>
+    <td>无</td><td>上一行的全部项目<u>反向恢复</u></td>
+    <td>无；完整 before 快照进操作日志（物理删除的前提）</td></tr>
+</tbody></table></div>
+
+<h3>8.2 证照与出行类操作</h3>
+<div class="scroll-x"><table class="matrix">
+<thead><tr><th style="width:145px">操作</th><th style="width:135px">直接写入</th><th style="width:190px">联动写入</th><th style="width:200px">影响的判据 / 统计</th><th>守卫</th></tr></thead>
+<tbody>
+<tr><td>证照台账<br><strong>登记 / 改号码</strong></td><td><code>certificates</code></td><td>无</td>
+    <td><strong>会翻转路径 B 的逾期判定</strong>：号码一进台账，<code>_registered_cert_travel_ids()</code> 立刻认它为「已交回」，该出行退出「新办未入库」与逾期；同时改变在库本数</td>
+    <td>号码换发时给<u>换发提醒</u>（<code>_renewed_labels()</code>：旧号非空且与新号不同才提醒，空→有是首次登记不提醒）</td></tr>
+<tr><td><strong>删除</strong>证照台账</td><td>DELETE <code>certificates</code></td><td>无</td>
+    <td>在库本数；<strong>被引用时删除会让相关出行当场变回逾期</strong></td>
+    <td><span class="badge b-guard">硬守卫</span> <code>_cert_references()</code>：三个号码槽逐个查 <code>travel_details.passport_no</code>、<code>cert_issuance.cert_nos</code>。提示引导「换发请编辑本条更新号码，不要删除」</td></tr>
+<tr><td>出国申请<br><strong>新建 / 编辑</strong></td><td><code>travel_details</code> + <code>attachments</code></td>
+    <td>无</td><td>近期出行；「新办未入库」（若 <code>need_new_passport='是'</code>）</td>
+    <td>已有未作废领用记录时，<u>申请人锁死</u>且证件号码栏<strong>只读</strong>（<code>issuance.travel_has_issuance()</code>）——号码已降级为派生字段</td></tr>
+<tr><td>出国申请<br><strong>取消行程</strong></td><td><code>trip_status</code> + <code>cancel_date</code></td><td>无</td>
+    <td><strong>到期日算法整个换掉</strong>（10 工作日 → 5 工作日）；退出 <code>_eligible_travels()</code>、退出 <code>new_making_travel_ids()</code></td>
+    <td>不能重复取消</td></tr>
+<tr><td><strong>删除</strong>出国申请</td><td>DELETE <code>travel_details</code> + <code>attachments</code> + 磁盘文件</td><td>无</td><td>出行总数</td>
+    <td><span class="badge b-guard">硬守卫</span> 该出行下 <code>cert_issuance</code> 记录数为 0，<u>含已作废</u>。提示按状态给出明细并引导改用「取消行程」</td></tr>
+<tr><td>领用<strong>登记</strong></td><td>INSERT <code>cert_issuance</code></td>
+    <td><span class="badge b-derive">派生</span> <code>_sync_travel_derived()</code> → <code>travel_details</code> 的 <code>passport_collect_date</code> / <code>passport_return_date</code> / <code>passport_no</code></td>
+    <td>借出未还本数；在库本数；路径 A 逾期；出国申请列表按钮状态</td>
+    <td><span class="badge b-guard">硬守卫</span> <code>open_issuance_travel_ids()</code>（一次申请只能有一本证在外）＋ 行程非取消 ＋ 手写签名</td></tr>
+<tr><td>领用<strong>归还</strong></td><td><code>status='returned'</code> + 归还签名</td>
+    <td><span class="badge b-derive">派生</span> 同上（<code>passport_return_date</code> 仅当该出行下未作废记录<u>全部</u>已归还才回填）</td>
+    <td>借出未还 → 在库；逾期告警消失</td>
+    <td>当前须为 <code>issued</code>；归还日期 ≥ 领用日期</td></tr>
+<tr><td>领用<strong>作废</strong></td><td><code>status='voided'</code> + 原因</td>
+    <td><span class="badge b-derive">派生</span> 重算（全部作废则清空日期；<strong>号码不清空</strong>——路径 B 那栏是系统里唯一来源，且作废时那仍是当时用的号码）</td>
+    <td>号码退出借出未还；<u>但出国申请仍然删不掉</u></td>
+    <td>原因必填；不能重复作废</td></tr>
+</tbody></table></div>
+
+<h3>8.3 配置类操作（最隐蔽的一类）</h3>
+<div class="card warning">
+<p><code>sys_org</code> / <code>sys_dict</code> / <code>sys_submit_unit</code> 三张配置表<strong>不被任何外键引用</strong>——业务表里存的是当时那个名字的<u>文字本身</u>。这是有意的（单据要定格），代价是<strong>配置表这一侧完全不知道自己被谁用着</strong>，于是删除和改名都是静默破坏。</p>
+</div>
+<div class="scroll-x"><table class="matrix">
+<thead><tr><th style="width:145px">操作</th><th style="width:150px">引用面</th><th style="width:230px">处理方式</th><th>守卫 / 留痕</th></tr></thead>
+<tbody>
+<tr><td>组织架构<br><strong>改名</strong></td>
+    <td><code>textref.ORG_REFS</code>：<strong>5 张表 8 处</strong><br><small>人员信息·单位/部门、备案人员·工作单位、证照台账·单位/部门、出国申请·单位/部门、撤控备案·工作单位</small></td>
+    <td>先统计使用量并报给用户（「证照台账·单位 3 条、出国申请·单位 12 条」），由用户用<strong>显式勾选框</strong>决定历史数据跟不跟着改</td>
+    <td><span class="badge b-guard">强制</span> 同步前必须成功写出带时间戳的改前快照 <code>backup/before_&lt;tag&gt;_YYYYMMDD_HHMMSS.db</code>；<u>备份失败即中止，不动数据</u>；成功后写一条点名该快照文件的操作日志</td></tr>
+<tr><td>组织架构<br><strong>删除</strong></td><td>同上</td>
+    <td>报出使用量后拒绝——删掉之后，历史记录里那个名字原地变成下拉里再也选不到的孤儿值，按部门筛选选不出来，导入校验也认不了</td>
+    <td><span class="badge b-guard">硬守卫</span> <code>textref.total_refs()</code></td></tr>
+<tr><td>数据字典<br><strong>改名</strong></td>
+    <td>分两类：<br><span class="badge b-frozen">存编码</span> 学历 / 学位 / 职称 / 职级 —— 业务表存的是 <code>code</code><br><span class="badge b-sync">存文字</span> 政治面貌 / 出国类别 / 报送单位类别 / 人事主管单位 —— 业务表存的是显示值</td>
+    <td>存编码类改显示名不影响历史；存文字类同改名同步一样处理</td>
+    <td><strong>判据是实际统计出的引用条数，不是类别上的 <code>stores</code> 标注</strong>——标注只用于界面解释。这一点是被一个「拿掉标注判断后测试仍然全绿」的弱测试逼出来的</td></tr>
+<tr><td>报送单位<br><strong>改名</strong></td><td><code>decontrol_filing.submit_unit_name</code></td>
+    <td>同组织架构改名：统计 → 显式确认 → 强制快照 → 同步 → 日志</td>
+    <td>同上</td></tr>
+</tbody></table></div>
+
+<div class="rule"><strong>三处改名同步的共同规矩（<code>utils/textref.py</code>）：</strong>措辞和确认位置各不相同，但<u>判据与执行必须是同一套</u>——统计用 <code>count_refs()</code>、描述用 <code>describe_refs()</code>、同步用 <code>sync_refs()</code>、备份用 <code>backup_before_bulk_edit()</code>。各写一遍迟早漂移。</div>
+</section>
+
+
+<section id="s9">
+<h2>9、异常与回退路径</h2>
+
+<details class="howto"><summary>这一节怎么填</summary><div class="body"><dl>
+<dt>回答什么问题</dt>
+<dd>办错了怎么办。具体地说：系统里有哪些<strong>单向门</strong>——走过去就回不来的操作。</dd>
+<dt>不写的代价</dt>
+<dd>撤控就是这样漏掉的。需求写了「撤控」，没人问「撤错了怎么办」，于是它成了一扇单向门：错撤一个人，界面上<u>没有任何回头路</u>，而他会同时从发起撤控的下拉、出行申请的选人、首页统计里消失，业务彻底办不了，只能去改库。<br>
+关键在于：<strong>单向门的代价不与操作的复杂度成正比</strong>。撤控只是改了一个字段，是全系统最简单的写操作之一，代价却最大。所以不能靠「这个操作看起来危不危险」来决定要不要给回退路径，必须机械地遍历。</dd>
+<dt>怎么填</dt>
+<dd>把第 7 章所有迁移表里「逆向边 = 无」的行<strong>全部抄过来</strong>，一行一行回答四个问题：<u>会不会办错（概率）/ 办错的代价 / 现有兜底 / 还差什么</u>。<br>
+结论只有三种，每种都要明写：①<strong>补一条逆向边</strong>（如撤销撤控）；②<strong>不补，但说清为什么</strong>（如领用作废——单据留档是业务要求）；③<strong>暂时不补，记为欠账</strong>（如系统内还原备份）。<br>
+第三种最重要：<u>写成欠账，比写成「应当支持」诚实得多</u>，也比不写强——不写的话，下一个人会以为这里没有问题。</dd>
+</dl></div></details>
+
+<h3>9.1 单向门清单</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:150px">单向门</th><th style="width:80px">办错概率</th><th style="width:210px">代价</th><th style="width:230px">现有兜底</th><th>结论</th></tr></thead>
+<tbody>
+<tr><td><strong>撤控</strong>一个人</td><td>中</td>
+    <td>该人从所有在办入口消失，业务彻底办不了</td>
+    <td>—</td>
+    <td><span class="badge b-done">已补逆向边</span> <code>POST /decontrol/&lt;id&gt;/revoke</code>，列表页与详情页都有入口</td></tr>
+<tr><td><strong>删除</strong>出国申请</td><td>低</td>
+    <td>连带删除附件记录与磁盘文件，附件不可恢复</td>
+    <td>删除前有硬守卫（有领用记录一律挡）；全量 before 快照进 <code>operation_logs</code>；附件文件本身已随 DELETE 从磁盘移除</td>
+    <td><span class="badge b-p2">保持单向</span>：能删的都是没开过任何领用单的申请，代价可控；<u>但附件文件不可恢复</u>，这一点应在确认框中讲明（见第 12 章）</td></tr>
+<tr><td><strong>删除</strong>证照台账</td><td>低</td><td>在库本数变化；若号码被引用，相关出行当场变回逾期</td>
+    <td><code>_cert_references()</code> 硬守卫；before 快照进日志；提示直接引导「换发请编辑更新号码」</td>
+    <td><span class="badge b-p2">保持单向</span>：守卫已经挡住了所有会造成连带损害的情形</td></tr>
+<tr><td><strong>删除</strong>备案人员 / 信息登记表</td><td>低</td><td>记录消失</td><td>四表 / 一表引用计数硬守卫；before 快照进日志</td>
+    <td><span class="badge b-p2">保持单向</span>：能删的都是<u>无任何关联</u>的空壳记录</td></tr>
+<tr><td>领用单<strong>作废</strong></td><td>中</td><td>不可恢复为「已领用」或「已归还」</td>
+    <td>before / after 双快照进日志；作废原因必填；派生字段自动重算</td>
+    <td><span class="badge b-done">故意单向</span>：单据上有本人手写签名，<u>作废是「这次领用作废」而不是「这次领用没发生过」</u>，单子必须留档。要更正就重新登记一张——这正是业务上该走的路</td></tr>
+<tr><td>领用单<strong>归还</strong>后再借</td><td>低</td><td>—</td><td>—</td>
+    <td><span class="badge b-done">故意单向</span>：「再借一次」＝<u>开一张新单</u>，不是把旧单改回去。已归还的记录不在 <code>open_issuance_travel_ids()</code> 里，所以同一条申请可以反复「领用 → 归还 → 再领用」</td></tr>
+<tr><td><strong>改名同步</strong>（组织 / 字典 / 报送单位）</td><td>中</td>
+    <td><strong>批量重写历史</strong>：几百条记录同时被改，没有 undo</td>
+    <td>显式勾选确认 → 强制写 <code>before_&lt;tag&gt;_时间戳.db</code>（<u>备份失败即中止</u>）→ 一条点名该快照的操作日志</td>
+    <td><span class="badge b-p2">靠快照回退</span>：快照文件<strong>永不覆盖</strong>（同一秒同一标签会自动加序号），所以同一天做两次改名，两份改前状态都留得住</td></tr>
+<tr><td><strong>从备份还原</strong></td><td>—</td><td>—</td><td>备份自动做：每日 <code>data_*.db</code> + 改前 <code>before_*.db</code>，均按日期清理</td>
+    <td><span class="badge b-p1">已知欠账</span>：<u>系统里没有还原入口</u>，还原是 README 上的手工三步（停服务 / 换文件 / 启服务）。这是本文承认的欠账，不是遗漏</td></tr>
+</tbody></table></div>
+
+<h3>9.2 为什么撤销撤控是物理删除</h3>
+<div class="card info">
+<p>撤销撤控没有把记录标成「已作废」，而是<strong>物理删除</strong>那条 <code>decontrol_filing</code>。理由是<u>撤控表是报出去的备案单据</u>，一条记录的含义就是「这个人已上报撤控」。撤销意味着这件事没有发生过——留一条作废的单据反而会在列表和导出里制造「他到底撤没撤」的歧义。</p>
+<p>物理删除的<strong>前提是留痕留得住</strong>：删除前写入完整的 before 快照（<code>log_action('delete', 'decontrol_filing', id, before=…)</code>），撤控原因、报送单位、入库批号这些<u>只此一份</u>的信息全部在快照里。需要追溯时查日志——这正是操作日志该干的事。测试 <code>test_revoke_logs_full_snapshot</code> 逐个断言这三项信息在快照里查得回来。</p>
+<p>另一处细节：状态回滚写的是 <code>WHERE id = ? AND status = 'decontrolled'</code>，并检查 <code>rowcount</code>。人员备案可能已被删除（撤控单自带姓名与身份证快照，不依赖它存在），这时提示会明说「未找到对应的有效备案人员，请到人员备案确认其状态」，而不是假装成功。</p>
+</div>
+
+<h3>9.3 通用兜底层</h3>
+<div class="scroll-x"><table>
+<thead><tr><th style="width:160px">层</th><th style="width:200px">机制</th><th>覆盖范围与边界</th></tr></thead>
+<tbody>
+<tr><td><strong>操作日志</strong></td><td><code>operation_logs</code>，<code>helpers.log_action()</code> + <code>row_snapshot()</code></td>
+    <td>所有写操作记 action / target_type / target_id / 经办人 / 时间；删除与关键更新附<strong>整行 JSON 快照</strong>（before / after）。<u>只可查，不能一键回滚</u>。</td></tr>
+<tr><td><strong>每日备份</strong></td><td><code>backup/data_YYYYMMDD.db</code>，首页访问时触发（<code>run_daily_backup()</code>）</td>
+    <td>粒度一天。当天已备份则跳过；可在首页手动强制一次。按保留期清理。</td></tr>
+<tr><td><strong>改前快照</strong></td><td><code>backup/before_&lt;tag&gt;_YYYYMMDD_HHMMSS.db</code>，<code>snapshot_before_change()</code></td>
+    <td>专供批量重写历史（三处改名同步）。<strong>永不覆盖</strong>：文件名带秒级时间戳，同秒同标签自动追加序号。<u><code>latest_backup()</code> 刻意只扫 <code>data_*</code></u>——首页显示的「最近备份」应当是每日备份，不该被一次改名操作顶掉。</td></tr>
+<tr><td><strong>不存在即安全返回</strong></td><td>各路由统一模式</td>
+    <td>对不存在的记录执行任何操作（重复点确认、后退再提交、手改 URL）一律 <code>flash("记录不存在。")</code> + 重定向，<strong>不返回 500</strong>。有专门的用例守着（如 <code>test_revoke_missing_record_is_harmless</code>）。</td></tr>
+<tr><td><strong>统计口径缺表容错</strong></td><td><code>textref.count_refs()</code> 吞 <code>OperationalError</code></td>
+    <td>极旧的库或迁移中途表可能不存在，缺表当 0 处理——<u>统计不到不该让整个页面挂掉</u>。</td></tr>
+</tbody></table></div>
+
+<div class="footnote"><strong>一条没有兜底的路径，要写出来：</strong>逾期状态是<u>每次查询实时算的</u>，不落库、也不发通知。如果经办人连着几天不打开系统，没有任何机制会提醒他。这是 1.4「不做通知推送」的直接后果，在此明确记录，以免被误认为是缺陷。</div>
+</section>
+
+
+<!-- ===================== 第四部分（第 2 批） ===================== -->
+<div class="part">第四部分　呈现与口径</div>
+
+<section id="s10"><h2>10、统计口径定义</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 2 批补齐：每个数字的单位、来源函数、恒等式、守着它的测试。）</p></div></section>
+
+<section id="s11"><h2>11、界面入口条件</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 2 批补齐：每个按钮什么时候该灰、灰的时候提示什么。）</p></div></section>
+
+<section id="s12"><h2>12、提示文案规约</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 2 批补齐：提示必须指向一条走得通的路。）</p></div></section>
+
+
+<!-- ===================== 第五 / 六 / 七部分（第 3 批） ===================== -->
+<div class="part">第五部分　通用功能</div>
+<section id="s13"><h2>13、导出 / 打印 / 查询 / 导入 / 日志 / 备份</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 3 批补齐。）</p></div></section>
+
+<div class="part">第六部分　非功能需求</div>
+<section id="s14"><h2>14、安全 / 性能 / 可用性 / 兼容性 / 技术栈</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 3 批补齐。）</p></div></section>
+
+<div class="part">第七部分　自检</div>
+<section id="s15"><h2>15、需求评审清单与交付自检清单</h2>
+<div class="card"><p class="wrap" style="color:var(--text-muted)">（本节将在第 3 批补齐：对接《开发经验教训总结》第十节与第十一节。）</p></div></section>
+
+<p style="text-align:center;color:var(--text-muted);font-size:13px;margin-top:50px">
+— 因私出国（境）人员审批管理系统 · 系统需求与分析文档 V2.0 · 编制于 2026-08-29 —
+</p>
+
+</div>
+</body>
+</html>
