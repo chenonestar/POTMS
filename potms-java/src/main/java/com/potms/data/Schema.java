@@ -72,7 +72,7 @@ public final class Schema {
         new SeedDict("submit_unit_type", "04", "国有大中型企业单位", 4),
         new SeedDict("submit_unit_type", "99", "其他单位", 5),
         new SeedDict("supervisor_unit", "S01", "人事处", 1),
-        new SeedDict("cert_type", "01", "因私护照", 1),
+        new SeedDict("cert_type", "01", "普通护照", 1),
         new SeedDict("cert_type", "02", "往来港澳通行证", 2),
         new SeedDict("cert_type", "03", "大陆居民往来台湾通行证", 3),
     };

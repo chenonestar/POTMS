@@ -97,7 +97,7 @@ class Batch3Test {
         assertEquals(200, res.statusCode(), "批量打印返回 " + res.statusCode());
         String body = res.body();
         for (String want : new String[] {
-            "因私出国（境）证件领用登记表", "史迪威", "因私护照", "E1234567", "共 1 条记录",
+            "因私出国（境）证件领用登记表", "史迪威", "普通护照", "E1234567", "共 1 条记录",
         }) {
             assertTrue(body.contains(want), "批量打印页缺少「" + want + "」");
         }

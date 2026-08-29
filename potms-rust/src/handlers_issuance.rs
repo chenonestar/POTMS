@@ -558,7 +558,7 @@ fn travel_brief(conn: &rusqlite::Connection, travel_id: Option<i64>) -> Option<d
 /// 列表筛选里「待核实」的取值。真实种类代码是 01/02/03，不会撞。
 pub const CERT_TYPE_PENDING: &str = "pending";
 
-/// 把 "01,02" 转成 "因私护照、往来港澳通行证"；空值转成「待核实」。
+/// 把 "01,02" 转成 "普通护照、往来港澳通行证"；空值转成「待核实」。
 ///
 /// 空值只可能来自历史回填里判不出种类的那批。打印件与日志上不能是个空格子——
 /// 看的人分不清是「没有证件」还是「漏填了」，写明待核实才是实情。
@@ -1001,7 +1001,7 @@ AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     // -----------------------------------------------------------------------
     // 历史回填的证件种类：三级推断 / 存量订正 / 待核实呈现 / 人工更正
     //
-    // 原先回填一律把 cert_types 写成 '01'（因私护照）——往来港澳通行证、大陆居民
+    // 原先回填一律把 cert_types 写成 '01'（普通护照）——往来港澳通行证、大陆居民
     // 往来台湾通行证全被标成护照。领用凭证是要归档的，错的种类比空着更糟。
     // -----------------------------------------------------------------------
 
@@ -1331,7 +1331,7 @@ AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
         assert_eq!(app.new_issuance(PNG_DATA_URL).await, StatusCode::SEE_OTHER);
         let (status, body) = app.get("/print/batch/issuance?ids=1").await;
         assert_eq!(status, StatusCode::OK, "/print/batch/issuance → {status}");
-        for want in ["因私出国（境）证件领用登记表", "史迪威", "总部", "因私护照", "E1234567", "共 1 条记录"] {
+        for want in ["因私出国（境）证件领用登记表", "史迪威", "总部", "普通护照", "E1234567", "共 1 条记录"] {
             assert!(body.contains(want), "批量打印页缺少「{want}」");
         }
         // 签名按行取图，不能把 BLOB 塞进页面

@@ -36,7 +36,7 @@ public final class IssuanceOps {
         return img == null || (img instanceof byte[] b && b.length == 0);
     }
 
-    /** {@code "01,02"} → {@code "因私护照、往来港澳通行证"}；空串（待核实）显式标出。 */
+    /** {@code "01,02"} → {@code "普通护照、往来港澳通行证"}；空串（待核实）显式标出。 */
     public static String typesLabel(JdbcTemplate jdbc, String codes) {
         if (codes == null || codes.isBlank()) {
             return "待核实";

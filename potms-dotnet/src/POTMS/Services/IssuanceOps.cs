@@ -7,11 +7,11 @@ namespace POTMS.Services;
 /// <summary>证件领用的共享业务操作。</summary>
 public static class IssuanceOps
 {
-    /// <summary>'01,02' → '因私护照、往来港澳通行证'</summary>
+    /// <summary>'01,02' → '普通护照、往来港澳通行证'</summary>
     /// <summary>列表筛选里「待核实」的取值。真实种类代码是 01/02/03，不会撞。</summary>
     public const string CertTypePending = "pending";
 
-    /// <summary>把 "01,02" 转成「因私护照、往来港澳通行证」；空值转成「待核实」。
+    /// <summary>把 "01,02" 转成「普通护照、往来港澳通行证」；空值转成「待核实」。
     ///
     /// <para>空值只可能来自历史回填里判不出种类的那批。打印件与日志上不能是个空格子——
     /// 看的人分不清是「没有证件」还是「漏填了」，写明待核实才是实情。</para>

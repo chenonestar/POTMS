@@ -224,7 +224,7 @@ class PageSmokeTest {
         var res = seeded.get("/print/batch/issuance?ids=1");
         assertEquals(200, res.statusCode());
         assertTrue(res.body().contains("因私出国（境）证件领用登记表"), "批量打印页标题不对");
-        assertTrue(res.body().contains("因私护照"), "证件种类应印中文，不能印出裸代码");
+        assertTrue(res.body().contains("普通护照"), "证件种类应印中文，不能印出裸代码");
     }
 
     @Test

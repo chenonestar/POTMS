@@ -88,3 +88,31 @@ def test_legacy_db_upgrade_and_backfill(fresh_db):
     db = sqlite3.connect(fresh_db)
     assert db.execute("SELECT travel_dates FROM travel_details WHERE id=1").fetchone()[0] \
         == "2026/08/01-2026/08/11"
+
+
+# ---------------------------------------------------------------------------
+# 生成物同步：改了 database.py 就得重新生成 .NET / Java 两份 schema
+# ---------------------------------------------------------------------------
+def test_generated_schemas_are_in_sync_with_database_py():
+    """.NET 与 Java 两版的 schema 由 database.py 生成，必须与源头一致。
+
+    这条本来只有 CI 在看（三个工作流各跑一次 gen-schema*.py --check）。
+    结果就是：本地改完 database.py 的 SEED_DICT 一路全绿，推上去三个工作流
+    同时红——反馈来得太晚，而且要等一轮 CI 才知道。
+
+    真实经过：把字典里的「因私护照」改成「普通护照」（为了与证照台账的槽位
+    标签统一），忘了重新生成，Python / Java / .NET 三个构建一起挂在这一步。
+    交付自检清单上明明写着「改了 schema 就重新生成了 .NET / Java 两份吗？」，
+    我跳过了那一条——所以把它从清单挪进测试里，让机器来问。
+    """
+    import pathlib
+    import subprocess
+    import sys
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for tool in ("potms-dotnet/tools/gen-schema.py", "potms-java/tools/gen-schema-java.py"):
+        r = subprocess.run([sys.executable, str(root / tool), "--check"],
+                           cwd=root, capture_output=True, text=True)
+        assert r.returncode == 0, (
+            f"{tool} --check 失败：\n{r.stdout}{r.stderr}"
+            f"\n改了 database.py 的 SCHEMA 或 SEED_DICT，就要重新跑一遍生成脚本。")

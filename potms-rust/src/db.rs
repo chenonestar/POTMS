@@ -137,6 +137,15 @@ pub fn run_migrations(conn: &Connection) {
     // 五版共用一个 data.db，库可能是任意一版建的，所以每一版都要能补这一列。
     add_column(conn, "users", "full_name", "TEXT");
 
+    // 证件种类 01 的显示名与证照台账槽位标签对齐：因私护照 → 普通护照。
+    // 业务表存的是编码（cert_issuance.cert_types = '01'），改显示值不动任何
+    // 业务数据。五版共用一个 data.db，任何一版都要能把老库改过来。
+    let _ = conn.execute(
+        "UPDATE sys_dict SET value = '普通护照' \
+         WHERE category = 'cert_type' AND code = '01' AND value = '因私护照'",
+        [],
+    );
+
     // 证件领用记录表（REQ-012，含手写签名）。放在迁移里而不是 SCHEMA_SQL：
     // 建表语句要与 Python 版 run_migrations 逐字对齐，五版共用同一个 data.db。
     let _ = conn.execute_batch(
@@ -192,7 +201,7 @@ pub const BACKFILL_REMARK_PENDING: &str = "历史数据回填（证件种类待�
 
 /// 推断一条历史出行记录用的是哪种证件，判不出返回空串。
 ///
-/// 原先一律记作因私护照（'01'）。这是个**主动编造**的答案：往来港澳通行证、
+/// 原先一律记作普通护照（'01'）。这是个**主动编造**的答案：往来港澳通行证、
 /// 台湾通行证都被写成护照，而领用凭证是要归档的，错的种类比空着更糟。
 ///
 /// 三级判据，从硬到软：
@@ -314,7 +323,7 @@ fn backfill_legacy_issuance(conn: &Connection) {
 
 /// 订正上一版回填留下的错标。
 ///
-/// 上面那段回填曾经把 cert_types 一律写成 '01'（因私护照），实际可能是往来港澳
+/// 上面那段回填曾经把 cert_types 一律写成 '01'（普通护照），实际可能是往来港澳
 /// 通行证或大陆居民往来台湾通行证。而回填带幂等守卫（travel_id 已有记录就跳过），
 /// 光把上面改对，**对已经回填过的库毫无作用**——错的行会一直躺着。
 ///
@@ -420,7 +429,7 @@ const SEED_DICT: &[(&str, &str, &str, i64)] = &[
     ("submit_unit_type", "01", "党政机关", 1), ("submit_unit_type", "02", "金融系统", 2),
     ("submit_unit_type", "03", "教科文卫系统", 3), ("submit_unit_type", "04", "国有大中型企业单位", 4),
     ("submit_unit_type", "99", "其他单位", 5),
-    ("cert_type", "01", "因私护照", 1), ("cert_type", "02", "往来港澳通行证", 2),
+    ("cert_type", "01", "普通护照", 1), ("cert_type", "02", "往来港澳通行证", 2),
     ("cert_type", "03", "大陆居民往来台湾通行证", 3),
     ("supervisor_unit", "S01", "人事处", 1),
 ];

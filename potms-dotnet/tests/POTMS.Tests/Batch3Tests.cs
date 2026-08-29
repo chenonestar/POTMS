@@ -52,7 +52,7 @@ public class Batch3Tests(SeededDbAppFactory factory)
         var body = await res.Content.ReadAsStringAsync();
         Assert.Contains("因私出国（境）证件领用登记表", body);
         // 证件种类要印中文，不能印出 01
-        Assert.Contains("因私护照", body);
+        Assert.Contains("普通护照", body);
     }
 
     [Fact]

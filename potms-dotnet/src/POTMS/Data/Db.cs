@@ -102,6 +102,12 @@ public sealed class Db(Config cfg)
             cn.Execute("UPDATE decontrol_filing SET decontrol_date = strftime('%Y%m%d', created_at) " +
                        "WHERE decontrol_date IS NULL OR decontrol_date = ''");
 
+        // 证件种类 01 的显示名与证照台账槽位标签对齐：因私护照 → 普通护照。
+        // 业务表存的是编码（cert_issuance.cert_types = '01'），改显示值不动任何
+        // 业务数据。五版共用一个 data.db，任何一版都要能把老库改过来。
+        cn.Execute("UPDATE sys_dict SET value = '普通护照' " +
+                   "WHERE category = 'cert_type' AND code = '01' AND value = '因私护照'");
+
         // 报送单位配置表
         cn.Execute("CREATE TABLE IF NOT EXISTS sys_submit_unit (" +
                    "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, " +
@@ -206,7 +212,7 @@ public sealed class Db(Config cfg)
 
     /// <summary>推断一条历史出行记录用的是哪种证件，判不出返回空串。
     ///
-    /// <para>原先一律记作因私护照（'01'）。这是个<b>主动编造</b>的答案：往来港澳通行证、
+    /// <para>原先一律记作普通护照（'01'）。这是个<b>主动编造</b>的答案：往来港澳通行证、
     /// 台湾通行证都被写成护照，而领用凭证是要归档的，错的种类比空着更糟。</para>
     ///
     /// <para>三级判据，从硬到软：①出行记录上的证件号码对上证照登记表的哪一列（号码唯一，
@@ -307,7 +313,7 @@ public sealed class Db(Config cfg)
 
     /// <summary>订正上一版回填留下的错标。
     ///
-    /// <para>上面那段回填曾经把 cert_types 一律写成 '01'（因私护照），实际可能是往来港澳
+    /// <para>上面那段回填曾经把 cert_types 一律写成 '01'（普通护照），实际可能是往来港澳
     /// 通行证或大陆居民往来台湾通行证。而回填带幂等守卫（travel_id 已有记录就跳过），
     /// 光把上面改对，<b>对已经回填过的库毫无作用</b>——错的行会一直躺着。</para>
     ///

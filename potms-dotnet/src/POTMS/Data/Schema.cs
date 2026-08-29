@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS operation_logs (
         ("submit_unit_type", "04", "国有大中型企业单位", 4),
         ("submit_unit_type", "99", "其他单位", 5),
         ("supervisor_unit", "S01", "人事处", 1),
-        ("cert_type", "01", "因私护照", 1),
+        ("cert_type", "01", "普通护照", 1),
         ("cert_type", "02", "往来港澳通行证", 2),
         ("cert_type", "03", "大陆居民往来台湾通行证", 3),
     };

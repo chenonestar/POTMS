@@ -358,7 +358,7 @@ func travelBrief(travelID string) Row {
 		"FROM travel_details WHERE id = ?", toInt64(travelID))
 }
 
-// certTypesLabel 把 "01,02" 转成 "因私护照、往来港澳通行证"。
+// certTypesLabel 把 "01,02" 转成 "普通护照、往来港澳通行证"。
 func certTypesLabel(codes string) string {
 	var out []string
 	for _, c := range strings.Split(codes, ",") {
