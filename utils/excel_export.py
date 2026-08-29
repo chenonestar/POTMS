@@ -85,9 +85,18 @@ def _save_and_return(ws, prefix: str, operator: str, notes: list = None):
     """保存到文件，返回路径"""
     # 添加填表说明 Sheet
     if notes:
+        # 传成一整个字符串时按「一条说明」处理，而不是逐字符迭代。
+        # 盘库清单的 NOTES 曾经就是这样一个字符串（隐式拼接少了逗号），
+        # 打出来一个字一行——这行防御让同类笔误只影响排版，不再毁掉整张说明。
+        if isinstance(notes, str):
+            notes = [notes]
         ws2 = ws.parent.create_sheet("填表说明")
+        # 说明是长句，默认列宽会把它挤成一列；给足宽度，靠左顶格。
+        ws2.column_dimensions["A"].width = 96
         for i, note in enumerate(notes, 1):
-            ws2.cell(row=i, column=1, value=note).font = Font(name="微软雅黑", size=10)
+            cell = ws2.cell(row=i, column=1, value=note)
+            cell.font = Font(name="微软雅黑", size=10)
+            cell.alignment = Alignment(horizontal="left", vertical="center")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{prefix}_{ts}_{operator}.xlsx"
@@ -260,31 +269,35 @@ def export_certificates(operator: str, where_sql: str = "", params: tuple = ()) 
 # =========================================================================
 HEADERS_STOCK = ["核对", "序号", "去向", "单位", "部门", "持证人",
                  "证件种类", "证件号码", "有效期至", "上交日期"]
-NOTES_STOCK = (
-    "口径：在控人员证照台账上登记的每一本证，按「去向」分为应在库与借出未还。"
-    "已撤控人员的证不在此表（撤控以证件收缴移交为前提）；"
-    "做证人员自办、尚未交回入库的新证也不在此表（还没进过台账与柜子）。"
-)
+# 必须是「多行」的序列，一行一条。
+# 曾经写成一对括号包着的隐式拼接字符串（少了逗号），于是 _save_and_return 里
+# for note in notes 逐**字符**迭代，填表说明打出来一个字一行。
+NOTES_STOCK = [
+    "填表说明：",
+    "1. 本表列的是在控人员证照台账上登记的每一本证，一本一行，按「去向」分为在库与借出未还。",
+    "2. 在库 = 此刻应当躺在保管处的证；借出未还 = 凭领用单借出、尚未归还的证。",
+    "   两者相加等于在控人员台账登记的总本数。",
+    "3. 已撤控人员的证不在此表（撤控以证件收缴移交为前提，证已随撤控移交出库）。",
+    "4. 做证人员自办、尚未交回入库的新证也不在此表（它还没进过台账，也没进过柜子）。",
+    "5. 「核对」列供盘库时逐本打勾。",
+]
 
 
-def export_cert_stock(operator: str, in_stock, lent_out) -> str:
-    """盘库清单导出。数据由调用方算好传入——口径只有 certificate.stock_split 一处，
-    这里再查一遍就等于开了第二套判据。"""
+def export_cert_stock(operator: str, rows) -> str:
+    """盘库清单导出。数据由调用方算好传入——口径只有 certificate.stock_rows 一处，
+    这里再查一遍就等于开了第二套判据，页面上看到的和导出的迟早对不上。"""
     wb = Workbook()
     ws = wb.active
     ws.title = "证件盘库清单"
     _style_header(ws, "因私出国（境）证件盘库清单", HEADERS_STOCK)
 
-    i = 3
-    for label, items in (("应在库", in_stock), ("借出未还", lent_out)):
-        for n, it in enumerate(items, 1):
-            for col, val in enumerate(
-                ["", n, label, it["unit"], it["department"], it["name"],
-                 it["cert_type"], it["cert_no"], it["expiry"], it["submit_date"]], 1):
-                ws.cell(row=i, column=col, value=val)
-            i += 1
+    for n, it in enumerate(rows, 1):
+        for col, val in enumerate(
+            ["", n, it["status"], it["unit"], it["department"], it["name"],
+             it["cert_type"], it["cert_no"], it["expiry"], it["submit_date"]], 1):
+            ws.cell(row=n + 2, column=col, value=val)
 
-    _style_data(ws, 3, i - 1, len(HEADERS_STOCK))
+    _style_data(ws, 3, len(rows) + 2, len(HEADERS_STOCK))
     _auto_width(ws, len(HEADERS_STOCK))
     return _save_and_return(ws, "证件盘库清单", operator, NOTES_STOCK)
 

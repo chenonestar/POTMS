@@ -373,7 +373,10 @@ function clientWindowPaginate() {
     function initSorting() {
         Array.prototype.forEach.call(ths, function (th, idx) {
             if (th.querySelector('input')) return;          // 全选勾选框列
-            if (idx === ths.length - 1) return;             // 操作列
+            // 操作列不排序。判据是「最后一列且没有 data-col」——各列表的操作列都长这样。
+            // 原来是无条件跳过最后一列，可最后一列不一定是操作列：证件盘库清单没有
+            // 操作按钮，末列是「上交日期」，于是唯独它点不动。
+            if (idx === ths.length - 1 && !th.hasAttribute('data-col')) return;
             th.style.cursor = 'pointer';
             th.title = '点击排序';
             var ind = document.createElement('span');

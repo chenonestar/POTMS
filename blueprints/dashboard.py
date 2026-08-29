@@ -40,7 +40,15 @@ def index() -> ResponseReturnValue:
     # 基础统计
     total_active = db.execute("SELECT COUNT(*) FROM personnel_filing WHERE status = 'active'").fetchone()[0]
     total_decontrolled = db.execute("SELECT COUNT(*) FROM personnel_filing WHERE status = 'decontrolled'").fetchone()[0]
-    total_certificates = db.execute("SELECT COUNT(*) FROM certificates").fetchone()[0]
+    # 证照登记只数**在控人员**的台账行。
+    #
+    # 原来是 COUNT(*) FROM certificates，不按状态过滤，于是这张卡与下面那行
+    # 四档去向（全部只算在控）不可比：撤控一个人，他的台账行仍计进这张卡，
+    # 他的证却已退出「在库」。两个数并排摆着，看的人无从知道口径不同。
+    # 卡片链接同步带上 ?filing_status=active，数字与点开看到的列表必须一致。
+    total_certificates = db.execute(
+        "SELECT COUNT(*) FROM certificates c JOIN personnel_filing pf "
+        "ON pf.id = c.personnel_filing_id WHERE pf.status = 'active'").fetchone()[0]
     total_travel = db.execute("SELECT COUNT(*) FROM travel_details").fetchone()[0]
 
     # 这里刻意没有「按单位 / 按政治面貌 / 按职级」三项分布统计。

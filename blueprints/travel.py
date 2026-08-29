@@ -167,7 +167,11 @@ def list() -> ResponseReturnValue:
     date_to = request.args.get("date_to", "").strip()
 
     where, params = build_filters(request.args)
-    base = "SELECT * FROM travel_details WHERE 1=1" + where + " ORDER BY created_at DESC"
+    # 带上附件条数：删除确认框要讲明「附件也会一并从磁盘删除且不可恢复」，
+    # 而讲清楚就得说出有几个（提示文案规约二：挡下/提醒都要给数量明细）。
+    base = ("SELECT travel_details.*, "
+            "  (SELECT COUNT(*) FROM attachments a WHERE a.travel_id = travel_details.id) AS att_count "
+            "FROM travel_details WHERE 1=1" + where + " ORDER BY created_at DESC")
 
     pg = list_all(base, params)  # 全量下发，前端按视口窗口化分页
 

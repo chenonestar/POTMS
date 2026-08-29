@@ -323,7 +323,7 @@ def test_batch_print_issuance(c):
     assert "因私出国（境）证件领用登记表" in html
     assert "共 2 条" in html
     assert "总部" in html                       # work_unit 来自 JOIN personnel_filing
-    assert "因私护照" in html                    # 代码 → 中文，不是裸的 '01'
+    assert "普通护照" in html                    # 代码 → 中文，不是裸的 '01'
     assert "往来港澳通行证" in html
     assert "E12345678" in html and "C87654321" in html
     # 签名按行取图（<img src=".../signature.png">），不是把 BLOB 塞进页面

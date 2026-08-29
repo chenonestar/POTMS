@@ -11,6 +11,19 @@ from utils.helpers import paginate, log_action, operator_name
 
 logs_bp = Blueprint("logs", __name__)
 
+# 同一类对象在库里出现过的所有 target_type 写法。
+#
+# 证照的增删改一直写的是单数 "certificate"，导出写的是复数 "certificates"，
+# 而筛选下拉里只有复数——按「证照登记表」筛，一条增删改也筛不出来，
+# 偏偏增删改才是查日志时最要看的。
+#
+# 代码这一侧已统一为复数（与表名一致，其余 target_type 也都是表名）；
+# 但库里的历史日志仍是单数，而**日志是审计记录，不该为了好看去重写它**。
+# 所以筛选按别名匹配：一个选项对应它历史上出现过的全部写法。
+TARGET_ALIASES = {
+    "certificates": ("certificates", "certificate"),
+}
+
 
 def _log_years() -> list:
     """日志中出现过的年份（按本地时区换算），倒序。"""
@@ -108,8 +121,9 @@ def index() -> ResponseReturnValue:
         params.append(action_filter)
 
     if target_filter:
-        base += " AND target_type = ?"
-        params.append(target_filter)
+        aliases = TARGET_ALIASES.get(target_filter, (target_filter,))
+        base += " AND target_type IN (%s)" % ",".join("?" for _ in aliases)
+        params.extend(aliases)
 
     if date_from:
         base += " AND date(created_at) >= ?"
@@ -137,21 +151,28 @@ def index() -> ResponseReturnValue:
         {"code": "delete", "value": "删除"},
         {"code": "cancel", "value": "取消行程"},
         {"code": "restore", "value": "恢复行程"},
+        {"code": "void", "value": "作废"},
         {"code": "lock", "value": "登录锁定"},
         {"code": "export", "value": "导出"},
         {"code": "import", "value": "导入"},
         {"code": "backup", "value": "备份"},
     ]
+    # 下拉必须覆盖代码里实际写入的每一个 target_type，
+    # 否则那类操作只能靠一页页翻才看得到。
     target_types = [
         {"code": "personnel_info", "value": "人员信息表"},
         {"code": "personnel_filing", "value": "登记备案表"},
         {"code": "certificates", "value": "证照登记表"},
         {"code": "travel_details", "value": "出国明细表"},
+        {"code": "cert_issuance", "value": "证件领用单"},
         {"code": "decontrol_filing", "value": "撤控备案表"},
+        {"code": "sys_org", "value": "组织架构"},
         {"code": "sys_dict", "value": "数据字典"},
         {"code": "sys_submit_unit", "value": "报送单位"},
         {"code": "users", "value": "账户"},
         {"code": "batch", "value": "批量导入"},
+        {"code": "database", "value": "数据库备份"},
+        {"code": "operation_logs", "value": "日志归档"},
     ]
 
     # 日志里存的是登录账号；显示时补上姓名，渲染成「张三（admin）」。

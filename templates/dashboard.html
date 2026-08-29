@@ -58,13 +58,14 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ url_for('certificate.list') }}" class="text-decoration-none">
+        <a href="{{ url_for('certificate.list', filing_status='active') }}" class="text-decoration-none">
             <div class="card stat-card border-success">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="stat-label">证照登记（人）</div>
                             <div class="stat-value text-success">{{ total_certificates }}</div>
+                            <div class="small text-muted" style="font-size:11px">在控人员，一人一行</div>
                         </div>
                         <i class="bi bi-card-checklist stat-icon text-success"></i>
                     </div>
@@ -78,8 +79,9 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="stat-label">出国申请</div>
+                            <div class="stat-label">出国申请（条）</div>
                             <div class="stat-value text-info">{{ total_travel }}</div>
+                            <div class="small text-muted" style="font-size:11px">累计，含已取消行程</div>
                         </div>
                         <i class="bi bi-airplane stat-icon text-info"></i>
                     </div>

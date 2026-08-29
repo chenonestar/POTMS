@@ -63,7 +63,10 @@ SEED_DICT = [
     # 人事主管单位（下拉配置，可在数据字典维护）
     ("supervisor_unit", "S01", "人事处", 1),
     # 证件种类（证件领用登记用；与 certificates 表的三类证件一一对应）
-    ("cert_type", "01", "因私护照", 1),
+    # 与 certificates 表的槽位标签一字不差：那边叫「普通护照」，这里就不能叫
+    # 「因私护照」。同一本证两个叫法，只要有人写一段按名称匹配的代码（导入校验、
+    # 报表归类、跨版本对齐），立刻就是个真 bug。
+    ("cert_type", "01", "普通护照", 1),
     ("cert_type", "02", "往来港澳通行证", 2),
     ("cert_type", "03", "大陆居民往来台湾通行证", 3),
 ]
@@ -227,6 +230,12 @@ def run_migrations():
             db.execute(
                 "UPDATE decontrol_filing SET decontrol_date = strftime('%Y%m%d', created_at) "
                 "WHERE decontrol_date IS NULL OR decontrol_date = ''")
+
+        # 证件种类 01 的显示名与证照台账槽位标签对齐：因私护照 → 普通护照。
+        # 业务表存的是编码（cert_issuance.cert_types = '01'），改显示值不动任何
+        # 业务数据；只有还叫旧名的库需要跟一下，改过或已是新名的库不受影响。
+        db.execute("UPDATE sys_dict SET value = '普通护照' "
+                   "WHERE category = 'cert_type' AND code = '01' AND value = '因私护照'")
 
         # 报送单位配置表（名称/联系人/电话）
         db.execute(

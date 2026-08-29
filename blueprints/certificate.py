@@ -38,6 +38,13 @@ def build_filters(args, ids=None):
         where += " AND tw_pass_no IS NOT NULL AND tw_pass_no != ''"
     elif has_tw == "0":
         where += " AND (tw_pass_no IS NULL OR tw_pass_no = '')"
+    # 持证人是否仍在控。首页那张「证照登记（人）」卡按 active 计数并带着这个参数
+    # 跳过来，数字与列表必须能对上；不带参数时列表照旧显示全部（含已撤控，行上有标注）。
+    filing_status = args.get("filing_status", "").strip()
+    if filing_status in ("active", "decontrolled"):
+        where += (" AND EXISTS (SELECT 1 FROM personnel_filing pf2 "
+                  "             WHERE pf2.id = certificates.personnel_filing_id AND pf2.status = ?)")
+        params.append(filing_status)
     if ids:
         ph = ",".join("?" for _ in ids)
         where += f" AND id IN ({ph})"
@@ -52,6 +59,7 @@ def list() -> ResponseReturnValue:
     has_passport = request.args.get("has_passport", "").strip()
     has_hm = request.args.get("has_hm", "").strip()
     has_tw = request.args.get("has_tw", "").strip()
+    filing_status = request.args.get("filing_status", "").strip()
 
     where, params = build_filters(request.args)
     # 带上持证人的备案状态与撤控时的证件移交日期：人已撤控的，台账上要一眼看出来，
@@ -94,27 +102,39 @@ def list() -> ResponseReturnValue:
         has_passport=has_passport, has_hm=has_hm, has_tw=has_tw,
         expired_set={(e[0], e[1]) for e in expired},
         expired_map={e[0]: e for e in expired},
+        filing_status=filing_status,
     )
 
 
-@certificate_bp.route("/certificate/stock")
-@login_required
-def stock() -> ResponseReturnValue:
-    """盘库清单：应当在保管处的每一本证，一本一行，供打开柜子逐本核对。
+STOCK_IN, STOCK_OUT = "在库", "借出未还"
 
-    首页那张「在库 N 本」只能核对总数——少一本多一本，看不出是哪一本。
-    这页给的是清单本身：按单位 / 部门 / 姓名排序（柜子一般也这么放），
-    打印出来每行留一个勾选框，边点边划。
 
-    「借出未还」那一堆一并列在下面：盘库时手里这份清单要能回答「柜子里没有的
-    那几本，去哪儿了」，否则对不上时还得再翻一次系统。
+def stock_rows(args) -> dict:
+    """盘库清单的行 —— 页面、打印、导出三处共用这一份。
+
+    在库与借出未还合成**一张表**、用「去向」列区分，而不是两张表：
+    一张表才能套用全站通用的那套列表行为（勾选、排序、窗口化分页、批量打印），
+    两张表则每样都得再写一遍，而且没有哪一份是「整份清单」。
+    导出的 Excel 本来也是一张带「去向」列的表，现在页面与它同形。
+
+    筛选判据只写一次：此前页面与导出各写了一份 keep()，两边一改就会漂。
     """
-    search = request.args.get("search", "").strip()
-    type_filter = request.args.get("cert_type", "").strip()
-
     in_stock, lent_out, orphan_nos = stock_split()
+    rows = ([dict(it, status=STOCK_IN) for it in in_stock]
+            + [dict(it, status=STOCK_OUT) for it in lent_out])
+
+    search = args.get("search", "").strip()
+    type_filter = args.get("cert_type", "").strip()
+    status_filter = args.get("status", "").strip()
+    ids = {x for x in args.get("ids", "").split(",") if x.strip()}
 
     def keep(it):
+        # 勾选行优先：打印/导出选中行时，其余筛选一律不再叠加，
+        # 否则「勾了 3 行却导出 2 行」这种事说不清是谁的问题。
+        if ids:
+            return it["key"] in ids
+        if status_filter and it["status"] != status_filter:
+            return False
         if type_filter and it["cert_type"] != type_filter:
             return False
         if search:
@@ -122,18 +142,43 @@ def stock() -> ResponseReturnValue:
             return search.lower() in hay
         return True
 
-    return render_template(
-        "certificate/stock.html",
-        in_stock=[i for i in in_stock if keep(i)],
-        lent_out=[i for i in lent_out if keep(i)],
-        total_in_stock=len(in_stock),
-        total_lent_out=len(lent_out),
-        orphan_nos=orphan_nos,
-        search=search,
-        type_filter=type_filter,
-        cert_types=[label for label, *_ in CERT_SLOTS],
-        printed_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-    )
+    return {
+        "rows": [it for it in rows if keep(it)],
+        "total_in_stock": len(in_stock),
+        "total_lent_out": len(lent_out),
+        "orphan_nos": orphan_nos,
+        "search": search,
+        "type_filter": type_filter,
+        "status_filter": status_filter,
+        "ids": ",".join(sorted(ids)),
+        "cert_types": [label for label, *_ in CERT_SLOTS],
+        "printed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+@certificate_bp.route("/certificate/stock")
+@login_required
+def stock() -> ResponseReturnValue:
+    """盘库清单：此刻在控人员台账上的每一本证，一本一行，供打开柜子逐本核对。
+
+    首页那张「在库 N 本」只能核对总数——少一本多一本，看不出是哪一本。
+    这页给的是清单本身：按单位 / 部门 / 姓名排序（柜子一般也这么放）。
+
+    「借出未还」同表列出：盘库时手里这份清单要能回答「柜子里没有的那几本，
+    去哪儿了」，否则对不上时还得再翻一次系统。
+    """
+    return render_template("certificate/stock.html", **stock_rows(request.args))
+
+
+@certificate_bp.route("/certificate/stock/print")
+@login_required
+def stock_print() -> ResponseReturnValue:
+    """盘库清单的打印页（独立排版，不是把整张网页打出来）。
+
+    整页打印会把侧边栏、筛选表单、分页条一并印上纸，而且窗口化分页只显示当前页，
+    打出来的清单是残的。这里单开一页：只有表、表头跨页重复、每行一个空勾选框。
+    """
+    return render_template("certificate/stock_print.html", **stock_rows(request.args))
 
 
 @certificate_bp.route("/certificate/new", methods=["GET", "POST"])
@@ -174,7 +219,7 @@ def new() -> ResponseReturnValue:
         )
         db.commit()
         cert_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        log_action("create", "certificate", cert_id, after=row_snapshot("certificates", cert_id))
+        log_action("create", "certificates", cert_id, after=row_snapshot("certificates", cert_id))
         flash("证照登记已保存。", "success")
         return redirect(url_for("certificate.list"))
 
@@ -234,7 +279,7 @@ def edit(cert_id) -> ResponseReturnValue:
             ),
         )
         db.commit()
-        log_action("update", "certificate", cert_id,
+        log_action("update", "certificates", cert_id,
                    before=before, after=row_snapshot("certificates", cert_id))
         flash("证照信息已更新。", "success")
         # 换发新证时最容易漏的一步：号码换了，有效期或上交日期还留着旧证的。
@@ -265,7 +310,7 @@ def delete(cert_id) -> ResponseReturnValue:
     before = row_snapshot("certificates", cert_id)
     db.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))
     db.commit()
-    log_action("delete", "certificate", cert_id, before=before)
+    log_action("delete", "certificates", cert_id, before=before)
     flash("证照记录已删除。", "info")
     return redirect(url_for("certificate.list"))
 
@@ -372,6 +417,10 @@ def stock_split():
             seen.add(no)
             item = {
                 "cert_id": r["id"], "personnel_filing_id": r["personnel_filing_id"],
+                # 一本证的稳定标识：台账行 id + 号码槽列名。
+                # 不能用证件号码当 key——号码本该唯一，但数据出错时会重复，
+                # 那时勾一行会连带勾中另一个人的证。
+                "key": f"{r['id']}:{no_col}",
                 "unit": r["unit"], "department": r["department"], "name": r["name"],
                 "cert_type": label, "cert_no": no,
                 "expiry": r[exp_col] or "", "submit_date": r[sub_col] or "",

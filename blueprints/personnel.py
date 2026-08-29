@@ -236,7 +236,7 @@ def info_edit(info_id) -> ResponseReturnValue:
                                 (info_id,)).fetchall():
                 total += _sync_certificates(f["id"], department=data["department"])
             if total:
-                log_action("update", "certificate", None,
+                log_action("update", "certificates", None,
                            detail=f"随人员信息变更同步证照台账部门："
                                   f"{before['department']} → {data['department']}，共 {total} 条")
                 flash(f"已同步更新证照台账上的部门（{total} 条）。", "info")
@@ -380,7 +380,7 @@ def filing_edit(filing_id) -> ResponseReturnValue:
             unit=data["work_unit"] if data["work_unit"] != before["work_unit"] else None,
         )
         if synced:
-            log_action("update", "certificate", None,
+            log_action("update", "certificates", None,
                        detail=f"随备案人员信息变更同步证照台账：{old_name} → {new_name}"
                               f"／{before['work_unit']} → {data['work_unit']}，共 {synced} 条")
             flash(f"已同步更新证照台账上的姓名／单位（{synced} 条）。", "info")

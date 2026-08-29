@@ -181,7 +181,7 @@ def test_renewal_keeps_one_row_and_logs_old_number(with_passport):
     assert db.execute("SELECT COUNT(*) FROM certificates").fetchone()[0] == 1
     assert db.execute("SELECT passport_no FROM certificates").fetchone()[0] == "E99999999"
     snap = json.loads(db.execute(
-        "SELECT snapshot FROM operation_logs WHERE target_type='certificate' "
+        "SELECT snapshot FROM operation_logs WHERE target_type='certificates' "
         "AND action='update' ORDER BY id DESC LIMIT 1").fetchone()[0])
     db.close()
     assert snap["before"]["passport_no"] == "E11111111"

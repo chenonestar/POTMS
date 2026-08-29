@@ -225,31 +225,51 @@ def test_stock_list_names_every_document(c):
     assert "E1" in html, "借出未还的那本也要列，否则对不上时不知道去哪儿了"
 
 
-def test_stock_list_separates_in_stock_from_lent(c):
-    """两张表分开：柜子里对不上的，答案要在同一张纸上找得到。"""
+def _stock_row(html, cert_no):
+    """截出盘库清单里含该证件号码的那一行 <tr>。
+
+    整页断言分不清「在库」出现在哪一行——页面上到处都是这两个词（筛选下拉、
+    说明、统计徽章）。要看的是**这本证那一行的去向列**。
+    """
+    i = html.find(cert_no)
+    assert i != -1, f"清单里找不到 {cert_no}"
+    start = html.rfind("<tr", 0, i)
+    end = html.find("</tr>", i)
+    return html[start:end]
+
+
+def test_stock_list_marks_where_each_document_is(c):
+    """一张表 + 「去向」列：柜子里对不上的，答案在同一张纸的同一行上。
+
+    原来分成「应在库」「借出未还」两张表，于是通用的那套列表行为（勾选、排序、
+    窗口化分页、批量打印）每样都得写两遍，而且没有哪一份是「整份清单」。
+    """
     html = c.get("/certificate/stock").get_data(as_text=True)
-    assert "应在库" in html and "借出未还" in html
-    body = html.split("应在库", 1)[1]
-    in_stock_part, lent_part = body.split("借出未还", 1)
-    assert "E1" not in in_stock_part, "借出的那本被列进了「应在库」"
-    assert "E1" in lent_part
+    assert "借出未还" in _stock_row(html, "E1"), "借出的那本没标成「借出未还」"
+    for no in ("C1", "T1", "E2"):
+        assert "在库" in _stock_row(html, no), f"{no} 没标成「在库」"
+        assert "借出未还" not in _stock_row(html, no), f"{no} 被标成了「借出未还」"
 
 
 def test_stock_list_can_be_filtered(c):
-    """500 人的柜子，按种类或姓名分批盘是常态。"""
+    """500 人的柜子，按种类、姓名或去向分批盘是常态。"""
     only_hm = c.get("/certificate/stock?cert_type=往来港澳通行证").get_data(as_text=True)
     assert "C1" in only_hm and "E2" not in only_hm
 
     only_yi = c.get("/certificate/stock?search=乙").get_data(as_text=True)
     assert "E2" in only_yi and "C1" not in only_yi
 
+    only_out = c.get("/certificate/stock?status=借出未还").get_data(as_text=True)
+    assert "E1" in only_out, "「借出未还」筛不出借出的那本"
+    assert "E2" not in only_out and "C1" not in only_out, "「借出未还」把在库的也筛出来了"
+
 
 def test_stock_page_and_dashboard_agree(c):
     """两处必须同口径——它们本来就该是同一个函数算出来的。"""
     dash = c.get("/").get_data(as_text=True)
     stock = c.get("/certificate/stock").get_data(as_text=True)
-    m = re.search(r'badge bg-success">(\d+) 本', stock)
-    assert m, "盘库页上没有应在库的计数"
+    m = re.search(r'badge bg-success">在库 (\d+) 本', stock)
+    assert m, "盘库页上没有在库的计数"
     assert int(m.group(1)) == _stat(dash, "在库（本）")
 
 
@@ -289,3 +309,84 @@ def test_orphan_issuance_number_is_surfaced(c):
     # 台账上甲那本护照此时没人借，应当回到「应在库」
     assert c.get("/").get_data(as_text=True).count("E-NOT-IN-LEDGER") >= 1
     assert _stat(c.get("/").get_data(as_text=True), "在库（本）") == 4
+
+
+# ---------------------------------------------------------------------------
+# 盘库清单：与全站列表同形（勾选 / 排序 / 窗口化分页 / 批量打印）
+# ---------------------------------------------------------------------------
+def test_stock_list_uses_the_standard_list_markup(c):
+    """盘库清单必须长成全站列表的样子，否则通用行为一样也用不上。
+
+    此前它是两张自造的 table-sm 表：没有 id="mainTable"，于是 main.js 里那套
+    窗口化分页与表头排序整个不生效（那段代码只认这一个 id）；没有 .row-check，
+    于是勾选、导出选中行、批量打印也都没有。57 本证一次全倒在一页上。
+    """
+    html = c.get("/certificate/stock").get_data(as_text=True)
+    assert html.count('id="mainTable"') == 1, \
+        "盘库清单没有唯一的 #mainTable —— 窗口化分页与表头排序只认这个 id"
+    assert 'id="selectAll"' in html, "缺少全选框"
+    assert 'class="row-check"' in html, "缺少行勾选框（导出选中行 / 打印选中行都要它）"
+    assert "table-sm" not in html, \
+        "盘库清单用了 table-sm，行高与其余列表不一致"
+
+
+def test_stock_rows_carry_a_stable_key_not_the_cert_number(c):
+    """勾选框的值是「台账行 id + 号码槽」，不是证件号码。
+
+    号码本该唯一，但数据出错时会重复；用号码当 key，勾一行会连带勾中另一个人的证。
+    """
+    html = c.get("/certificate/stock").get_data(as_text=True)
+    assert 'value="1:passport_no"' in html
+    assert 'value="1:hm_pass_no"' in html
+
+
+def test_stock_print_page_is_standalone(c):
+    """打印走独立排版页，不是把整张网页打出来。
+
+    整页打印会把侧边栏、筛选表单、分页条一并印上纸；更糟的是窗口化分页只显示
+    当前页，打出来的清单是残的。
+    """
+    html = c.get("/certificate/stock/print").get_data(as_text=True)
+    assert "因私出国（境）证件盘库清单" in html
+    assert "sidebar" not in html and 'id="mainTable"' not in html, "打印页混进了主界面结构"
+    assert "display: table-header-group" in html, "表头没有设置跨页重复"
+    assert "盘点人（签字）" in html, "盘点表没有签字栏"
+    for no in ("E1", "E2", "C1", "T1"):
+        assert no in html, f"打印页缺 {no}"
+
+
+def test_stock_print_selected_only(c):
+    """打印选中行：勾了哪几本就只印哪几本。"""
+    html = c.get("/certificate/stock/print?ids=2:passport_no").get_data(as_text=True)
+    assert "E2" in html
+    for no in ("E1", "C1", "T1"):
+        assert no not in html, f"只勾了 E2，{no} 也被印出来了"
+
+
+def test_stock_selected_ids_win_over_other_filters(c):
+    """勾选行优先：勾了就按勾的来，其余筛选不再叠加。
+
+    否则「勾了 3 行却导出 2 行」说不清是谁的问题。
+    """
+    html = c.get("/certificate/stock/print?ids=1:passport_no&cert_type=往来港澳通行证"
+                 ).get_data(as_text=True)
+    assert "E1" in html, "勾中的 E1 被 cert_type 筛掉了"
+    assert "C1" not in html
+
+
+def test_stock_export_notes_are_one_per_line(c):
+    """填表说明一条一行。
+
+    NOTES_STOCK 曾经是一对括号包着的隐式拼接**字符串**（少了逗号），
+    而 _save_and_return 里 `for note in notes` 逐**字符**迭代 ——
+    打出来的填表说明一个字一行，几十行才拼出一句话。
+    """
+    import io
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(c.get("/export/cert-stock").data))
+    ws = wb["填表说明"]
+    lines = [r[0] for r in ws.iter_rows(values_only=True) if r[0]]
+    assert 2 <= len(lines) <= 20, f"填表说明有 {len(lines)} 行，不像是一条一行"
+    assert all(len(str(l)) > 1 for l in lines), \
+        f"填表说明被逐字符拆开了：{lines[:5]}"
+    assert any("在库" in str(l) for l in lines), "填表说明里没讲清口径"

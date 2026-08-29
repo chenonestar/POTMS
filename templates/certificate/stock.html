@@ -1,70 +1,53 @@
 {% extends "base.html" %}
 {% block title %}证件盘库清单{% endblock %}
 {% block content %}
-<style>
-.tick-box{display:inline-block;width:13px;height:13px;border:1px solid #6c757d;border-radius:2px;}
-@media print{
-    .print-head{display:block !important;}
-    .table-card{break-inside:auto;}
-    thead{display:table-header-group;}   /* 跨页时表头每页重复 */
-    tr{break-inside:avoid;}
-}
-</style>
-
-
-{% macro rows(items, empty_text) %}
-<div class="table-responsive">
-<table class="table table-sm table-hover mb-0 align-middle">
-    <thead class="table-light"><tr>
-        <th style="width:34px" class="text-center">✓</th>
-        <th style="width:44px" class="text-end text-muted">#</th>
-        <th>单位</th><th>部门</th><th>持证人</th>
-        <th>证件种类</th><th>证件号码</th><th>有效期至</th><th>上交日期</th>
-    </tr></thead>
-    <tbody>
-    {% for it in items %}
-    <tr>
-        <td class="text-center"><span class="tick-box"></span></td>
-        <td class="text-end text-muted small">{{ loop.index }}</td>
-        <td title="{{ it.unit }}">{{ it.unit }}</td>
-        <td>{{ it.department }}</td>
-        <td class="fw-semibold">{{ it.name }}</td>
-        <td>{{ it.cert_type }}</td>
-        <td><code>{{ it.cert_no }}</code></td>
-        <td>{{ it.expiry or '-' }}</td>
-        <td>{{ it.submit_date or '-' }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="9" class="text-center text-muted py-4">{{ empty_text }}</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% endmacro %}
-
-<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+<div class="d-flex justify-content-between align-items-center mb-3">
     <h4><i class="bi bi-clipboard-check"></i> 证件盘库清单</h4>
     <div>
-        <button type="button" class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> 打印</button>
-        <a href="{{ url_for('export.cert_stock_export', search=search, cert_type=type_filter) }}" class="btn btn-outline-success ms-1"><i class="bi bi-file-earmark-excel"></i> 导出</a>
+        <div class="dropdown d-inline-block">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-printer"></i> 打印</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="stockPrint(false);return false;">打印当前筛选结果</a></li>
+                <li><a class="dropdown-item" href="#" onclick="stockPrint(true);return false;">打印选中行</a></li>
+            </ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-layout-three-columns"></i> 列显示</button>
+            <ul class="dropdown-menu p-2" id="colMenu" style="min-width:160px;"></ul>
+        </div>
+        <div class="dropdown d-inline-block ms-1">
+            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" type="button"><i class="bi bi-file-earmark-excel"></i> 导出</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportFiltered('{{ url_for('export.cert_stock_export') }}');return false;">按当前筛选导出</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportSelected('{{ url_for('export.cert_stock_export') }}');return false;">导出选中行</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('export.cert_stock_export') }}">全量导出</a></li>
+            </ul>
+        </div>
         <a href="{{ url_for('certificate.list') }}" class="btn btn-outline-secondary ms-1"><i class="bi bi-arrow-left"></i> 返回台账</a>
     </div>
 </div>
 
-<div class="alert alert-info d-flex align-items-start py-2 no-print">
+<div class="alert alert-info d-flex align-items-start py-2">
     <i class="bi bi-info-circle me-2 mt-1"></i>
     <div class="small">
-        「应在库」列的是<strong>此刻应当躺在保管处的每一本证</strong>，一本一行，打开柜子逐本对即可。
-        口径：在控人员证照台账上登记的证，减去当前凭领用单借出未还的。
-        已撤控人员的证不在此列（撤控以证件收缴移交为前提）；做证人员自办、尚未交回入库的新证也不在此列
-        （它还没进过台账，也没进过柜子）。
+        本表列的是<strong>在控人员台账上登记的每一本证</strong>，一本一行，按「去向」分为
+        <span class="badge bg-success">在库</span>（此刻应当躺在保管处，打开柜子逐本对即可）与
+        <span class="badge bg-primary">借出未还</span>（凭领用单借出，柜子里找不到的应当都在这一档）。
+        已撤控人员的证不在此表（撤控以证件收缴移交为前提）；做证人员自办、尚未交回入库的新证也不在此表
+        （它还没进过台账，也没进过柜子）。<br>
+        <strong>勾选框</strong>用于选中行做打印 / 导出；打印出来的清单每行也是一个空框，盘库时逐本划勾。
     </div>
 </div>
 
-<div class="card mb-3 no-print"><div class="card-body py-2">
+<div class="card mb-3"><div class="card-body py-2">
     <form method="GET" class="row g-2 align-items-end">
-        <div class="col-md-4"><input type="text" class="form-control form-control-sm" name="search"
+        <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="search"
                placeholder="姓名 / 证件号码 / 单位 / 部门" value="{{ search }}"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="status">
+            <option value="">全部去向</option>
+            <option value="在库" {{ 'selected' if status_filter == '在库' }}>在库</option>
+            <option value="借出未还" {{ 'selected' if status_filter == '借出未还' }}>借出未还</option>
+        </select></div>
         <div class="col-md-3"><select class="form-select form-select-sm" name="cert_type">
             <option value="">全部证件种类</option>
             {% for t in cert_types %}<option value="{{ t }}" {{ 'selected' if type_filter == t }}>{{ t }}</option>{% endfor %}
@@ -76,47 +59,73 @@
     </form>
 </div></div>
 
-<div class="print-head d-none">
-    <h4 class="text-center mb-1">因私出国（境）证件盘库清单</h4>
-    <p class="text-center small text-muted mb-3">
-        打印时间：{{ printed_at }}　|　应在库 {{ total_in_stock }} 本，借出未还 {{ total_lent_out }} 本
-        {% if search or type_filter %}　|　筛选：{{ search }} {{ type_filter }}{% endif %}
-    </p>
-</div>
-
 {% if orphan_nos %}
 <div class="alert alert-warning d-flex align-items-start py-2">
     <i class="bi bi-exclamation-triangle me-2 mt-1"></i>
     <div class="small">
         有 {{ orphan_nos|length }} 条借出记录的号码在证照台账里找不到：
-        {% for n in orphan_nos %}<code>{{ n }}</code>{{ '、' if not loop.last }}{% endfor %}。
-        它们不在下面任何一张表里——盘库时如果发现柜子里多出这几本，原因在这儿。
+        {% for n in orphan_nos %}<a href="{{ url_for('issuance.list', search=n) }}" title="查看这条领用记录"><code>{{ n }}</code></a>{{ '、' if not loop.last }}{% endfor %}。
+        它们不在下表里——盘库时如果发现柜子里多出这几本，原因在这儿。点号码可直接查那条领用记录。
     </div>
 </div>
 {% endif %}
 
-<div class="table-card mb-4">
-    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-        <strong><i class="bi bi-safe text-success"></i> 应在库</strong>
-        <span>
-            <span class="badge bg-success">{{ in_stock|length }} 本</span>
-            {% if in_stock|length != total_in_stock %}<span class="badge bg-light text-dark border">共 {{ total_in_stock }} 本，当前为筛选结果</span>{% endif %}
-        </span>
-    </div>
-    {{ rows(in_stock, '没有应在库的证件') }}
+<div class="d-flex align-items-center gap-2 mb-2">
+    <span class="badge bg-success">在库 {{ total_in_stock }} 本</span>
+    <span class="badge bg-primary">借出未还 {{ total_lent_out }} 本</span>
+    <span class="text-muted small">＝ 在控人员台账登记 {{ total_in_stock + total_lent_out }} 本</span>
+    {% if rows|length != total_in_stock + total_lent_out %}
+    <span class="badge bg-light text-dark border">当前筛选 {{ rows|length }} 本</span>
+    {% endif %}
 </div>
 
-<div class="table-card">
-    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-        <strong><i class="bi bi-box-arrow-up-right text-primary"></i> 借出未还</strong>
-        <span class="text-muted small me-auto ms-2">柜子里找不到的，应当在这张表里</span>
-        <span class="badge bg-primary">{{ lent_out|length }} 本</span>
-    </div>
-    {{ rows(lent_out, '没有借出未还的证件') }}
-</div>
+<div class="table-card"><div class="table-responsive">
+<table id="mainTable" class="table table-hover mb-0">
+    <thead class="table-light"><tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" title="全选"></th>
+        <th data-col="去向">去向</th>
+        <th data-col="单位">单位</th><th data-col="部门">部门</th><th data-col="持证人">持证人</th>
+        <th data-col="证件种类">证件种类</th><th data-col="证件号码">证件号码</th>
+        <th data-col="有效期至">有效期至</th><th data-col="上交日期">上交日期</th>
+    </tr></thead>
+    <tbody>
+    {% for it in rows %}
+    <tr>
+        <td><input type="checkbox" class="row-check" value="{{ it.key }}"></td>
+        <td>{% if it.status == '在库' %}<span class="badge bg-success">在库</span>
+            {% else %}<span class="badge bg-primary">借出未还</span>{% endif %}</td>
+        <td title="{{ it.unit }}">{{ it.unit }}</td>
+        <td title="{{ it.department }}">{{ it.department }}</td>
+        <td class="fw-semibold">{{ it.name }}</td>
+        <td>{{ it.cert_type }}</td>
+        <td><code>{{ it.cert_no }}</code></td>
+        <td>{{ it.expiry or '-' }}</td>
+        <td>{{ it.submit_date or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="text-center text-muted py-4">没有符合条件的证件</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}
 
-<p class="text-muted small mt-3 no-print">
-    应在库 {{ total_in_stock }} 本 ＋ 借出未还 {{ total_lent_out }} 本 ＝
-    在控人员台账登记 {{ total_in_stock + total_lent_out }} 本。
-</p>
+{% block scripts %}
+<script>
+    initColumnToggle('mainTable', 'colMenu', 'cols_cert_stock');
+
+    // 打印走独立排版页（/certificate/stock/print），不是 window.print() 整张网页：
+    // 整页打印会把侧边栏、筛选表单、分页条一并印上纸，而且窗口化分页只显示当前页，
+    // 打出来的清单是残的。
+    function stockPrint(onlySelected) {
+        var base = '{{ url_for('certificate.stock_print') }}';
+        if (onlySelected) {
+            var ids = selectedRowIds();
+            if (!ids.length) { alert('请先勾选要打印的证件。'); return; }
+            window.open(base + '?ids=' + encodeURIComponent(ids.join(',')), '_blank');
+        } else {
+            window.open(base + window.location.search, '_blank');
+        }
+    }
+</script>
 {% endblock %}

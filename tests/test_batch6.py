@@ -136,7 +136,7 @@ def test_ledger_sync_is_logged(c):
     _edit_filing(c, surname="李", given_name="四")
     db = sqlite3.connect(Config.DATABASE)
     details = [r[0] or "" for r in db.execute(
-        "SELECT detail FROM operation_logs WHERE target_type='certificate' ORDER BY id DESC")]
+        "SELECT detail FROM operation_logs WHERE target_type='certificates' ORDER BY id DESC")]
     db.close()
     assert any("张三" in d and "李四" in d for d in details), f"日志里没有这次联动：{details[:3]}"
 
@@ -152,7 +152,7 @@ def test_editing_without_renaming_touches_nothing(c):
     """
     html = _edit_filing(c, position_or_title="处长").get_data(as_text=True)
     assert "已同步更新证照台账" not in html, "什么都没改，却报了一次同步"
-    assert _scalar("SELECT COUNT(*) FROM operation_logs WHERE target_type='certificate'") == 0, \
+    assert _scalar("SELECT COUNT(*) FROM operation_logs WHERE target_type='certificates'") == 0, \
         "什么都没改，却写了一条证照台账的联动日志"
 
 

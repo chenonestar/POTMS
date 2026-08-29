@@ -368,8 +368,11 @@ main > h4 i {
 .row-danger  { background: #fdf2f0 !important; }
 .row-danger:hover  { background: #f9e2de !important; }
 
-/* Empty state */
-.table tbody td.text-muted {
+/* 空状态行（“暂无记录”）。
+   判据是 td[colspan] —— 空状态行的唯一结构特征，而不是 .text-muted：
+   后者是 Bootstrap 的通用工具类，正常数据单元格也在用（行号列、日志变更表的旧值列），
+   按它加 32px 上下内边距，会把那些列表的行高撑到近两倍。 */
+.table tbody td[colspan] {
     color: var(--muted-light) !important;
     font-size: .88rem;
     padding: 32px 0;

@@ -68,7 +68,7 @@
             <a href="{{ url_for('issuance.new', travel_id=row.id) }}" class="btn btn-outline-success" title="证件领用登记"><i class="bi bi-vector-pen"></i></a>
             {% endif %}
             <a href="{{ url_for('travel.edit', travel_id=row.id) }}" class="btn btn-outline-warning" title="编辑"><i class="bi bi-pencil"></i></a>
-            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.delete', travel_id=row.id) }}" data-message="确定要删除 {{ row.name }} 的出国申请记录吗？"><i class="bi bi-trash"></i></button>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.delete', travel_id=row.id) }}" data-message="确定要删除 {{ row.name }} 的出国申请记录吗？{% if row.att_count %}该申请的 {{ row.att_count }} 个附件文件也会一并从磁盘删除，无法恢复。{% else %}删除后无法恢复（操作日志会留存这条记录的完整快照）。{% endif %}"><i class="bi bi-trash"></i></button>
         </div></td>
     </tr>
     {% else %}

@@ -27,6 +27,7 @@
         <div class="col-md-1"><select class="form-select form-select-sm" name="has_passport"><option value="">护照</option><option value="1" {{ 'selected' if has_passport == '1' }}>有护照</option><option value="0" {{ 'selected' if has_passport == '0' }}>无护照</option></select></div>
         <div class="col-md-1"><select class="form-select form-select-sm" name="has_hm"><option value="">港澳通行证</option><option value="1" {{ 'selected' if has_hm == '1' }}>有港澳</option><option value="0" {{ 'selected' if has_hm == '0' }}>无港澳</option></select></div>
         <div class="col-md-1"><select class="form-select form-select-sm" name="has_tw"><option value="">台湾通行证</option><option value="1" {{ 'selected' if has_tw == '1' }}>有台湾</option><option value="0" {{ 'selected' if has_tw == '0' }}>无台湾</option></select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="filing_status"><option value="">全部持证人</option><option value="active" {{ 'selected' if filing_status == 'active' }}>仅在控</option><option value="decontrolled" {{ 'selected' if filing_status == 'decontrolled' }}>仅已撤控</option></select></div>
         <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('certificate.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
     </form>
 </div></div>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>打印 — 因私出国（境）证件盘库清单</title>
+<style>
+  @page { size: A4 portrait; margin: 1.2cm; }
+  body { font-family: "SimSun", "Microsoft YaHei", serif; font-size: 9pt; color: #000; }
+  h3 { text-align: center; margin: 0 0 6px; font-size: 14pt; }
+  .sub { text-align: center; font-size: 8.5pt; color: #333; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #000; padding: 4px 5px; text-align: left; font-size: 8.5pt; }
+  th { background: #eee; font-weight: bold; white-space: nowrap; }
+  /* 跨页时表头每页重复，行不被切开 —— 盘库清单常有几十上百行 */
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  .tick { display: inline-block; width: 11px; height: 11px; border: 1px solid #000; }
+  .num { text-align: right; color: #444; }
+  .sign { margin-top: 18px; font-size: 9pt; display: flex; justify-content: space-between; }
+  .foot { margin-top: 10px; font-size: 8pt; color: #333; }
+  @media print { .no-print { display: none; } }
+  @media screen { body { max-width: 820px; margin: 20px auto; } }
+</style>
+</head>
+<body>
+
+<div class="no-print" style="margin-bottom:12px;">
+  <button onclick="window.print()" style="padding:6px 16px;font-size:14px;cursor:pointer;">打印（{{ rows|length }} 本）</button>
+  <button onclick="window.close()" style="padding:6px 16px;font-size:14px;cursor:pointer;margin-left:6px;">关闭</button>
+</div>
+
+<h3>因私出国（境）证件盘库清单</h3>
+<p class="sub">
+    打印时间：{{ printed_at }}
+    {% if ids %}　|　范围：选中 {{ rows|length }} 本
+    {% elif search or type_filter or status_filter %}　|　筛选：{{ search }} {{ status_filter }} {{ type_filter }}（{{ rows|length }} 本）
+    {% else %}　|　范围：全部 {{ rows|length }} 本{% endif %}
+</p>
+
+<table>
+    <thead><tr>
+        <th style="width:26px">✓</th>
+        <th style="width:34px">序号</th>
+        <th style="width:64px">去向</th>
+        <th>单位</th><th>部门</th><th>持证人</th>
+        <th>证件种类</th><th>证件号码</th><th>有效期至</th><th>上交日期</th>
+    </tr></thead>
+    <tbody>
+    {% for it in rows %}
+    <tr>
+        <td><span class="tick"></span></td>
+        <td class="num">{{ loop.index }}</td>
+        <td>{{ it.status }}</td>
+        <td>{{ it.unit }}</td>
+        <td>{{ it.department }}</td>
+        <td>{{ it.name }}</td>
+        <td>{{ it.cert_type }}</td>
+        <td>{{ it.cert_no }}</td>
+        <td>{{ it.expiry or '-' }}</td>
+        <td>{{ it.submit_date or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10" style="text-align:center;padding:16px;">没有符合条件的证件</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<p class="foot">
+    在库 {{ total_in_stock }} 本 ＋ 借出未还 {{ total_lent_out }} 本 ＝ 在控人员台账登记 {{ total_in_stock + total_lent_out }} 本。
+    {% if ids or search or type_filter or status_filter %}（本页为部分清单，上述总数为全量口径。）{% endif %}
+    已撤控人员的证不在此表；做证人员自办、尚未交回入库的新证也不在此表。
+</p>
+
+<div class="sign">
+    <span>盘点人（签字）：______________</span>
+    <span>复核人（签字）：______________</span>
+    <span>盘点日期：______年____月____日</span>
+</div>
+
+</body>
+</html>
