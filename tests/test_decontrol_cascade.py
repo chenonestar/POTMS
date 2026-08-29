@@ -85,7 +85,7 @@ def _overdue_count(cl):
     重复了，已删。现在名单在出国明细列表上，首页只留这个数。
     """
     html = cl.get("/").get_data(as_text=True)
-    m = re.search(r'>(\d+)</div>\s*<small class="text-muted">其中逾期（本）', html)
+    m = re.search(r'>(\d+)</div>\s*<small class="text-muted">逾期未交回（本）', html)
     assert m, "首页上找不到逾期那张卡"
     return int(m.group(1))
 

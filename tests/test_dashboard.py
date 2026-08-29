@@ -33,7 +33,8 @@ def c(tmp_path, monkeypatch):
     甲 在控，持 3 本（护照/港澳/台湾），护照凭领用单借出未还且已逾期
     乙 在控，持 1 本，没借过 —— 证一直在柜子里
     丙 已撤控，台账还留着一行 —— 证已随撤控移交，不在柜子里
-    丁 在控，路径B 做证自办，新证还没进台账 —— 从没进过柜子
+    丁 在控，路径B 做证自办，行程早已结束、新证还没交回 —— 在外且已逾期
+    戊 在控，路径B 做证自办，下个月才出发 —— 在外但还没到期
     """
     monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "t.db"))
     up = tmp_path / "up"; up.mkdir()
@@ -44,6 +45,7 @@ def c(tmp_path, monkeypatch):
     database.init_db(); database.run_migrations(); database.seed_data()
 
     ago = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
+    soon = (datetime.now() + timedelta(days=30)).strftime("%Y%m%d")
     db = sqlite3.connect(Config.DATABASE)
 
     def person(pid, nm, status="active"):
@@ -85,6 +87,13 @@ def c(tmp_path, monkeypatch):
                "need_new_passport,operator) VALUES "
                "(4,4,'总部','技术部','丁','科长',?,'美国/护照','01','历史',?,?,'是','admin')",
                (_VALID_ID, ago, ago))
+
+    person(5, "戊")
+    db.execute("INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,"
+               "id_number,destination_passport,category,travel_dates,travel_start,travel_end,"
+               "need_new_passport,operator) VALUES "
+               "(5,5,'总部','技术部','戊','科长',?,'美国/护照','01','下月',?,?,'是','admin')",
+               (_VALID_ID, soon, soon))
     db.commit(); db.close()
 
     from app import create_app
@@ -113,8 +122,8 @@ def test_four_buckets_count_documents_not_applications(c):
     html = c.get("/").get_data(as_text=True)
     assert _stat(html, "在库（本）") == 3, "在库应为 甲的港澳 + 甲的台湾 + 乙的护照"
     assert _stat(html, "借出未还（本）") == 1, "借出的只有甲那本护照"
-    assert _stat(html, "新办未入库（本）") == 1, "丁走路径B，新证还没进台账"
-    assert _stat(html, "其中逾期（本）") == 2, "甲（借出超期）+ 丁（做证未交回超期）"
+    assert _stat(html, "新办未入库（本）") == 2, "丁与戊都走路径B，新证都还没进台账"
+    assert _stat(html, "逾期未交回（本）") == 2, "甲（借出超期）+ 丁（做证未交回超期），戊还没到期"
 
 
 def test_stock_plus_lent_equals_ledger(c):
@@ -145,7 +154,22 @@ def test_overdue_is_a_subset_not_a_bigger_number(c):
     """
     html = c.get("/").get_data(as_text=True)
     out = _stat(html, "借出未还（本）") + _stat(html, "新办未入库（本）")
-    assert _stat(html, "其中逾期（本）") <= out, "逾期比「在外」的总数还大"
+    assert _stat(html, "逾期未交回（本）") <= out, "逾期比「在外」的总数还大"
+
+
+def test_new_making_is_not_automatically_overdue(c):
+    """「新办未入库」是一批证的去向，不是告警——里面只有超期的那部分才算逾期。
+
+    戊下个月才出发，证在他手上是正常的，不该催；丁回国 120 天了还没交回，那才该催。
+    两者都在「新办未入库」里，只有丁进「逾期未交回」。
+
+    这条也钉住了恒等式里的 ⊆ 是**真子集**而不是恒等：少了戊这个样本，
+    逾期恰好等于「借出 + 新办」，代码把 ⊆ 写成 = 也测不出来。
+    """
+    html = c.get("/").get_data(as_text=True)
+    out = _stat(html, "借出未还（本）") + _stat(html, "新办未入库（本）")
+    assert out == 3 and _stat(html, "逾期未交回（本）") == 2, \
+        "戊（还没出发）被算进逾期了，或者丁（早该交回）没被算进去"
 
 
 def test_decontrolled_certificate_is_not_in_stock(c):
