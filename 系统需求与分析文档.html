@@ -1652,7 +1652,9 @@
 <thead><tr><th style="width:140px">层次</th><th style="width:200px">位置</th><th>口径</th></tr></thead>
 <tbody>
 <tr><td><strong>全局搜索</strong></td><td><code>/search?q=</code></td>
-    <td>一次搜遍四个模块：备案人员（姓名拼接 / 身份证）、证照台账（姓名 / 三个号码）、出国申请（姓名 / 目的地 / 证件号）、撤控备案（姓名 / 身份证 / 撤控原因）。<strong>每个模块最多 50 条</strong>（<code>_LIMIT</code>）——它是「快速定位」，不是报表。</td></tr>
+    <td>一次搜遍<strong>五个</strong>模块：备案人员（姓名拼接 / 身份证）、证照台账（姓名 / 三个号码）、出国申请（姓名 / 目的地 / 证件号）、<strong>证件领用</strong>（领用人 / 身份证 / 证件号码）、撤控备案（姓名 / 身份证 / 撤控原因）。<strong>每个模块最多 50 条</strong>（<code>_LIMIT</code>）——它是「快速定位」，不是报表。<br>
+    <span class="badge b-done">判据共用</span> 领用那一组不自己写匹配条件，直接借 <code>issuance.build_filters({"search": q})</code>——与领用列表的搜索框同源。各写一套的话，同一个号码在两处搜出不同结果，而用户没有任何办法知道哪一处是对的。只借 WHERE 不借 SELECT：<code>BASE_SELECT</code> 取 <code>i.*</code>，里面有两列手写签名 BLOB，列个表不必把它们捞出来。<br>
+    <span class="badge b-p2">口径</span> <u>已归还、已作废的领用单同样搜得到</u>——搜索是「找东西」，不是「找在办的东西」；作废单上有本人签名、仍要留档，查历史时必须找得到。</td></tr>
 <tr><td><strong>列表页筛选</strong></td><td>各模块 <code>build_filters()</code></td>
     <td>每个模块一个函数，同时服务列表页与该模块的导出，<u>筛选条件只写一次</u>。出国明细的 <code>?passport_status=overdue</code> 直接用 <code>_overdue_ids()</code> 的集合，与首页那个数同源。</td></tr>
 <tr><td><strong>分页</strong></td><td><code>list_all()</code> / <code>paginate()</code></td>
@@ -1862,8 +1864,6 @@
     <td>「Python 为源头」「schema 改了要重新生成两份」「新测试必须验证会红」这些规矩全靠口头传，换人就断。<u>本文的第 0 章与第 15 章接住了一部分，但工程约定仍然没有落纸。</u></td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td><strong>盘库只能出清单，盘点结果回不到系统</strong></td>
     <td>现在能打印一张带勾选框的清单、逐本划勾，但划完的那张纸没有入口回到系统。查不到「上次什么时候盘的、应到多少、实到多少、缺哪几本、谁盘的」。<u>「盘库」目前实为「打印一张单子」。</u></td></tr>
-<tr><td><span class="badge b-p3">低</span></td><td><strong>全局搜索不搜领用单</strong></td>
-    <td><code>search.py</code> 只搜备案 / 证照 / 出国申请 / 撤控四类。按证件号码搜，搜得到台账与出行，<u>搜不到「这本证现在在谁手上」的那张领用单</u>——而领用单才是这件事的权威来源。</td></tr>
 <tr><td><span class="badge b-p3">低</span></td><td>系统内<strong>没有「从备份恢复」的入口</strong></td>
     <td>真出事时操作员要停服、找文件、改文件名（README 三步），容易再出错。</td></tr>
 <tr><td><span class="badge b-p3">低</span></td><td>Go 与 Python 版<strong>没有版本号字符串</strong></td>
@@ -1890,6 +1890,9 @@
 <tr><td><span class="badge b-new">顺带</span> 空状态样式 <code>.table tbody td.text-muted</code> 误伤数据单元格，把盘库清单与日志变更表的行高撑到近两倍（实测 88px vs 全站 39px）</td>
     <td>判据改成 <code>td[colspan]</code>——空状态行的唯一结构特征，而 <code>text-muted</code> 是通用工具类</td>
     <td><code>test_empty_state_style_keys_on_colspan_not_text_muted</code></td></tr>
+<tr><td><strong>全局搜索不搜领用单</strong>——按证件号码搜，搜得到台账（登记在谁名下）、搜得到出行（哪次用了它），唯独搜不到「这本证现在在谁手上」的那张领用单</td>
+    <td>补上第五组结果，匹配条件直接借领用模块的 <code>build_filters</code>（判据同源）。已归还与已作废的也搜得到。见 13.3</td>
+    <td><code>tests/test_search.py</code>（9 例），含一条直接断言「全局搜索与领用列表指向同一条记录」</td></tr>
 <tr><td><span class="badge b-new">顺带</span> 表头排序无条件跳过最后一列，而最后一列不一定是操作列——盘库清单的「上交日期」点不动</td>
     <td>判据改成「最后一列<u>且没有 <code>data-col</code></u>」，各列表的操作列都长这样</td>
     <td>逐页实测：7 个列表页的末列仍是不可排序的「操作」</td></tr>
