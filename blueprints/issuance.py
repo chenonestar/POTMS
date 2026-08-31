@@ -567,4 +567,28 @@ def _validate_form(data: dict) -> list[str]:
             (data["travel_id"],)).fetchone()
         if dup:
             errors.append(f"该出行记录已有未归还的领用记录（#{dup['id']}），请先办理归还或作废。")
+
+    # 一本证同时只能在一个人手上——号码级的跨申请查重。
+    #
+    # 上面那条只查同一条出行（travel_id = ?），拦不住「这本证已经因为另一条
+    # 申请借出去了、还没还回来」。实体证只有一本，两张都签了字的未归还领用单
+    # 同时指向它时：
+    #   - 归还时该销哪一张？作废其中一张，另一张继续挂着「未归还」；
+    #   - 领用列表 ?status=issued 显示两行，首页「借出未还（本）」只算一本
+    #     （lent_out_numbers 返回的是号码集合，天然去重），数字与列表当场对不上。
+    # 恒等式「在库 + 借出未还 = 台账总本数」倒是没被打破，破的是领用单与实体
+    # 证件的一一对应——而领用单上有本人手写签名，是这套系统的凭证。
+    #
+    # 只看 status='issued'：已归还、已作废的都不算占用，同一本证还回来之后
+    # 再借给同一个人或别人，都是正常业务，不能拦。
+    no = (data.get("cert_nos") or "").strip()
+    if no:
+        held = get_db().execute(
+            "SELECT id, holder_name, travel_id FROM cert_issuance "
+            "WHERE cert_nos = ? AND status = 'issued' LIMIT 1", (no,)).fetchone()
+        if held:
+            errors.append(
+                f"证件号码 {no} 已由 {held['holder_name']} 领用且尚未归还"
+                f"（领用记录 #{held['id']}，出国申请 #{held['travel_id']}）。"
+                "一本证件同时只能在一个人手上，请先办理该记录的归还或作废。")
     return errors

@@ -1392,7 +1392,7 @@
     <td>领用记录列表 <code>?status=issued</code></td></tr>
 <tr><td><span class="badge" style="background:#e67e22">新办未入库</span></td><td>本</td><td><code>travel.new_making_travel_ids()</code></td>
     <td>做证（<code>need_new_passport='是'</code>）、行程未取消、在控，且新证号码<u>尚未进入证照台账</u>。<strong>不带时间条件</strong>——「还没交回」不等于「已经逾期」。</td>
-    <td>出国明细列表 <code>?need_new_passport=是</code></td></tr>
+    <td>出国明细列表 <code>?passport_status=pending_new</code>——<strong>首页这个数必须与该筛选筛出的行数永远一致</strong>。此处<u>曾经链到 <code>?need_new_passport=是</code></u>，那是一个纯列匹配，把已交回入库、已取消行程、已撤控三类全列了进来（实测卡上 1 本、点进去 4 行）</td></tr>
 <tr><td><span class="badge" style="background:#c0392b">逾期未交回</span></td><td>本</td><td><code>travel._overdue_ids()</code></td>
     <td>路径 A（已领用未归还超期）＋ 路径 B（做证未入库超期），两类都只算在控人员。<u>直接用出国明细那一套判据，不在首页另算一遍</u>。</td>
     <td>出国明细列表 <code>?passport_status=overdue</code>——<strong>首页这个数必须与该筛选筛出的行数永远一致</strong></td></tr>
@@ -1856,7 +1856,7 @@
 <thead><tr><th style="width:70px">优先级</th><th style="width:300px">欠什么</th><th>影响</th></tr></thead>
 <tbody>
 <tr><td><span class="badge b-p1">高</span></td>
-    <td><strong>第 4–6 批与仪表盘四档改造只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
+    <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的三批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
     <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td><code>release.yml</code>（425 行，五版一次出齐）<strong>从来没有真正跑过一次</strong></td>
     <td>真到发版那天才第一次跑，是最不该冒的险。应当先拿一个测试 tag 空跑一遍。</td></tr>
@@ -1896,6 +1896,15 @@
 <tr><td><span class="badge b-new">顺带</span> 表头排序无条件跳过最后一列，而最后一列不一定是操作列——盘库清单的「上交日期」点不动</td>
     <td>判据改成「最后一列<u>且没有 <code>data-col</code></u>」，各列表的操作列都长这样</td>
     <td>逐页实测：7 个列表页的末列仍是不可排序的「操作」</td></tr>
+<tr><td><strong>首页「新办未入库」的数与它点开的列表对不上</strong>——卡片的数取自 <code>new_making_travel_ids()</code>（排除已交回入库 / 已取消行程 / 已撤控），链接却指向 <code>?need_new_passport=是</code> 这个纯列匹配。实测卡上 1 本、点进去 4 行</td>
+    <td>列表补 <code>?passport_status=pending_new</code> 一档，<u>直接调卡片背后的同一个函数</u>；卡片链接改指它，并把该档放进列表的筛选下拉</td>
+    <td><code>test_card_number_equals_the_rows_its_link_shows</code>（链接从首页 HTML 里取，不在测试里另拼）<br><code>test_the_three_kinds_the_old_link_wrongly_listed</code>：乙丙丁逐类点名</td></tr>
+<tr><td><span class="badge b-new">顺带</span> 出国明细「证件状态」下拉里残留<strong>老口径</strong>的「在库 / 领用中」两档，判据是 <code>passport_collect_date</code> 有没有值——按出行记录行算，而现在的「在库」按证件本数算（<code>stock_split</code>）。同一个词在两个页面指两件事</td>
+    <td>整档撤掉，不重新对口径：出国明细本来就不是盘库的地方。下拉只剩与首页同源的「新办未入库 / 逾期未交回」</td>
+    <td><code>test_retired_stock_and_inuse_options_are_gone</code><br><code>test_both_remaining_filters_share_the_dashboard_functions</code>：筛出的 id 集合必须与函数返回的完全相同</td></tr>
+<tr><td><strong>同一本证可被跨出国申请重复领用</strong>——领用查重只看 <code>travel_id = ?</code>，另一条申请拿同一号码再开一张未归还领用单照样过。<u>恒等式并没有被打破</u>（<code>lent_out_numbers()</code> 返回号码集合，天然去重），破的是「一本实体证 ↔ 一张签字领用单」的对应，以及「首页 1 本 / 列表 2 行」</td>
+    <td>加号码级的跨申请查重：<code>cert_nos</code> 已存在 <code>status='issued'</code> 的记录即拦下，提示点名前一张单的编号与持有人。只看 <code>issued</code>——归还后再借、作废后重登记都是正常业务，不能拦</td>
+    <td><code>test_same_certificate_cannot_be_issued_twice_at_once</code> 及三条边界对照（已归还 / 已作废 / 空号码）<br><code>test_the_count_and_the_list_agree_after_the_guard</code></td></tr>
 </tbody></table></div>
 
 <div class="rule"><strong>这份文档自己也在这张清单上。</strong>

@@ -38,17 +38,23 @@ def build_filters(args, ids=None):
     if args.get("need_new_passport", "").strip():
         where += " AND need_new_passport = ?"
         params.append(args.get("need_new_passport").strip())
-    # 证件流转状态（在库/领用中/逾期未还），与首页仪表盘卡片口径一致
+    # 证件流转状态：两档都直接调首页仪表盘那两张卡背后的同一个函数，
+    # 判据一个字都不在这里重写——卡片上的数字和点进来的列表必须永远对得上。
+    #
+    # 这里原先还有「在库」「领用中」两档，判据是 passport_collect_date 有没有值。
+    # 那是四档改造之前的老定义，已经作废：在库是**按证件本数**算的（以证照台账
+    # 为准，见 certificate.stock_split），这里却是按出行记录行数算，同一个词在
+    # 两个页面指两件事，比没有这个筛选更糟，故整档撤掉。
+    #
+    # 「新办未入库」这一档是补上的：首页那张卡此前链到 ?need_new_passport=是，
+    # 那是个纯列匹配，把已交回入库的、已取消行程的、已撤控的全列了进来
+    # ——实测卡片数字 1 本、点进去 4 行。
     ps = args.get("passport_status", "").strip()
-    if ps == "storage":
-        where += " AND (passport_collect_date IS NULL OR passport_collect_date = '')"
-    elif ps == "inuse":
-        where += " AND passport_collect_date IS NOT NULL AND passport_collect_date != '' " \
-                 "AND (passport_return_date IS NULL OR passport_return_date = '')"
-    elif ps == "overdue":
-        # 逾期口径为「已领用 + 未归还 + 超过工作日时限」，需按行计算，
-        # 故先在 Python 中算出逾期记录的 id 集合，再以 id 限定。
-        oids = _overdue_ids()
+    id_source = {"pending_new": new_making_travel_ids, "overdue": _overdue_ids}.get(ps)
+    if id_source:
+        # 两档的判据都要按行计算（工作日时限、号码是否已进台账），SQL 里表达不了，
+        # 故先在 Python 中算出 id 集合，再以 id 限定。
+        oids = id_source()
         if oids:
             ph = ",".join("?" for _ in oids)
             where += f" AND id IN ({ph})"
