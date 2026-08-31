@@ -16,10 +16,11 @@ import sqlite3
 import pytest
 
 from config import Config
+from conftest import seed_required_attachments, valid_id
 from tests.test_issuance import _PNG_DATA_URL as _PNG
 
 _CSRF = re.compile(r'name="csrf-token" content="([^"]+)"')
-_VALID_ID = "110101199001012133"
+_VALID_ID = valid_id(1)   # 1 号人物；其余人各用 valid_id(pid)
 
 
 @pytest.fixture()
@@ -39,7 +40,7 @@ def c(tmp_path, monkeypatch):
                    "id_number,residence,political_status,work_unit,position_or_title,"
                    "supervisor_unit,operator) VALUES (?,?,'','男','19900101',?,"
                    "'浙江宁波市鄞州区','群众','总部','科长','人事处','admin')",
-                   (pid, nm, _VALID_ID))
+                   (pid, nm, valid_id(pid)))
     db.execute("INSERT INTO certificates (id,personnel_filing_id,unit,department,name,"
                "passport_no,passport_expiry,passport_submit_date,operator) "
                "VALUES (1,1,'总部','技术部','路径A张三','E12345678','20351231','20250101','admin')")
@@ -55,6 +56,11 @@ def c(tmp_path, monkeypatch):
                "travel_end,need_new_passport,operator) VALUES "
                "(2,2,'总部','技术部','路径B李四','科长',?,'美国/护照','01',"
                "'2026/03/01-2026/03/10','20260301','20260310','是','admin')", (_VALID_ID,))
+    # 出行 1 按路径B 备齐三件。它本身是路径A，多一件《同意申办函》无害；
+    # 而下面「换申请人」的用例必须同时把「是否做证」改成是（2 号名下没有证，
+    # 选否会被「没有可用证件」那条校验挡下），换路径之后这一件就成了必传项。
+    seed_required_attachments(db, 1, "是")
+    seed_required_attachments(db, 2, "是")
     db.commit(); db.close()
 
     from app import create_app

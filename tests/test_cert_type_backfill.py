@@ -9,11 +9,12 @@ import sqlite3
 import pytest
 
 from config import Config
+from conftest import valid_id
 from database import (BACKFILL_REMARK_INFERRED, BACKFILL_REMARK_LEGACY,
                       BACKFILL_REMARK_PENDING)
 
 _CSRF = re.compile(r'name="csrf-token" content="([^"]+)"')
-_VALID_ID = "110101199001012133"
+_VALID_ID = valid_id(1)   # 1 号人物；其余人各用 valid_id(pid)
 
 # (姓名, 证照登记表里持有的 {种类: 号码}, 出行表填的证件号, 「地点、证照」, 应判出的种类)
 _CASES = [
@@ -47,7 +48,7 @@ def _seed_legacy(tmp_path, monkeypatch, *, with_issuance_rows):
         db.execute("INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,"
                    "id_number,residence,political_status,work_unit,position_or_title,"
                    "supervisor_unit,operator) VALUES (?,?,'','男','19900101',?,'北京','群众',"
-                   "'总部','科长','人事处','admin')", (i, nm, _VALID_ID))
+                   "'总部','科长','人事处','admin')", (i, nm, valid_id(i)))
         cols = ",".join(_COL[c] for c in held)
         qs = ",".join("?" for _ in held)
         db.execute(f"INSERT INTO certificates (personnel_filing_id,unit,department,name,"

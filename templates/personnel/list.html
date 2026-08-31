@@ -44,6 +44,29 @@
     </form>
 </div></div>
 
+{# 存量同号告警：一个号码点一行，直接给出能筛到那几条的链接。
+   这是待办不是提示，订正干净之前一直显示（订正完库层唯一索引也就建上了）。 #}
+{% if dup_ids.filing or dup_ids.info %}
+<div class="alert alert-danger" data-block="dup-id-numbers">
+    <div class="d-flex align-items-center mb-1">
+        <i class="bi bi-exclamation-octagon-fill me-2"></i>
+        <strong>发现身份证号重复的存量数据，请订正</strong>
+    </div>
+    <div class="small">
+        「一人一号一备案」是撤控重报关联、批量导入查重、全局搜索共同依赖的前提，
+        同号会让这些地方指错人。订正完成前，数据库层的唯一约束也建不上。
+    </div>
+    {% for no, n in dup_ids.filing %}
+    <div class="small mt-1">有效备案 <code>{{ no }}</code> 共 {{ n }} 条 —
+        <a href="{{ url_for('personnel.list', search=no, status='active') }}">筛出这几条</a></div>
+    {% endfor %}
+    {% for no, n in dup_ids.info %}
+    <div class="small mt-1">信息登记表 <code>{{ no }}</code> 共 {{ n }} 张 —
+        <a href="{{ url_for('personnel.info_list', search=no) }}">到信息表管理订正</a></div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <div class="table-card"><div class="table-responsive">
 <table id="mainTable" class="table table-hover mb-0">
     <thead class="table-light"><tr>

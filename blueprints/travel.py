@@ -219,6 +219,14 @@ def list() -> ResponseReturnValue:
 _REQUIRED_A = ["个人申请报告", "审批表"]
 _REQUIRED_B = ["个人申请报告", "审批表", "同意申办函"]
 
+# 表单字段 → 附件类型（file_type）。必传校验、缺件检查、落盘入库三处共用一份，
+# 各自手抄的话，改个字段名就会出现「校验说传了、入库却没存」这种最难查的错位。
+ATT_FIELDS = {
+    "att_application": "个人申请报告",
+    "att_approval": "审批表",
+    "att_consent": "同意申办函",
+}
+
 
 def _file_type_order_sql(col: str = "a.file_type") -> str:
     """把附件类型排成办件顺序（个人申请报告 → 审批表 → 同意申办函）的 CASE 表达式。
@@ -290,10 +298,9 @@ def attachments() -> ResponseReturnValue:
     ).fetchall()
     missing = []
     for tv in travels:
-        have = {r["file_type"] for r in db.execute(
-            "SELECT DISTINCT file_type FROM attachments WHERE travel_id = ?", (tv["id"],)).fetchall()}
-        required = _REQUIRED_B if tv["need_new_passport"] == "是" else _REQUIRED_A
-        lack = [r for r in required if r not in have]
+        # 与新增/编辑的必传校验同一个函数：总览页报缺件、编辑页却能保存，
+        # 就是这里各写一套造成的。
+        lack = lacking_attachment_types(tv["id"], tv["need_new_passport"])
         if lack:
             missing.append({"id": tv["id"], "name": tv["name"], "unit": tv["unit"],
                             "path": "B" if tv["need_new_passport"] == "是" else "A", "lack": lack})
@@ -321,7 +328,7 @@ def new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
-        errors += _missing_attachment_errors(request.files, data["need_new_passport"])
+        errors += _attachment_errors(None, data["need_new_passport"], request.files)
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -394,6 +401,9 @@ def edit(travel_id) -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
+        # 编辑同样要过必传附件这一关。库里已有的算数，所以正常改个日期不会
+        # 被要求重传；但把附件删光之后保存就会被挡下——那正是此前的漏洞。
+        errors += _attachment_errors(travel_id, data["need_new_passport"], request.files)
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -625,6 +635,16 @@ def attachment_delete(att_id) -> ResponseReturnValue:
         db.execute("DELETE FROM attachments WHERE id = ?", (att_id,))
         db.commit()
         flash("附件已删除。", "info")
+        # 删除本身不拦——换一份传错的扫描件，本来就得先删再传。但删完之后
+        # 这条申请缺了什么必须当场说清楚，否则人走开了就再也不知道。
+        # 真正的关卡在保存那一步：缺件时 travel.edit 会直接挡下。
+        tv = db.execute("SELECT need_new_passport FROM travel_details WHERE id = ?",
+                        (travel_id,)).fetchone()
+        if tv:
+            lack = lacking_attachment_types(travel_id, tv["need_new_passport"])
+            if lack:
+                flash("本申请现缺少必备附件：" + "、".join(f"《{t}》" for t in lack)
+                      + "。请补传后再保存——缺件状态下保存会被拒绝。", "warning")
         return redirect(url_for("travel.edit", travel_id=travel_id))
     flash("附件不存在。", "danger")
     return redirect(url_for("travel.list"))
@@ -712,26 +732,43 @@ def _is_pdf(f) -> bool:
     return head == b"%PDF-"
 
 
-def _missing_attachment_errors(files, need_new_passport: str) -> list:
-    """附件必填校验：路径A须含《个人申请报告》《审批表》；路径B（需做证）另须《同意申办函》。
-    同时做 PDF 魔数预检，伪造扩展名的文件在入库前即被拦截。"""
+def lacking_attachment_types(travel_id, need_new_passport: str, files=None) -> list:
+    """这条申请**还缺**哪几种必备附件。
+
+    判据只写一次：附件总览的「缺件检查」、新增时的必传校验、编辑保存时的必传
+    校验，三处都调它。此前三处各写一套（准确说是编辑那处压根没有），后果是
+    总览页明明报了缺件、编辑页照样能保存——实测把附件删光后保存，返回 200，
+    附件仍为 0，一条缺《个人申请报告》《审批表》的申请就这么留在了库里。
+
+    「已有」= 库里已挂在这条申请上的 ＋ 本次请求一并上传的：
+      - 新增时 travel_id 还不存在，只能看本次上传；
+      - 编辑时两者都要算，否则改一次表单就得把附件全部重传一遍。
+
+    路径由 need_new_passport 决定，取的是**表单提交上来的值**而不是库里的旧值：
+    把「是否做证」从否改成是，《同意申办函》当场就成了必传项。
+    """
+    have = set()
+    if travel_id:
+        have |= {r["file_type"] for r in get_db().execute(
+            "SELECT DISTINCT file_type FROM attachments WHERE travel_id = ?", (travel_id,))}
+    if files is not None:
+        have |= {t for field, t in ATT_FIELDS.items()
+                 if any(f and f.filename for f in files.getlist(field))}
+    required = _REQUIRED_B if need_new_passport == "是" else _REQUIRED_A
+    return [t for t in required if t not in have]
+
+
+def _attachment_errors(travel_id, need_new_passport: str, files) -> list:
+    """必传附件校验 + PDF 魔数预检。travel_id 为 None 表示新增。"""
     errors = []
-
-    def _has(field):
-        for f in files.getlist(field):
-            if f and f.filename:
-                return True
-        return False
-
-    if not _has("att_application"):
-        errors.append("附件《个人申请报告》为必传项（PDF）。")
-    if not _has("att_approval"):
-        errors.append("附件《审批表》为必传项（PDF）。")
-    if need_new_passport == "是" and not _has("att_consent"):
-        errors.append("需新办证件（路径B）时，《同意申办函》为必传项（PDF）。")
+    for t in lacking_attachment_types(travel_id, need_new_passport, files):
+        if t == "同意申办函":
+            errors.append("需新办证件（路径B）时，《同意申办函》为必传项（PDF）。")
+        else:
+            errors.append(f"附件《{t}》为必传项（PDF）。")
 
     # 魔数预检：提交阶段即拒绝非 PDF 内容，避免"记录已存、必传附件被拒"的不一致
-    for field in ("att_application", "att_approval", "att_consent"):
+    for field in ATT_FIELDS:
         for f in files.getlist(field):
             if f and f.filename and not _is_pdf(f):
                 errors.append(f"文件 {f.filename} 内容不是有效的 PDF，请上传真实的 PDF 扫描件。")
@@ -740,13 +777,8 @@ def _missing_attachment_errors(files, need_new_passport: str) -> list:
 
 def _save_attachments(travel_id: int, files):
     """保存分类上传的 PDF 附件"""
-    CATEGORIES = {
-        "att_application": "个人申请报告",
-        "att_approval": "审批表",
-        "att_consent": "同意申办函",
-    }
     db = get_db()
-    for field_name, display_name in CATEGORIES.items():
+    for field_name, display_name in ATT_FIELDS.items():
         if field_name not in files:
             continue
         for f in files.getlist(field_name):

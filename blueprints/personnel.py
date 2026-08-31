@@ -18,6 +18,64 @@ from utils.validators import (
 personnel_bp = Blueprint("personnel", __name__)
 
 
+# ===========================================================================
+# 「一人一号一备案」——身份证号唯一性
+# ===========================================================================
+# 这条不变量此前只有**新增**路径守着，两条编辑路径都能绕过去：
+#   - info_edit   根本不查重，可以把甲的身份证改成乙的，造出两张同号信息登记表；
+#   - filing_edit 以 skip_id_dup_check=True 调用校验，整条跳过。那个参数的本意
+#     是「别把自己判成重复」，代价却是「改成别人的号码」也一并放行。
+#     正确的写法是**排除自身**（id != ?），不是放弃检查。
+#
+# 下游一大片东西依赖这条唯一性：撤控重报关联（按 id_number 找旧记录）、批量
+# 导入查重、全局搜索、按人汇总的各类告警。同号一旦出现，这些地方全会指错人。
+#
+# 两张表的口径不同，这里把完整 SQL 写成字面量而不是拼表名——判据只写一次，
+# 库层的唯一索引（database.run_migrations 里的 ux_info_id_number /
+# ux_pf_active_id_number）与这两句必须说的是同一件事。
+_DUP_SQL = {
+    # 信息登记表：全量唯一。一个人只该有一张，不分状态。
+    "info": "SELECT id FROM personnel_info WHERE id_number = ?",
+    # 登记备案表：只在有效备案内唯一。撤控后重新报备是正常业务，
+    # 那条已撤控的旧记录不占号（filing_new 还会主动去找它建立新旧关联）。
+    "filing": "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'active'",
+}
+
+
+def _same_id_number(kind: str, id_number: str, self_id=None):
+    """同号的另一条记录（排除自身），没有则 None。"""
+    if not (id_number or "").strip():
+        return None            # 空不是一个号码，两条空值不代表撞了同一个人
+    sql, params = _DUP_SQL[kind], [id_number.strip()]
+    if self_id:
+        sql += " AND id != ?"
+        params.append(self_id)
+    return get_db().execute(sql + " ORDER BY id LIMIT 1", params).fetchone()
+
+
+def duplicate_id_numbers() -> dict:
+    """存量体检：库里**已经**存在的同号数据，按号码分组给出条数。
+
+    加校验只挡新的，挡不住已经躺在库里的——而这条不变量长期只有新增路径守着，
+    存量里很可能已经有了。不报出来会有两个后果：库层唯一索引静默建不上，
+    而操作员永远不知道系统里有两个同号的人。
+
+    返回 {"info": [(号码, 条数), ...], "filing": [...]}，两处都排除空号码，
+    与唯一索引的 WHERE 子句一致。SQL 整句写死不拼表名，理由同 _DUP_SQL。
+    """
+    db = get_db()
+    return {
+        "info": [(r["id_number"], r["n"]) for r in db.execute(
+            "SELECT id_number, COUNT(*) AS n FROM personnel_info "
+            "WHERE COALESCE(id_number, '') != '' "
+            "GROUP BY id_number HAVING n > 1 ORDER BY id_number")],
+        "filing": [(r["id_number"], r["n"]) for r in db.execute(
+            "SELECT id_number, COUNT(*) AS n FROM personnel_filing "
+            "WHERE COALESCE(id_number, '') != '' AND status = 'active' "
+            "GROUP BY id_number HAVING n > 1 ORDER BY id_number")],
+    }
+
+
 def _sync_certificates(filing_id, name=None, unit=None, department=None) -> int:
     """人员信息变了，把证照台账上那份跟着改，返回改动条数。
 
@@ -121,6 +179,11 @@ def list() -> ResponseReturnValue:
     return render_template(
         "personnel/list.html",
         items=pg,
+        # 存量体检：库里已有的同号数据。校验只挡新的，挡不住已经躺在库里的，
+        # 而库层的唯一索引也正因为它们建不上（见 database.run_migrations）。
+        # 常驻在列表顶部而不是 flash 一次——这是一笔要人去订正的待办，
+        # 订正干净之前它就该一直在。
+        dup_ids=duplicate_id_numbers(),
         search=search,
         status_filter=status_filter,
         political_filter=political_filter,
@@ -152,13 +215,10 @@ def info_new() -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_info_form(request.form)
         errors = _validate_info_form(data)
-        # #5 防重复：同一身份证号已存在信息登记表则拦截（避免产生同号孤儿行；
+        # 防重复：同一身份证号已存在信息登记表则拦截（避免产生同号孤儿行；
         # 如需修改请直接编辑原记录）
-        if not errors and data["id_number"]:
-            dup = get_db().execute(
-                "SELECT id FROM personnel_info WHERE id_number = ? LIMIT 1",
-                (data["id_number"],),
-            ).fetchone()
+        if not errors:
+            dup = _same_id_number("info", data["id_number"])
             if dup:
                 errors.append(
                     f"该身份证号已存在信息登记表（编号 {dup['id']}），"
@@ -206,6 +266,15 @@ def info_edit(info_id) -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_info_form(request.form)
         errors = _validate_info_form(data)
+        # 编辑同样要查重，只是排除自身——改成别人的号码此前一路放行，
+        # 实测能造出两张同号信息登记表。
+        if not errors:
+            dup = _same_id_number("info", data["id_number"], self_id=info_id)
+            if dup:
+                errors.append(
+                    f"该身份证号已属于另一张信息登记表（编号 {dup['id']}），"
+                    "同一个人只应有一张。请核对号码，或直接编辑那一张。"
+                )
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -343,7 +412,7 @@ def filing_edit(filing_id) -> ResponseReturnValue:
 
     if request.method == "POST":
         data = _extract_filing_form(request.form)
-        errors = _validate_filing_form(data, skip_id_dup_check=True)
+        errors = _validate_filing_form(data, self_id=filing_id)
         if errors:
             for e in errors:
                 flash(e, "danger")
@@ -592,7 +661,13 @@ def _extract_filing_form(form):
     }
 
 
-def _validate_filing_form(data: dict, skip_id_dup_check: bool = False) -> list[str]:
+def _validate_filing_form(data: dict, self_id=None) -> list[str]:
+    """self_id：编辑时传本条备案的 id，把自身排除在查重之外。
+
+    这里原来是 skip_id_dup_check=True，编辑时整条跳过查重。本意是「别把自己
+    判成重复」，可它连「改成别人的号码」也一并放行了——实测能造出两条同号的
+    有效备案。排除自身与放弃检查，差的就是这一条。
+    """
     errors = []
     required = [
         ("surname", "中文姓"), ("given_name", "中文名"), ("gender", "性别"),
@@ -606,13 +681,9 @@ def _validate_filing_form(data: dict, skip_id_dup_check: bool = False) -> list[s
     errors += check_dates(data, [("birth_date", "出生日期")])
     errors += check_identity(data)
 
-    if data["id_number"] and not skip_id_dup_check:
-        db = get_db()
-        dup = db.execute(
-            "SELECT id FROM personnel_filing WHERE id_number = ? AND status = 'active'",
-            (data["id_number"],),
-        ).fetchone()
-        if dup:
-            errors.append("该身份证号已存在有效备案记录，请勿重复登记。")
+    dup = _same_id_number("filing", data["id_number"], self_id=self_id)
+    if dup:
+        errors.append(f"该身份证号已存在有效备案记录（编号 {dup['id']}），"
+                      "一个人同时只应有一条有效备案。请核对号码。")
 
     return errors

@@ -431,6 +431,35 @@ def run_migrations():
             except sqlite3.OperationalError:
                 pass
         db.commit()
+
+        # 「一人一号一备案」落到库层：唯一索引。
+        #
+        # 此前这条不变量只有应用层的新增路径守着，两条编辑路径都能绕过去
+        # （info_edit 根本不查重，filing_edit 传 skip_id_dup_check=True 整条跳过），
+        # 实测能造出两张同号信息登记表、两条同号有效备案。应用层的校验已经补上，
+        # 但校验只挡新的——挡不住并发，也挡不住直接改库，所以再加一道库层约束。
+        #
+        # 两处口径不同，与应用层的校验完全一致（见 personnel._DUP_SQL）：
+        #   personnel_info   全量唯一——一个人只该有一张信息登记表；
+        #   personnel_filing 只在 status='active' 内唯一——撤控后重新报备是正常
+        #                    业务，那条已撤控的旧记录不占号。
+        # 两处都排除空号码：空不是一个号码，多条空值不该被判成撞号。
+        #
+        # 存量里若已有同号数据，建索引会失败（IntegrityError）。这里**不报错、
+        # 不中断启动**——数据是真实的，不能为了建索引把人挡在系统外面；改由
+        # 人员备案列表页顶部常驻告警点名是哪几个号码（personnel.duplicate_id_numbers），
+        # 订正干净之后下次启动索引自然就建上了。
+        for uidx_sql in (
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_info_id_number ON personnel_info(id_number) "
+            "WHERE id_number IS NOT NULL AND id_number != ''",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_pf_active_id_number ON personnel_filing(id_number) "
+            "WHERE status = 'active' AND id_number IS NOT NULL AND id_number != ''",
+        ):
+            try:
+                db.execute(uidx_sql)
+                db.commit()
+            except sqlite3.Error:
+                db.rollback()   # 失败的语句不能留在事务里拖累后面的提交
     finally:
         db.close()
 

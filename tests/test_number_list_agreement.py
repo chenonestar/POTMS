@@ -26,9 +26,10 @@ from datetime import datetime, timedelta
 import pytest
 
 from config import Config
+from conftest import valid_id
 
 _CSRF = re.compile(r'name="csrf-token" content="([^"]+)"')
-_VALID_ID = "110101199001012133"
+_VALID_ID = valid_id(1)   # 1 号人物；其余人各用 valid_id(pid)
 _PNG = __import__("tests.test_issuance", fromlist=["_PNG_DATA_URL"])._PNG_DATA_URL
 
 
@@ -60,7 +61,7 @@ def _person(db, pid, nm, status="active"):
                "id_number,residence,political_status,work_unit,position_or_title,"
                "supervisor_unit,status,operator) VALUES (?,?,'','男','19900101',?,"
                "'浙江宁波市鄞州区','群众','总部','科长','人事处',?,'admin')",
-               (pid, nm, _VALID_ID, status))
+               (pid, nm, valid_id(pid), status))
 
 
 # ===========================================================================

@@ -21,9 +21,10 @@ from datetime import datetime, timedelta
 import pytest
 
 from config import Config
+from conftest import valid_id
 
 _CSRF = re.compile(r'name="csrf-token" content="([^"]+)"')
-_VALID_ID = "110101199001012133"
+_VALID_ID = valid_id(1)   # 1 号人物；其余人各用 valid_id(pid)
 
 
 @pytest.fixture()
@@ -53,7 +54,7 @@ def c(tmp_path, monkeypatch):
                    "id_number,residence,political_status,work_unit,position_or_title,"
                    "supervisor_unit,status,operator) VALUES (?,?,'','男','19900101',?,"
                    "'浙江宁波市鄞州区','群众','总部','科长','人事处',?,'admin')",
-                   (pid, nm, _VALID_ID, status))
+                   (pid, nm, valid_id(pid), status))
 
     person(1, "甲")
     db.execute("INSERT INTO certificates (id,personnel_filing_id,unit,department,name,"

@@ -1857,7 +1857,7 @@
 <tbody>
 <tr><td><span class="badge b-p1">高</span></td>
     <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的三批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
-    <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。</td></tr>
+    <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。<br><span class="badge b-new">新增</span> 本轮第 2 批给身份证号加了<strong>库层唯一索引</strong>。索引是库的属性，对五版一视同仁：这是好事（约束不再依赖哪一版在写），但另外四版的编辑路径若仍不查重，撞号时拿到的是一个 <code>IntegrityError</code>，多半直接 500，而不是一句能看懂的提示。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td><code>release.yml</code>（425 行，五版一次出齐）<strong>从来没有真正跑过一次</strong></td>
     <td>真到发版那天才第一次跑，是最不该冒的险。应当先拿一个测试 tag 空跑一遍。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td>仓库里<strong>没有约定文档</strong>（<code>CLAUDE.md</code> / <code>CONTRIBUTING.md</code>）</td>
@@ -1902,6 +1902,12 @@
 <tr><td><span class="badge b-new">顺带</span> 出国明细「证件状态」下拉里残留<strong>老口径</strong>的「在库 / 领用中」两档，判据是 <code>passport_collect_date</code> 有没有值——按出行记录行算，而现在的「在库」按证件本数算（<code>stock_split</code>）。同一个词在两个页面指两件事</td>
     <td>整档撤掉，不重新对口径：出国明细本来就不是盘库的地方。下拉只剩与首页同源的「新办未入库 / 逾期未交回」</td>
     <td><code>test_retired_stock_and_inuse_options_are_gone</code><br><code>test_both_remaining_filters_share_the_dashboard_functions</code>：筛出的 id 集合必须与函数返回的完全相同</td></tr>
+<tr><td><strong>身份证号唯一性在两条编辑路径上失效</strong>——<code>info_edit</code> 根本不查重；<code>filing_edit</code> 以 <code>skip_id_dup_check=True</code> 整条跳过。那个参数的本意是「别把自己判成重复」，代价却是「改成别人的号码」也一并放行。实测能造出两张同号信息登记表、两条同号有效备案</td>
+    <td><u>排除自身</u>（<code>id != ?</code>）而不是放弃检查，两条编辑路径都补上。同时把不变量落到<strong>库层</strong>：<code>ux_info_id_number</code>（全量唯一）与 <code>ux_pf_active_id_number</code>（仅 <code>status='active'</code> 内唯一，撤控后重报不受影响），两处都排除空号码。存量已有同号时索引建不上——<u>不报错、不中断启动</u>，改由人员备案列表顶部常驻告警点名号码与条数</td>
+    <td><code>tests/test_edit_path_guards.py</code> 前 10 例。含三条边界：改自己的号码要放行、撤控后重报要放行、空号码不算撞号<br>撤掉修复分五个方向验过会红</td></tr>
+<tr><td><strong>编辑出国申请时不校验必传附件</strong>——编辑页就有逐个删除附件的按钮，删光后保存返回 200、附件仍为 0。附件总览的「缺件检查」明明报了它，编辑页却不拦</td>
+    <td>抽出 <code>lacking_attachment_types()</code>，<u>缺件检查、新增校验、编辑校验三处共用</u>。「已有」＝库里已挂的 ＋ 本次一并上传的（否则改一次表单就得重传全部附件）。路径取<strong>表单提交的值</strong>，所以把「是否做证」改成是时《同意申办函》当场成为必传项——这个口子报告里没提。删附件时当场点名缺了什么，保存那一步才是关卡</td>
+    <td><code>tests/test_edit_path_guards.py</code> 后 7 例，含「只改日期不重传附件必须放行」这条反向边界<br>撤掉修复分四个方向验过会红</td></tr>
 <tr><td><strong>同一本证可被跨出国申请重复领用</strong>——领用查重只看 <code>travel_id = ?</code>，另一条申请拿同一号码再开一张未归还领用单照样过。<u>恒等式并没有被打破</u>（<code>lent_out_numbers()</code> 返回号码集合，天然去重），破的是「一本实体证 ↔ 一张签字领用单」的对应，以及「首页 1 本 / 列表 2 行」</td>
     <td>加号码级的跨申请查重：<code>cert_nos</code> 已存在 <code>status='issued'</code> 的记录即拦下，提示点名前一张单的编号与持有人。只看 <code>issued</code>——归还后再借、作废后重登记都是正常业务，不能拦</td>
     <td><code>test_same_certificate_cannot_be_issued_twice_at_once</code> 及三条边界对照（已归还 / 已作废 / 空号码）<br><code>test_the_count_and_the_list_agree_after_the_guard</code></td></tr>

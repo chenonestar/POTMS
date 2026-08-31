@@ -13,10 +13,11 @@ import sqlite3
 import pytest
 
 from config import Config
+from conftest import seed_required_attachments, valid_id
 from tests.test_issuance import _PNG_DATA_URL as _PNG
 
 _CSRF = re.compile(r'name="csrf-token" content="([^"]+)"')
-_VALID_ID = "110101199001012133"
+_VALID_ID = valid_id(1)   # 1 号人物；其余人各用 valid_id(pid)
 
 
 @pytest.fixture()
@@ -34,7 +35,7 @@ def c(tmp_path, monkeypatch):
         db.execute("INSERT INTO personnel_filing (id,surname,given_name,gender,birth_date,"
                    "id_number,residence,political_status,work_unit,position_or_title,"
                    "supervisor_unit,operator) VALUES (?,?,'','男','19900101',?,'北京','群众',"
-                   "'总部','科长','人事处','admin')", (pid, nm, _VALID_ID))
+                   "'总部','科长','人事处','admin')", (pid, nm, valid_id(pid)))
     db.execute("INSERT INTO certificates (personnel_filing_id,unit,department,name,"
                "passport_no,passport_expiry,passport_submit_date,operator) "
                "VALUES (1,'总部','技术部','有证张三','E12345678','20351231','20250101','admin')")
@@ -43,6 +44,7 @@ def c(tmp_path, monkeypatch):
                "passport_no,operator) VALUES (1,1,'总部','技术部','有证张三','科长',?,"
                "'美国/护照','01','2026/08/01-2026/08/11','否','手填的旧号码','admin')",
                (_VALID_ID,))
+    seed_required_attachments(db, 1, "否")
     db.commit(); db.close()
     from app import create_app
     cl = create_app().test_client()
@@ -124,6 +126,7 @@ def test_path_b_passport_no_still_hand_entered(c):
                "id_number,destination_passport,category,travel_dates,need_new_passport,operator) "
                "VALUES (2,2,'总部','技术部','无证李四','科长',?,'美国/护照','01',"
                "'2026/09/01-2026/09/11','是','admin')", (_VALID_ID,))
+    seed_required_attachments(db, 2, "是")
     db.commit(); db.close()
 
     html = c.get("/travel/2/edit").get_data(as_text=True)
