@@ -7,7 +7,7 @@ from flask.typing import ResponseReturnValue
 from auth import login_required
 from config import Config
 from database import get_db
-from utils.helpers import paginate, log_action, operator_name
+from utils.helpers import paginate, log_action, operator_name, tz_modifier
 
 logs_bp = Blueprint("logs", __name__)
 
@@ -27,7 +27,7 @@ TARGET_ALIASES = {
 
 def _log_years() -> list:
     """日志中出现过的年份（按本地时区换算），倒序。"""
-    tz = f"+{Config.DISPLAY_TZ_OFFSET_HOURS} hours"
+    tz = tz_modifier()
     rows = get_db().execute(
         "SELECT DISTINCT strftime('%Y', datetime(created_at, ?)) AS y "
         "FROM operation_logs WHERE created_at IS NOT NULL ORDER BY y DESC", (tz,)
@@ -125,13 +125,17 @@ def index() -> ResponseReturnValue:
         base += " AND target_type IN (%s)" % ",".join("?" for _ in aliases)
         params.extend(aliases)
 
+    # 按**本地**日期筛（库里存 UTC）。不转时区的话，本地当天 00:00–08:00 那段
+    # 会被漏掉，而前一天同一时段反被错误命中。同模块的 _log_years / export_logs
+    # 一直是转过的，就这两处没转——同一个页面两套口径。判据见 helpers.tz_modifier。
+    tz = tz_modifier()
     if date_from:
-        base += " AND date(created_at) >= ?"
-        params.append(date_from)
+        base += " AND date(created_at, ?) >= ?"
+        params.extend([tz, date_from])
 
     if date_to:
-        base += " AND date(created_at) <= ?"
-        params.append(date_to)
+        base += " AND date(created_at, ?) <= ?"
+        params.extend([tz, date_to])
 
     base += " ORDER BY created_at DESC"
 

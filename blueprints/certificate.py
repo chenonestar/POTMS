@@ -257,10 +257,16 @@ def edit(cert_id) -> ResponseReturnValue:
     if request.method == "POST":
         data = _extract_form(request.form)
         errors = _validate_form(data)
+        # 号码换了、两个日期却原封不动——停下来问一句这是换发还是订正录错的号码。
+        # 判据与理由见 stale_renewal_errors。勾了「仅订正号码录入错误」就放行。
+        correction_only = bool(request.form.get("correction_only"))
+        if not correction_only:
+            errors += stale_renewal_errors(dict(row), data)
         if errors:
             for e in errors:
                 flash(e, "danger")
-            return render_template("certificate/form.html", data=data, editing=True, cert_id=cert_id)
+            return render_template("certificate/form.html", data=data, editing=True,
+                                   cert_id=cert_id, ask_correction=True)
 
         before = row_snapshot("certificates", cert_id)
         db.execute(
@@ -279,14 +285,22 @@ def edit(cert_id) -> ResponseReturnValue:
             ),
         )
         db.commit()
-        log_action("update", "certificates", cert_id,
+        renewed = _renewed_labels(before, data)
+        # 「这次是换发还是订正」写进日志：两件事在库里留下的痕迹本来一模一样
+        # （都只是号码变了），事后根本分不出。勾选是操作员当场给的答案，
+        # 不记下来就白问了。
+        detail = None
+        if renewed:
+            detail = ("仅订正号码录入错误（同一本证，日期不变）：" if correction_only
+                      else "证件换发：") + "、".join(renewed)
+        log_action("update", "certificates", cert_id, detail=detail,
                    before=before, after=row_snapshot("certificates", cert_id))
         flash("证照信息已更新。", "success")
-        # 换发新证时最容易漏的一步：号码换了，有效期或上交日期还留着旧证的。
-        # 台账是到期预警与「有没有可用证件」校验的唯一依据，日期不准这两样都会失灵。
-        # 号码变化是换发的确切信号，此时提醒一次，成本为零。
-        for changed in _renewed_labels(before, data):
-            flash(f"{changed}号码已变更：请确认有效日期与上交日期同步更新为新证的。", "warning")
+        # 号码换了、但只动了两个日期中的一个：拦不住（人确实在办换发，只是漏了
+        # 另一个），仍旧提醒一次。两个都没动的那种已经在上面被挡下了。
+        if not correction_only:
+            for changed in renewed:
+                flash(f"{changed}号码已变更：请确认有效日期与上交日期都已更新为新证的。", "warning")
         return redirect(url_for("certificate.list"))
 
     return render_template("certificate/form.html", data=dict(row), editing=True, cert_id=cert_id)
@@ -450,6 +464,49 @@ def _renewed_labels(before: dict, after: dict) -> list[str]:
         new = ((after or {}).get(no_f) or "").strip()
         if old and new and old != new:
             out.append(label)
+    return out
+
+
+def stale_renewal_errors(before: dict, after: dict) -> list[str]:
+    """号码换了、日期却原封不动的那几类——换发时这是错的，订正时这是对的。
+
+    为什么原来只 flash 一句提醒：那次提交（4a8020e）识别对了问题、也识别对了
+    「号码变化是换发的确切信号」，但给出的理由只有一句「成本为零」——
+    没有任何反对拦截的论证。它不是权衡出来的取舍，是顺手挑了最便宜的做法。
+
+    为什么现在也不能直接硬拦：号码变化这个信号覆盖的**不止换发一种情形**。
+    订正原先录错的号码时，号码变了，可它还是同一本证，有效日期与上交日期
+    理应原封不动。硬拦会把订正这条路堵死——操作员只能去编一个假日期，
+    那比现在更糟。而系统里改台账号码只有这一个入口。
+
+    所以判据是：号码变了、**两个日期都没动**，就停下来问一句是哪种情形；
+    操作员勾选「仅订正号码录入错误」即放行（correction_only）。让人把意图
+    说清楚，系统就不用猜——勾选结果还会随快照进操作日志，事后能查出
+    这一次到底是换发还是订正，现在这两件事在日志里长得一模一样。
+
+    为什么两个日期都要管：换发时两者必然都变（新证有效期是往后十年，
+    上交日期是这次交回保管处那天）。只要有一个动了，就说明人是在办换发、
+    只是漏了另一个——那种情形照旧只提醒（见 edit 里的 _renewed_labels）。
+    有效日期错了，到期预警与「有没有可用证件」校验双双失灵；上交日期只影响
+    盘库清单的显示，但同一次动作里一起填才不容易漏。
+
+    已有的必填校验只挡「空」不挡「旧」：填了号码就必须填两个日期，而留着
+    上一本证的日期，字段非空，一路放行。缺的正是这条分得出「旧」和「新」的判据。
+    """
+    out = []
+    for label, no_f, exp_f, sub_f in CERT_SLOTS:
+        old_no = ((before or {}).get(no_f) or "").strip()
+        new_no = ((after or {}).get(no_f) or "").strip()
+        if not (old_no and new_no and old_no != new_no):
+            continue
+        same_exp = ((before or {}).get(exp_f) or "") == ((after or {}).get(exp_f) or "")
+        same_sub = ((before or {}).get(sub_f) or "") == ((after or {}).get(sub_f) or "")
+        if same_exp and same_sub:
+            out.append(
+                f"{label}号码由 {old_no} 改为 {new_no}，但有效日期与上交日期都没有变动。"
+                "如果这是换发新证，请一并改成新证的日期；"
+                "如果只是订正原先录错的号码（还是同一本证），请勾选「仅订正号码录入错误」。"
+            )
     return out
 
 

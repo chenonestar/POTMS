@@ -210,6 +210,26 @@ def revoke(dec_id) -> ResponseReturnValue:
     name = f"{row['surname']}{row['given_name']}"
     if restored:
         flash(f"已撤销 {name} 的撤控备案，该人员备案状态已恢复为「有效」。", "success")
+        # 撤控以证件收缴移交为前提（cert_handover_date 必填），所以撤控那一刻
+        # 他名下的证已经交出去了，盘库时也随之退出「在库」（stock_split 只算
+        # 在控人员）。现在人回到在控，那些台账行**立刻重新计入在库**，
+        # 可实体证是否已从报送单位收回，系统一无所知。
+        #
+        # 这里只提醒不拦：撤销撤控本来就是纠错入口，多数是「撤错了」——那种
+        # 情形下证根本没真移交，拦下来反而是添乱。但账面与实体的这次错位
+        # 必须当场说出来，否则盘库时才发现柜子里少了证，已经查不清是哪一步。
+        n = db.execute(
+            "SELECT (CASE WHEN COALESCE(passport_no,'')<>'' THEN 1 ELSE 0 END)"
+            "     + (CASE WHEN COALESCE(hm_pass_no ,'')<>'' THEN 1 ELSE 0 END)"
+            "     + (CASE WHEN COALESCE(tw_pass_no ,'')<>'' THEN 1 ELSE 0 END) AS n "
+            "FROM certificates WHERE personnel_filing_id = ?", (filing_id,)).fetchall()
+        total = sum(r["n"] for r in n)
+        if total:
+            handover = (row["cert_handover_date"] or "").strip()
+            when = f"（撤控时移交日期 {handover}）" if handover else ""
+            flash(f"注意：{name} 名下台账上的 {total} 本证件已重新计入「在库」{when}。"
+                  "撤控时这些证件已办理移交，请确认实体证件确已收回保管处；"
+                  "若实际未收回，盘库时会对不上。", "warning")
     else:
         flash(f"已撤销 {name} 的撤控备案。未找到对应的有效备案人员，"
               "请到「人员备案」确认其状态。", "warning")

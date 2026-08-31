@@ -55,6 +55,23 @@
     <div class="col-md-4"><label class="form-label">上交日期</label><input type="text" class="form-control" name="tw_pass_submit_date" value="{{ data.tw_pass_submit_date or '' }}" placeholder="YYYYMMDD" maxlength="8"></div>
 </div></div>
 
+{# 号码换了、两个日期却都没动时才出现：让操作员说清是换发还是订正录错的号码。
+   系统猜不出这两种情形（号码变化对两者都成立），但操作员一定知道。 #}
+{% if ask_correction %}
+<div class="alert alert-warning mt-3" data-block="correction-only">
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="correction_only" value="1" id="correctionOnly">
+        <label class="form-check-label" for="correctionOnly">
+            <strong>仅订正号码录入错误</strong>——还是同一本证，有效日期与上交日期不变
+        </label>
+    </div>
+    <div class="small text-muted mt-1">
+        换发新证请不要勾选，改为把有效日期与上交日期一并填成新证的。
+        勾选结果会记入操作日志，以便日后区分「换发」与「订正」。
+    </div>
+</div>
+{% endif %}
+
 <div class="mt-3">
     <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> 保存</button>
     <a href="{{ url_for('certificate.list') }}" class="btn btn-secondary">取消</a>

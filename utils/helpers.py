@@ -37,6 +37,27 @@ def to_local_time(value: Any, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
     return local.strftime(fmt)
 
 
+def tz_modifier() -> str:
+    """SQLite datetime/date 修饰符形式的本地时区偏移，如 '+8 hours'。
+
+    库里统一存 UTC，页面按 Config.DISPLAY_TZ_OFFSET_HOURS 换算显示（to_local_time）。
+    凡是「**按本地日期筛选**」的 SQL 都必须先把时间挪到本地再取 date()，否则：
+
+        库里 2026-08-29 18:00(UTC) → 页面显示 2026-08-30 02:00(本地)
+        按本地日期 2026-08-30 筛 → 漏掉（date(UTC) 是 08-29）
+        按本地日期 2026-08-29 筛 → 错误命中
+
+    也就是本地当天 00:00–08:00 那一段全部错位。此前 operation_logs 列表与附件
+    总览的日期筛选都直接 date(created_at)，而同一个模块里的 _log_years 与
+    export_logs 却是转过时区的——同一份数据，同一个页面，两套口径。
+
+    偏移量只在这里成形一次。用 :+d 而不是手写 '+'：POTMS_TZ_OFFSET 允许为负，
+    写死加号的话负偏移会拼出 '+-5 hours' 这种 SQLite 直接忽略的串——
+    不报错，只是悄悄不生效。
+    """
+    return f"{Config.DISPLAY_TZ_OFFSET_HOURS:+d} hours"
+
+
 class PageResult(TypedDict):
     """paginate() 的返回结构，便于 IDE 智能提示与静态检查。"""
     rows: list[sqlite3.Row]

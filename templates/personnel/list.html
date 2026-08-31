@@ -39,10 +39,22 @@
         <div class="col-md-1"><select class="form-select form-select-sm" name="rank"><option value="">职级</option>{% for o in rank_opts %}<option value="{{ o.code }}" {{ 'selected' if rank_filter == o.code }}>{{ o.value }}</option>{% endfor %}</select></div>
         <div class="col-md-1"><select class="form-select form-select-sm" name="gender"><option value="">性别</option>{% for g in genders %}<option value="{{ g.code }}" {{ 'selected' if gender_filter == g.code }}>{{ g.value }}</option>{% endfor %}</select></div>
         <div class="col-md-1"><select class="form-select form-select-sm" name="tag"><option value="">标记</option>{% for t in tags %}<option value="{{ t.code }}" {{ 'selected' if tag_filter == t.code }}>{{ t.value }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><select class="form-select form-select-sm" name="info_link"><option value="">信息表</option><option value="linked" {{ 'selected' if info_link == 'linked' }}>已关联</option><option value="none" {{ 'selected' if info_link == 'none' }}>未关联</option></select></div>
         <div class="col-md-1"><select class="form-select form-select-sm" name="sort">{% for s in sorts %}<option value="{{ s.code }}" {{ 'selected' if sort_by == s.code }}>{{ s.value }}</option>{% endfor %}</select></div>
         <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary">筛选</button><a href="{{ url_for('personnel.list') }}" class="btn btn-sm btn-outline-secondary">重置</a></div>
     </form>
 </div></div>
+
+{# 职级、学历、职称这些字段只在信息登记表上。没关联信息表的备案，这些字段
+   恒为空，按职级筛怎么都筛不到——SQL 没错，错在用户不知道自己看的是子集。 #}
+{% if unlinked_count %}
+<div class="alert alert-info py-2 small" data-block="unlinked-info-hint">
+    <i class="bi bi-info-circle"></i>
+    另有 <strong>{{ unlinked_count }}</strong> 条备案未关联信息登记表，其职级为空，
+    按职级筛选<u>不会出现在结果里</u>。
+    <a href="{{ url_for('personnel.list', info_link='none') }}">查看这 {{ unlinked_count }} 条</a>
+</div>
+{% endif %}
 
 {# 存量同号告警：一个号码点一行，直接给出能筛到那几条的链接。
    这是待办不是提示，订正干净之前一直显示（订正完库层唯一索引也就建上了）。 #}

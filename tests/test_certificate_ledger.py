@@ -146,12 +146,17 @@ def with_passport(c):
     return c
 
 
-def test_renewal_warns_to_update_dates(with_passport):
-    """号码换了，有效期或上交日期还留着旧证的——台账不准，到期预警随之失灵。"""
-    r = _renew(with_passport, passport_no="E99999999")
+def test_renewal_warns_when_only_one_date_was_updated(with_passport):
+    """号码换了、只改了两个日期中的一个——仍旧只提醒，不拦。
+
+    人确实在办换发（动了日期），只是漏了另一个，拦下来帮不上忙。
+    两个日期都没动的那种已经升格为拦截，判据与理由见
+    certificate.stale_renewal_errors，用例在 test_renewal_and_correction.py。
+    """
+    r = _renew(with_passport, passport_no="E99999999", passport_expiry="20360601")
     body = r.get_data(as_text=True)
     assert "普通护照号码已变更" in body
-    assert "有效日期与上交日期同步更新" in body
+    assert "有效日期与上交日期都已更新" in body
 
 
 def test_no_warning_when_number_unchanged(with_passport):

@@ -127,6 +127,20 @@ def build_filters(args, ids=None):
     if args.get("rank", "").strip():
         where += " AND pi.rank = ?"
         params.append(args.get("rank").strip())
+    # 备案表的 personnel_info_id 允许为空：信息登记表是「档案」，备案表是
+    # 「报出去的单据」，两者本来就不是一对一，直接建备案不建信息表是正常路径。
+    #
+    # 但由此带来一个看不见的坑：职级、学历、职称这些字段只存在于信息表，
+    # 上面那条 rank 筛选走的是 LEFT JOIN 的 pi.rank——没关联信息表的人
+    # pi.rank 恒为 NULL，**永远筛不出来**。这不是 SQL 写错了（那个人确实
+    # 没登记职级），错在用户不知道自己看到的是子集。
+    #
+    # 所以不改 SQL，改成让这批人能被单独筛出来、并在用职级筛选时提示存在这批人。
+    link = args.get("info_link", "").strip()
+    if link == "none":
+        where += " AND pf.personnel_info_id IS NULL"
+    elif link == "linked":
+        where += " AND pf.personnel_info_id IS NOT NULL"
     if args.get("gender", "").strip():
         where += " AND pf.gender = ?"
         params.append(args.get("gender").strip())
@@ -184,6 +198,12 @@ def list() -> ResponseReturnValue:
         # 常驻在列表顶部而不是 flash 一次——这是一笔要人去订正的待办，
         # 订正干净之前它就该一直在。
         dup_ids=duplicate_id_numbers(),
+        info_link=request.args.get("info_link", "").strip(),
+        # 用职级筛选时才提示：有多少条备案没有关联信息登记表，因而无论选哪个
+        # 职级都筛不到。平时不显示——常驻提示会变成常驻噪音。
+        unlinked_count=(get_db().execute(
+            "SELECT COUNT(*) FROM personnel_filing WHERE personnel_info_id IS NULL"
+        ).fetchone()[0] if rank_filter else 0),
         search=search,
         status_filter=status_filter,
         political_filter=political_filter,

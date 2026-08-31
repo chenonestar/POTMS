@@ -1758,7 +1758,9 @@
 <tr><td>单机常驻</td><td>每日备份挂在首页访问上触发，不依赖定时任务服务。</td></tr>
 <tr><td>生产服务器</td><td><strong>waitress</strong>（纯 Python WSGI，8 线程）；未安装时退回内置服务器并在控制台提示。端口由 <code>POTMS_PORT</code> 指定，默认 5000。</td></tr>
 <tr><td>数据目录</td><td><code>POTMS_BASE</code> 环境变量优先（与其余四版一致，便于把数据放到程序目录外，如服务账户无写权限或指向共享盘）；未设置且打包为单文件 exe 时用 <strong>exe 所在目录</strong>——不能用临时解压目录，那个目录退出即删。</td></tr>
-<tr><td>时区</td><td>库内统一存 UTC，展示时按 <code>DISPLAY_TZ_OFFSET_HOURS</code>（默认 +8）换算；可用 <code>POTMS_TZ_OFFSET</code> 覆盖。</td></tr>
+<tr><td>时区</td><td>库内统一存 UTC，展示时按 <code>DISPLAY_TZ_OFFSET_HOURS</code>（默认 +8）换算；可用 <code>POTMS_TZ_OFFSET</code> 覆盖。<br>
+    <strong>「存 UTC / 显示本地」这条规约有第二半，容易只做前一半：凡是<u>按日期筛选</u>的 SQL，也必须先换算再取 <code>date()</code>。</strong>偏移量统一由 <code>helpers.tz_modifier()</code> 给出（<code>'+8 hours'</code>），不在各处手拼——手写 <code>'+'</code> 时负偏移会拼出 <code>'+-5 hours'</code>，SQLite <u>不报错、只是悄悄忽略</u>，筛选无声退回 UTC 口径。<br>
+    漏掉换算的后果同样无声：本地当天 00:00–08:00 那一段（UTC 还在前一天）<u>筛不出来</u>，而前一天同一时段反被错误命中。<strong>筛不到的东西不会喊，操作员只会以为那天没人操作。</strong></td></tr>
 <tr><td><span class="badge b-p1">运行环境差异</span></td>
     <td><strong>构建机是 Windows，开发机是 Linux。</strong><u>凡是可能出现中文的输出口，都必须显式指定 UTF-8</u>——不指定时 Windows 用 cp1252，遇到中文直接 <code>UnicodeEncodeError</code>；本地全绿、CI 炸掉。<strong>这不是编码风格问题，是一条非功能需求。</strong><br>
         本项目为此炸过<strong>三次</strong> CI，而且规则是被一次次撑大的：<br>
@@ -1902,6 +1904,18 @@
 <tr><td><span class="badge b-new">顺带</span> 出国明细「证件状态」下拉里残留<strong>老口径</strong>的「在库 / 领用中」两档，判据是 <code>passport_collect_date</code> 有没有值——按出行记录行算，而现在的「在库」按证件本数算（<code>stock_split</code>）。同一个词在两个页面指两件事</td>
     <td>整档撤掉，不重新对口径：出国明细本来就不是盘库的地方。下拉只剩与首页同源的「新办未入库 / 逾期未交回」</td>
     <td><code>test_retired_stock_and_inuse_options_are_gone</code><br><code>test_both_remaining_filters_share_the_dashboard_functions</code>：筛出的 id 集合必须与函数返回的完全相同</td></tr>
+<tr><td><strong>日志与附件的日期筛选用 UTC，与本地显示错开 8 小时</strong>——同一个模块里 <code>_log_years</code> 与 <code>export_logs</code> 明明转过时区，就这两处 <code>date(created_at)</code> 没转。本地当天 00:00–08:00 的记录筛不出来，前一天同一时段反被错误命中</td>
+    <td>偏移量收进 <code>helpers.tz_modifier()</code> 只成形一次，四处调用它（日志列表、年份下拉、日志导出、附件总览）。用 <code>:+d</code> 而不是手写 <code>'+'</code>：负偏移会拼出 <code>'+-5 hours'</code>，SQLite 不报错只是悄悄忽略</td>
+    <td><code>test_filtering_logs_by_the_local_day_finds_it</code> ＋ <u>反向对照</u> <code>..._by_the_utc_day_does_not_find_it</code>（只断言「本地筛得到」，把判据写成「两天都命中」也能变绿）<br><code>test_the_offset_is_spelled_once_and_survives_a_negative_value</code></td></tr>
+<tr><td><strong>证照换发时号码换了、日期还留着旧证的，只 flash 一句提醒</strong>。查了当初那次提交（<code>4a8020e</code>）：问题、危害、信号都识别对了，给出的理由却只有一句「成本为零」——<u>没有任何反对拦截的论证</u>。那不是权衡出来的取舍，是顺手挑了最便宜的做法</td>
+    <td>升格为<strong>二次确认</strong>而非硬拦：号码变化这个信号覆盖的不止换发——订正原先录错的号码时，还是同一本证，日期理应不变，硬拦会逼人去编假日期。判据改成「号码变了<u>且两个日期都没动</u>」时停下来问一句，勾选「仅订正号码录入错误」即放行。勾选结果写进操作日志——这两件事在库里的痕迹本来一模一样，事后分不出。已有的必填校验只挡「空」不挡「旧」，缺的正是这条判据</td>
+    <td><code>test_changing_only_the_number_is_stopped_and_asked</code>、<code>test_ticking_correction_only_lets_a_typo_fix_through</code>（守住订正这条路不能被堵死）、<code>test_the_log_records_which_of_the_two_it_was</code></td></tr>
+<tr><td><strong>撤销撤控只回滚状态</strong>——人一回到在控，他名下台账上的证立刻重新计入「在库」，而实体证在撤控那天已经移交出去了。账面在库、柜子里没有</td>
+    <td>不拦（撤销撤控本来就是纠错入口，多数情形下证根本没真移交，拦下来是添乱），改为<u>当场把本数和撤控时的移交日期一起说出来</u>，请操作员确认实体已收回</td>
+    <td><code>test_revoking_says_the_documents_are_back_in_stock</code>（断言给出本数与移交日期）＋ <code>test_the_stock_count_really_does_jump</code>：提醒说的必须是真的，否则就是句空话</td></tr>
+<tr><td><strong>备案可不关联信息登记表，按职级筛选时这批人永远不出现</strong>。<u>这不是 SQL 写错</u>（那个人确实没登记职级），错在用户不知道自己看到的是子集</td>
+    <td>不改 SQL：加「信息表：已关联／未关联」筛选项，并<u>只在用职级筛选时</u>提示还有多少条筛不到、给出直达链接。常驻提示会变成常驻噪音，然后没人看</td>
+    <td><code>test_rank_filter_says_how_many_it_cannot_reach</code> ＋ 两条反向对照：不按职级筛时不出现、全部已关联时不出现</td></tr>
 <tr><td><strong>身份证号唯一性在两条编辑路径上失效</strong>——<code>info_edit</code> 根本不查重；<code>filing_edit</code> 以 <code>skip_id_dup_check=True</code> 整条跳过。那个参数的本意是「别把自己判成重复」，代价却是「改成别人的号码」也一并放行。实测能造出两张同号信息登记表、两条同号有效备案</td>
     <td><u>排除自身</u>（<code>id != ?</code>）而不是放弃检查，两条编辑路径都补上。同时把不变量落到<strong>库层</strong>：<code>ux_info_id_number</code>（全量唯一）与 <code>ux_pf_active_id_number</code>（仅 <code>status='active'</code> 内唯一，撤控后重报不受影响），两处都排除空号码。存量已有同号时索引建不上——<u>不报错、不中断启动</u>，改由人员备案列表顶部常驻告警点名号码与条数</td>
     <td><code>tests/test_edit_path_guards.py</code> 前 10 例。含三条边界：改自己的号码要放行、撤控后重报要放行、空号码不算撞号<br>撤掉修复分五个方向验过会红</td></tr>

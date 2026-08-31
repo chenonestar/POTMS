@@ -10,7 +10,8 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import log_action, list_all, get_dict_options, row_snapshot, operator_name
+from utils.helpers import (log_action, list_all, get_dict_options, row_snapshot,
+                           operator_name, tz_modifier)
 from utils.validators import (parse_date_input, validate_date_format,
                               parse_travel_range, validate_travel_range, format_travel_range,
                               is_cert_overdue, is_new_cert_overdue, cert_overdue_deadline,
@@ -281,12 +282,15 @@ def attachments() -> ResponseReturnValue:
     if type_filter:
         base += " AND a.file_type = ?"
         params.append(type_filter)
+    # 上传时间存的是 UTC，这里按**本地**日期筛，与页面上显示的那个时间对齐。
+    # 同 logs 的日期筛选，判据见 helpers.tz_modifier。
+    tz = tz_modifier()
     if date_from:
-        base += " AND date(a.uploaded_at) >= ?"
-        params.append(date_from)
+        base += " AND date(a.uploaded_at, ?) >= ?"
+        params.extend([tz, date_from])
     if date_to:
-        base += " AND date(a.uploaded_at) <= ?"
-        params.append(date_to)
+        base += " AND date(a.uploaded_at, ?) <= ?"
+        params.extend([tz, date_to])
     base += " " + _ATT_SORTS[sort]
 
     pg = list_all(base, tuple(params))  # 全量下发，前端按视口窗口化分页

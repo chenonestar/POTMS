@@ -518,9 +518,9 @@ HEADERS_LOGS = ["时间（本地）", "操作人", "动作", "对象类型", "�
 
 def export_logs(operator: str, year: str) -> tuple:
     """按年份归档导出操作日志（时间按本地时区换算与过滤）。"""
-    from utils.helpers import to_local_time
+    from utils.helpers import to_local_time, tz_modifier
     db = get_db()
-    tz = f"+{Config.DISPLAY_TZ_OFFSET_HOURS} hours"
+    tz = tz_modifier()
     rows = db.execute(
         "SELECT * FROM operation_logs "
         "WHERE strftime('%Y', datetime(created_at, ?)) = ? ORDER BY created_at",
