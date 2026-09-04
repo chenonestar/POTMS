@@ -220,6 +220,10 @@ def new() -> ResponseReturnValue:
             "personnel_filing_id": travel["personnel_filing_id"],
             "holder_name": travel["name"],
             "id_number": travel["id_number"],
+            # 证件种类按申请上写明的那一种预选。校验那一关反正也要求一致，
+            # 让人先选一遍再被打回来，是纯粹的为难。
+            # 存量申请这一栏可能是空的（回填判不出的那批），空就不预选。
+            "cert_types": (travel["intended_cert_type"] or "").strip(),
         })
     return render_template("issuance/form.html", data=prefill, travel=travel)
 
@@ -416,7 +420,7 @@ def _travel_brief(travel_id):
     db = get_db()
     return db.execute(
         "SELECT id, personnel_filing_id, name, id_number, unit, department, "
-        "destination_passport, travel_dates, approval_date, passport_no "
+        "destination_passport, intended_cert_type, travel_dates, approval_date, passport_no "
         "FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
 
 
@@ -591,7 +595,8 @@ def _validate_form(data: dict) -> list[str]:
     if data.get("travel_id"):
         db = get_db()
         tv = db.execute(
-            "SELECT personnel_filing_id, trip_status FROM travel_details WHERE id = ?",
+            "SELECT personnel_filing_id, trip_status, intended_cert_type "
+            "FROM travel_details WHERE id = ?",
             (data["travel_id"],)).fetchone()
         if not tv:
             errors.append("关联的出国申请不存在。")
@@ -599,6 +604,22 @@ def _validate_form(data: dict) -> list[str]:
             # 领用人必须就是申请人——证是为这条申请借的，不能借给别人
             if str(tv["personnel_filing_id"]) != str(data.get("personnel_filing_id") or ""):
                 errors.append("领用人与该出国申请的申请人不一致。")
+            # 领的这本证，必须就是申请上写明要用的那一种。
+            #
+            # 这条此前根本不存在：领用表单上的证件种类是个三选一的自由单选，
+            # 与这趟去哪儿毫无关联，去香港领出一本护照，系统一句话都不说
+            # （实测复现）。出国申请上现在有「拟用证件种类」这一栏结构化字段，
+            # 判据就有了源头。
+            #
+            # 存量申请这一栏可能是空的（回填时三级判据都判不出的那些，标「待核实」）。
+            # 空就不比对——不能拿一个系统自己都没判出来的答案去挡人。
+            want = (tv["intended_cert_type"] or "").strip()
+            got = (data.get("cert_types") or "").strip()
+            if want and got and want != got:
+                errors.append(
+                    f"该出国申请拟用证件种类为「{_types_label(want)}」，"
+                    f"本次领用登记的是「{_types_label(got)}」，两者不一致。"
+                    "如确需改用其他证件，请先到出国申请里更正拟用证件种类。")
         # 这条申请此刻能不能办领用——与列表按钮、挑单页同一个判据。
         #
         # 后端这一关不能省：按钮灰掉只是不给入口，伪造的 POST 想提交什么提交什么。

@@ -196,7 +196,7 @@ def _edit_travel(cl, travel_id=1, **over):
         "department": "技术部", "name": "路径A张三", "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/03/01-2026/03/10", "need_new_passport": "否",
-        "approval_date": "20260201",
+        "approval_date": "20260201", "intended_cert_type": "01",
     }
     data.update(over)
     return cl.post(f"/travel/{travel_id}/edit", data=data, follow_redirects=True)

@@ -47,7 +47,17 @@
     </div>
     <div class="row g-3 mt-1">
         <div class="col-md-3"><label class="form-label">身份证号</label><input type="text" class="form-control" name="id_number" id="tIdno" value="{{ data.id_number or '' }}" readonly></div>
-        <div class="col-md-9"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport or '' }}" placeholder="目的地国家/地区及使用的证照类型" required></div>
+        <div class="col-md-6"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport or '' }}" placeholder="目的地国家/地区及使用的证照类型" required></div>
+        {# 拟用证件种类：这趟打算用哪一本证。领用登记时必须与它一致，
+           「说不做证」时也按这一本去查有没有、在不在有效期内。 #}
+        <div class="col-md-3"><label class="form-label required">拟用证件种类</label>
+            <select class="form-select" name="intended_cert_type" required>
+                <option value="">请选择</option>
+                {% for o in dict_opts('cert_type') %}
+                <option value="{{ o.code }}" {{ 'selected' if data.get('intended_cert_type') == o.code }}>{{ o.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
     </div>
 </div>
 

@@ -109,7 +109,7 @@ def _new_travel(cl, **over):
          "department": "技术部", "name": "甲一", "position": "科长",
          "id_number": valid_id(1), "destination_passport": "美国/护照", "category": "01",
          "travel_dates": "2026/11/01-2026/11/11", "need_new_passport": "否",
-         "approval_date": "20261001",
+         "approval_date": "20261001", "intended_cert_type": "01",
          "att_application": (io.BytesIO(_PDF), "a.pdf"),
          "att_approval": (io.BytesIO(_PDF), "b.pdf")}
     d.update(over)

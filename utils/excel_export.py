@@ -305,9 +305,20 @@ def export_cert_stock(operator: str, rows) -> str:
 # =========================================================================
 # 4. 因私出国（境）人员明细表
 # =========================================================================
+def _cert_type_label(code) -> str:
+    """证件种类代码 → 中文；空值写「待核实」。
+
+    导出件与打印件上不能是个空格子——看的人分不清是「没有」还是「漏填了」。
+    与 issuance._types_label 同一条规约（那边的注释写明了理由）。
+    """
+    from utils.helpers import get_dict_value
+    code = (code or "").strip()
+    return (get_dict_value("cert_type", code) or code) if code else "待核实"
+
+
 HEADERS_TRAVEL = [
     "单位", "部门", "姓名", "职务", "职称", "身份证号",
-    "地点、证照", "类别", "计划出行日期", "批准日期",
+    "地点、证照", "拟用证件种类", "类别", "计划出行日期", "批准日期",
     "是否做证", "证件号码", "证件领用日期", "实际回国日期",
     "证件归还日期", "行程状态", "取消日期",
 ]
@@ -329,6 +340,7 @@ def export_travel_details(operator: str, where_sql: str = "", params: tuple = ()
         values = [
             row["unit"], row["department"], row["name"], row["position"],
             row["title"] or "", row["id_number"], row["destination_passport"],
+            _cert_type_label(row["intended_cert_type"]),
             row["category"], row["travel_dates"], row["approval_date"] or "",
             row["need_new_passport"], row["passport_no"] or "",
             row["passport_collect_date"] or "", row["actual_return_date"] or "",

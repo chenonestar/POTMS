@@ -10,8 +10,9 @@ from flask.typing import ResponseReturnValue
 
 from auth import login_required
 from database import get_db
-from utils.helpers import (log_action, list_all, get_dict_options, row_snapshot,
-                           operator_name, tz_modifier)
+from blueprints.certificate import CERT_SLOTS
+from utils.helpers import (log_action, list_all, get_dict_options, get_dict_value,
+                           row_snapshot, operator_name, tz_modifier)
 from utils.validators import (parse_date_input, validate_date_format,
                               parse_travel_range, validate_travel_range, format_travel_range,
                               is_cert_overdue, is_new_cert_overdue, cert_overdue_deadline,
@@ -19,6 +20,15 @@ from utils.validators import (parse_date_input, validate_date_format,
 from config import Config
 
 travel_bp = Blueprint("travel", __name__)
+
+# 证件种类代码 → 证照台账上对应的（号码列, 有效期列）。
+#
+# certificates 用三个独立字段存三本证，字典里的 cert_type 用代码。两边的对应
+# 关系本项目里已经有几处各写一份，这里不再添一份手抄——直接从
+# certificate.CERT_SLOTS 派生，那是槽位定义的唯一出处；顺序（护照 / 港澳 / 台湾）
+# 与字典代码 01/02/03 一一对应，SEED_DICT 里的注释写明了这一点。
+CERT_TYPE_SLOT = {code: (slot[1], slot[2])
+                  for code, slot in zip(("01", "02", "03"), CERT_SLOTS)}
 
 
 # =========================================================================
@@ -348,14 +358,16 @@ def new() -> ResponseReturnValue:
         db.execute(
             # 证件领用/归还日期为派生字段，由证件领用模块写入，此处不落值
             "INSERT INTO travel_details (personnel_filing_id, unit, department, name, "
-            "position, title, id_number, destination_passport, category, travel_dates, "
+            "position, title, id_number, destination_passport, intended_cert_type, "
+            "category, travel_dates, "
             "travel_start, travel_end, approval_date, need_new_passport, passport_no, "
             "actual_return_date, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["personnel_filing_id"], data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
-                data["destination_passport"], data["category"], data["travel_dates"],
+                data["destination_passport"], data["intended_cert_type"],
+                data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], data["passport_no"],
                 data["actual_return_date"], data["operator"],
             ),
@@ -440,13 +452,15 @@ def edit(travel_id) -> ResponseReturnValue:
             # 证件领用/归还日期为派生字段，由证件领用模块维护，此处不覆盖
             "UPDATE travel_details SET personnel_filing_id=?, unit=?, department=?, "
             "name=?, position=?, title=?, id_number=?, destination_passport=?, "
+            "intended_cert_type=?, "
             "category=?, travel_dates=?, travel_start=?, travel_end=?, approval_date=?, need_new_passport=?, "
             "passport_no=?, actual_return_date=?, "
             "operator=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (
                 pfid, data["unit"], data["department"],
                 data["name"], data["position"], data["title"], data["id_number"],
-                data["destination_passport"], data["category"], data["travel_dates"],
+                data["destination_passport"], data["intended_cert_type"],
+                data["category"], data["travel_dates"],
                 t_start, t_end, data["approval_date"], data["need_new_passport"], passport_no,
                 data["actual_return_date"], data["operator"], travel_id,
             ),
@@ -699,6 +713,7 @@ def _extract_form(form):
         "title": form.get("title", "").strip(),
         "id_number": form.get("id_number", "").strip().upper(),
         "destination_passport": form.get("destination_passport", "").strip(),
+        "intended_cert_type": form.get("intended_cert_type", "").strip(),
         "category": form.get("category", "").strip(),
         "travel_dates": form.get("travel_dates", "").strip(),
         "approval_date": parse_date_input(form.get("approval_date", "")),
@@ -728,6 +743,11 @@ def _validate_form(data: dict) -> list[str]:
         # 日期却是选填的。两条规则不可能同时讲得通。附件那一半系统已经强制了，
         # 这里补上另一半——纸质件与系统记录之间的对应锚点就是这个日期。
         ("approval_date", "批准日期"),
+        # 拟用证件种类。在此之前「这趟要用哪种证」在系统里没有结构化答案，
+        # 只有「地点、证照」那段自由文本，于是一路串出三个后果：够不够用判不了、
+        # 领用时领哪本没人管（去香港领护照，系统一句话不说）、历史数据只能靠
+        # infer_cert_type 去猜。判据的源头就是这一栏。
+        ("intended_cert_type", "拟用证件种类"),
     ]
     errors += check_required(data, required)
     # 明细表身份证由备案信息自动带入、无性别/出生字段，仅校验号码本身
@@ -747,26 +767,32 @@ def _validate_form(data: dict) -> list[str]:
     # 证件领用日期原在此校验必填，现已迁移至证件领用模块（须手写签名后登记），
     # 出行表单不再收集该字段。
 
-    # 一本可用的证都没有，却说不做证——这条记录本身就是错的。
+    code = (data.get("intended_cert_type") or "").strip()
+    if code and code not in CERT_TYPE_SLOT:
+        errors.append(f"无效的证件种类代码：{code}。")
+
+    # 说不做证，就得真有那本证，而且在有效期内。
     #
-    # 「够不够用」判不了：系统不知道这趟要用哪种证（明细表只有「地点、证照」
-    # 那段自由文本），有港澳通行证但要去美国这类情形只能靠经办人自己看。
-    # 但「一本都没有」是可判的，而且无论去哪都不可能有证用，属于硬错误。
+    # 此前这条只判得了「一本都没有」，注释里写着原因：系统不知道这趟要用哪种证，
+    # 「有港澳通行证但要去美国」只能靠经办人自己看。现在拟用证件种类是结构化的，
+    # 判据可以精确到**那一本**：有护照但这趟要用港澳通行证，一样是硬错误。
     #
-    # 「有证」要算有效期：一本过期护照等于没有。证照登记里填了号码就必须填
+    # 「有证」要算有效期：一本过期证等于没有。证照登记里填了号码就必须填
     # 有效日期，所以这个判断的数据一定在。
-    if data.get("need_new_passport") == "否" and data.get("personnel_filing_id"):
+    if (data.get("need_new_passport") == "否" and data.get("personnel_filing_id")
+            and code in CERT_TYPE_SLOT):
+        label = get_dict_value("cert_type", code) or code
+        no_col, exp_col = CERT_TYPE_SLOT[code]
         today = datetime.now().strftime("%Y%m%d")
         usable = get_db().execute(
-            # 一个人可能有多条证照记录（历史遗留），任意一条里有在有效期内的证就算数
-            "SELECT 1 FROM certificates WHERE personnel_filing_id = ? AND ("
-            "  (passport_no  IS NOT NULL AND passport_no  != '' AND passport_expiry  >= ?) OR"
-            "  (hm_pass_no   IS NOT NULL AND hm_pass_no   != '' AND hm_pass_expiry   >= ?) OR"
-            "  (tw_pass_no   IS NOT NULL AND tw_pass_no   != '' AND tw_pass_expiry   >= ?)) LIMIT 1",
-            (data["personnel_filing_id"], today, today, today)).fetchone()
+            # 一个人可能有多条证照记录（历史遗留），任意一条里有这本证且在有效期内就算数
+            f"SELECT 1 FROM certificates WHERE personnel_filing_id = ? "
+            f"  AND {no_col} IS NOT NULL AND {no_col} != '' AND {exp_col} >= ? LIMIT 1",
+            (data["personnel_filing_id"], today)).fetchone()
         if not usable:
             errors.append(
-                "该备案人员名下没有在有效期内的出入境证件，「是否做证」应为「是」。")
+                f"该备案人员名下没有在有效期内的{label}，"
+                f"「是否做证」应为「是」，或改选其他拟用证件种类。")
 
     return errors
 

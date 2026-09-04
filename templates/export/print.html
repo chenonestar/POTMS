@@ -93,7 +93,8 @@
     <tr><td class="label">单位</td><td>{{ row.unit }}</td><td class="label">部门</td><td>{{ row.department }}</td></tr>
     <tr><td class="label">姓名</td><td>{{ row.name }}</td><td class="label">职务</td><td>{{ row.position }}</td></tr>
     <tr><td class="label">职称</td><td>{{ row.title or '' }}</td><td class="label">身份证号</td><td>{{ row.id_number }}</td></tr>
-    <tr><td class="label">地点、证照</td><td colspan="3">{{ row.destination_passport }}</td></tr>
+    <tr><td class="label">地点、证照</td><td>{{ row.destination_passport }}</td>
+        <td class="label">拟用证件种类</td><td>{{ dict_value('cert_type', row.intended_cert_type) if row.intended_cert_type else '待核实' }}</td></tr>
     <tr><td class="label">类别</td><td>{{ row.category }}</td><td class="label">计划出行日期</td><td>{{ row.travel_dates }}</td></tr>
     <tr><td class="label">批准日期</td><td>{{ row.approval_date or '' }}</td><td class="label">是否做证</td><td>{{ row.need_new_passport }}</td></tr>
     <tr><td class="label">证件号码</td><td>{{ row.passport_no or '' }}</td><td class="label">证件领用日期</td><td>{{ row.passport_collect_date or '' }}</td></tr>

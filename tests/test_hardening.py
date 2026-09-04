@@ -84,7 +84,7 @@ def _travel_form(csrf, fake=False):
         name="张三", position="科员", title="工程师", id_number="110101199001012133",
         destination_passport="美国-护照", category="出国",
         travel_dates="2026/08/01-2026/08/11", need_new_passport="否",
-        approval_date="20260701",
+        approval_date="20260701", intended_cert_type="01",
         passport_collect_date="20260725",
         att_application=(io.BytesIO(pdf), "a.pdf"),
         att_approval=(io.BytesIO(b"%PDF-1.4"), "b.pdf"),

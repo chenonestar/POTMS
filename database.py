@@ -203,6 +203,32 @@ def run_migrations():
         if "cancel_date" not in travel_cols:
             db.execute("ALTER TABLE travel_details ADD COLUMN cancel_date TEXT")
 
+        # 出国明细：拟用证件种类。
+        #
+        # 在此之前，「这趟要用哪种证」在系统里根本没有结构化的答案——只有
+        # 「地点、证照」那段自由文本。后果一路串下去：
+        #   - travel._validate_form 判不了「够不够用」，只能判「一本都没有」，
+        #     它自己的注释就承认了这一点；
+        #   - 领用登记的证件种类是个三选一的自由单选，与这趟去哪儿毫无关联，
+        #     去香港领出一本护照，系统一句话都不说（实测复现）；
+        #   - infer_cert_type 那套三级推断之所以存在，根子也在这里——没有结构化
+        #     字段，只能去猜。
+        #
+        # 存量回填直接复用 infer_cert_type：号码匹配 → 「地点、证照」里的证件
+        # 名称 → 该人只登记了一种证。三条都不成立就留空标「待核实」，
+        # **不替他猜一个**——给出错误答案比判不出更糟，这是那个函数当初的教训。
+        if "intended_cert_type" not in travel_cols:
+            db.execute("ALTER TABLE travel_details ADD COLUMN intended_cert_type TEXT")
+            db.commit()
+            for tid, pfid, pno, dest in db.execute(
+                    "SELECT id, personnel_filing_id, passport_no, destination_passport "
+                    "FROM travel_details").fetchall():
+                code = infer_cert_type(db, pfid, pno, dest or "") if pfid else ""
+                if code:
+                    db.execute("UPDATE travel_details SET intended_cert_type = ? WHERE id = ?",
+                               (code, tid))
+            db.commit()
+
         # 操作日志：变更前后数据快照（JSON）
         log_cols = {row[1] for row in db.execute("PRAGMA table_info(operation_logs)").fetchall()}
         if "snapshot" not in log_cols:
@@ -590,6 +616,7 @@ CREATE TABLE IF NOT EXISTS travel_details (
     title TEXT,
     id_number TEXT NOT NULL,
     destination_passport TEXT NOT NULL,
+    intended_cert_type TEXT,
     category TEXT NOT NULL,
     travel_dates TEXT NOT NULL,
     approval_date TEXT,

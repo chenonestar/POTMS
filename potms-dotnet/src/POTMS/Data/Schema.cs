@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS travel_details (
     title TEXT,
     id_number TEXT NOT NULL,
     destination_passport TEXT NOT NULL,
+    intended_cert_type TEXT,
     category TEXT NOT NULL,
     travel_dates TEXT NOT NULL,
     approval_date TEXT,

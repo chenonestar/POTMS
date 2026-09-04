@@ -285,7 +285,7 @@ def _edit(cl, **over):
          "department": "技术部", "name": "甲", "position": "科长",
          "id_number": valid_id(1), "destination_passport": "美国/护照", "category": "01",
          "travel_dates": "2026/09/01-2026/09/11", "need_new_passport": "否",
-         "approval_date": "20260801"}
+         "approval_date": "20260801", "intended_cert_type": "01"}
     d.update(over)
     return cl.post("/travel/1/edit", data=d, follow_redirects=True)
 
@@ -389,7 +389,7 @@ def test_creating_still_requires_them_all(t):
         "department": "技术部", "name": "甲", "position": "科长",
         "id_number": valid_id(1), "destination_passport": "日本/护照", "category": "01",
         "travel_dates": "2026/11/01-2026/11/11", "need_new_passport": "否",
-        "approval_date": "20260801",
+        "approval_date": "20260801", "intended_cert_type": "01",
     }, follow_redirects=True)
     assert "《个人申请报告》为必传项" in r.get_data(as_text=True)
     assert _one("SELECT COUNT(*) FROM travel_details") == 1, "缺件却建出了新申请"

@@ -114,7 +114,7 @@ def test_travel_edit_cannot_override_derived_passport_no(c):
         "department": "技术部", "name": "有证张三", "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/08/01-2026/08/11", "need_new_passport": "否",
-        "approval_date": "20260701",
+        "approval_date": "20260701", "intended_cert_type": "01",
         "passport_no": "伪造的号码",
     }, follow_redirects=True)
     assert _travel_passport_no() == "E12345678"
@@ -139,7 +139,7 @@ def test_path_b_passport_no_still_hand_entered(c):
         "department": "技术部", "name": "无证李四", "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/09/01-2026/09/11", "need_new_passport": "是",
-        "approval_date": "20260701",
+        "approval_date": "20260701", "intended_cert_type": "01",
         "passport_no": "E99999999",
     }, follow_redirects=True)
     assert _travel_passport_no(2) == "E99999999"
@@ -156,14 +156,14 @@ def test_voided_issuance_keeps_last_number(c):
 # ---------------------------------------------------------------------------
 # B3 「是否做证」与实际持证一致
 # ---------------------------------------------------------------------------
-def _new_travel(cl, pfid, name, need):
+def _new_travel(cl, pfid, name, need, cert_type="01"):
     """路径A 须传《个人申请报告》《审批表》，路径B 另须《同意申办函》。"""
     data = {
         "csrf_token": _tok(cl), "personnel_filing_id": str(pfid), "unit": "总部",
         "department": "技术部", "name": name, "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/10/01-2026/10/11", "need_new_passport": need,
-        "approval_date": "20260701",
+        "approval_date": "20260701", "intended_cert_type": cert_type,
         "att_application": (io.BytesIO(b"%PDF-1.4 x"), "a.pdf"),
         "att_approval": (io.BytesIO(b"%PDF-1.4 x"), "b.pdf"),
     }
@@ -176,7 +176,7 @@ def _new_travel(cl, pfid, name, need):
 def test_no_cert_must_make_one(c):
     """一本可用的证都没有却说不做证——这条记录本身就是错的。"""
     r = _new_travel(c, 2, "无证李四", "否")
-    assert "没有在有效期内的出入境证件" in r.get_data(as_text=True)
+    assert "没有在有效期内的普通护照" in r.get_data(as_text=True)
 
 
 def test_no_cert_with_make_one_is_ok(c):
@@ -190,7 +190,7 @@ def test_expired_cert_counts_as_none(c):
     db.execute("UPDATE certificates SET passport_expiry='20200101' WHERE personnel_filing_id=1")
     db.commit(); db.close()
     r = _new_travel(c, 1, "有证张三", "否")
-    assert "没有在有效期内的出入境证件" in r.get_data(as_text=True)
+    assert "没有在有效期内的普通护照" in r.get_data(as_text=True)
 
 
 def test_valid_cert_allows_no_new_passport(c):
@@ -198,17 +198,34 @@ def test_valid_cert_allows_no_new_passport(c):
     assert "已保存" in r.get_data(as_text=True)
 
 
-def test_wrong_kind_of_cert_is_not_blocked(c):
-    """系统判不了「够不够用」，只判「一本都没有」。
-
-    有港澳通行证但要去美国——这种要靠经办人自己看，明细表上没有证件种类栏，
-    系统无从判断这趟要用哪种证。这条用例把这个边界钉住，免得日后误以为
-    系统能兜住这种情形。
-    """
+def _only_hm_pass():
+    """把 1 号人改成「只有港澳通行证，没有护照」。"""
     db = sqlite3.connect(Config.DATABASE)
     db.execute("UPDATE certificates SET passport_no=NULL, passport_expiry=NULL, "
                "hm_pass_no='C87654321', hm_pass_expiry='20351231', "
                "hm_pass_submit_date='20250101' WHERE personnel_filing_id=1")
     db.commit(); db.close()
-    r = _new_travel(c, 1, "有证张三", "否")
+
+
+def test_holding_the_wrong_kind_is_now_caught(c):
+    """只有港澳通行证，却说这趟用护照且不做证——现在判得出来了。
+
+    这条用例原来钉的是相反的结论：「系统判不了够不够用，只判一本都没有」，
+    理由是明细表上没有证件种类栏。第 7 批加了「拟用证件种类」这个结构化字段，
+    那个理由随之消失，判据可以精确到**那一本**。
+    """
+    _only_hm_pass()
+    r = _new_travel(c, 1, "有证张三", "否", cert_type="01")
+    body = r.get_data(as_text=True)
+    assert "没有在有效期内的普通护照" in body, body[:400]
+    assert "已保存" not in body
+
+
+def test_holding_the_right_kind_still_passes(c):
+    """同一个人，改说这趟用港澳通行证——他确实有，放行。
+
+    没有这条对照，上面那条用「一律拦死」也能变绿。
+    """
+    _only_hm_pass()
+    r = _new_travel(c, 1, "有证张三", "否", cert_type="02")
     assert "已保存" in r.get_data(as_text=True)

@@ -708,6 +708,7 @@
 <tr><td><code>category</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>出国（境）类别，字典·<strong>存文字</strong>。</td></tr>
 <tr><td><code>travel_dates</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>行程描述文本（如「历史批次」「2026-03-01 至 03-10」）。</td></tr>
 <tr><td><code>travel_start</code> / <code>travel_end</code></td><td>TEXT</td><td>可空</td><td><span class="badge b-new">录入</span></td><td><strong>由迁移追加，不在建表 SQL 里。</strong>结构化的起止日期。<code>travel_end</code> 是逾期到期日的兜底基准。列表默认排序用 <code>travel_start</code>。</td></tr>
+<tr><td><code>intended_cert_type</code></td><td>TEXT</td><td>列可空，<strong>应用层必填</strong></td><td><span class="badge b-new">录入</span></td><td><span class="badge b-new">第 7 批新增</span> 拟用证件种类（<code>cert_type</code> 字典代码）。在此之前「这趟要用哪种证」<u>在系统里没有结构化答案</u>，只有「地点、证照」那段自由文本，一个缺口串出三个后果：判不了「够不够用」（只能判「一本都没有」）、领用时领哪本没人管（去香港领出护照，系统一句话不说）、历史数据只能靠 <code>infer_cert_type</code> 去猜。<br>存量由迁移用同一套三级判据回填，<u>判不出的留空标「待核实」</u>——不替他猜一个；留空的不参与领用比对，不能拿系统自己都没判出来的答案去挡人。</td></tr>
 <tr><td><code>approval_date</code></td><td>TEXT</td><td>列可空，<strong>应用层必填</strong></td><td><span class="badge b-new">录入</span></td><td>审批日期。审批本身在线下走纸质，系统只记结果。<u>原为选填</u>——旧需求文档写「审批通过后回填」，但同一份文档另一处写的是「根据线下<strong>已签批</strong>材料填写明细表」，而代码实现的是后者：《审批表》一直是必传附件。既然那张签好字的扫描件必然先于记录存在，它上面的日期就没有理由选填。列本身保持可空，不动 schema。</td></tr>
 <tr><td><code>need_new_passport</code></td><td>TEXT</td><td>默认 <code>否</code></td><td><span class="badge b-new">录入</span></td><td><strong>路径 A / 路径 B 的分岔就是这一列。</strong>填「是」＝做证：本人自己去公安办新证，全程没有领用记录。它同时决定附件必备项与逾期判据。</td></tr>
 <tr><td><code>passport_no</code></td><td>TEXT</td><td>可空</td><td><span class="badge b-derive">派生</span>／<span class="badge b-new">录入</span></td>
@@ -1858,8 +1859,8 @@
 <thead><tr><th style="width:70px">优先级</th><th style="width:300px">欠什么</th><th>影响</th></tr></thead>
 <tbody>
 <tr><td><span class="badge b-p1">高</span></td>
-    <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的四批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
-    <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。<br><span class="badge b-new">新增</span> 本轮第 2 批给身份证号加了<strong>库层唯一索引</strong>。索引是库的属性，对五版一视同仁：这是好事（约束不再依赖哪一版在写），但另外四版的编辑路径若仍不查重，撞号时拿到的是一个 <code>IntegrityError</code>，多半直接 500，而不是一句能看懂的提示。</td></tr>
+    <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的五批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
+    <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。<br><span class="badge b-new">新增</span> 本轮第 2 批给身份证号加了<strong>库层唯一索引</strong>。索引是库的属性，对五版一视同仁：这是好事（约束不再依赖哪一版在写），但另外四版的编辑路径若仍不查重，撞号时拿到的是一个 <code>IntegrityError</code>，多半直接 500，而不是一句能看懂的提示。<br><span class="badge b-new">第 7 批</span> 出国明细表新增了 <code>intended_cert_type</code> 列。四版都按<u>列名</u>映射行（Go <code>queryMaps</code>、Rust <code>query_maps</code> 均如此），所以加列<strong>不会让它们崩</strong>——但它们不认这一栏，从那边建的出国申请这一列恒为空，在 Python 版里一律显示「待核实」，领用比对也随之失效。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td><code>release.yml</code>（425 行，五版一次出齐）<strong>从来没有真正跑过一次</strong></td>
     <td>真到发版那天才第一次跑，是最不该冒的险。应当先拿一个测试 tag 空跑一遍。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td>仓库里<strong>没有约定文档</strong>（<code>CLAUDE.md</code> / <code>CONTRIBUTING.md</code>）</td>
@@ -1904,6 +1905,12 @@
 <tr><td><span class="badge b-new">顺带</span> 出国明细「证件状态」下拉里残留<strong>老口径</strong>的「在库 / 领用中」两档，判据是 <code>passport_collect_date</code> 有没有值——按出行记录行算，而现在的「在库」按证件本数算（<code>stock_split</code>）。同一个词在两个页面指两件事</td>
     <td>整档撤掉，不重新对口径：出国明细本来就不是盘库的地方。下拉只剩与首页同源的「新办未入库 / 逾期未交回」</td>
     <td><code>test_retired_stock_and_inuse_options_are_gone</code><br><code>test_both_remaining_filters_share_the_dashboard_functions</code>：筛出的 id 集合必须与函数返回的完全相同</td></tr>
+<tr><td><span class="badge b-p1">最大的一条</span> <strong>「这趟要用哪种证」在系统里没有结构化答案</strong>——只有「地点、证照」那段自由文本。一个缺口串出三个后果：<code>travel._validate_form</code> 判不了「够不够用」（<u>它自己的注释就写着这个原因</u>）、领用表单的证件种类是与行程毫无关联的自由三选一（<strong>去香港领出一本护照，系统一句话都不说</strong>，实测复现）、历史数据只能靠 <code>infer_cert_type</code> 三级推断去猜</td>
+    <td>出国明细表加 <code>intended_cert_type</code>（拟用证件种类，引用 <code>cert_type</code> 字典），新增/编辑必填。判据随之有了源头：<br>
+        ① 「说不做证」从「一本都没有」升级为<u>精确到那一本</u>——只有港澳通行证却说这趟用护照，现在拦得住；<br>
+        ② 领用登记必须与申请上写明的种类一致，表单按它预选；<br>
+        ③ 存量由迁移复用同一套三级判据回填（号码匹配 → 「地点、证照」里的证件名称 → 该人只登记了一种证），<strong>判不出的留空标「待核实」，不替他猜一个</strong>——给出错误答案比判不出更糟，这正是 <code>infer_cert_type</code> 当初的教训。留空的<u>不参与领用比对</u>：不能拿系统自己都没判出来的答案去挡人</td>
+    <td><code>tests/test_intended_cert_type.py</code>（16 例）。每条拦截都配了反向对照：拦住「持港澳却说用护照」的旁边就是「改说用港澳则放行」——否则「一律拦死」也能让前者变绿。回填四条覆盖三级判据各一级加一个判不出的，另有幂等对照（第二次迁移不冲掉人工订正）<br>撤掉修复分九个方向验过会红</td></tr>
 <tr><td><strong>批准日期选填，与《审批表》必传自相矛盾</strong>——旧需求文档一处写「审批通过后回填」（先建记录、批下来再补），另一处写「根据线下<u>已签批</u>材料填写明细表」；代码把两半都实现了：附件强制、日期选填</td>
     <td>改为必填并在表单上标 <code>*</code>。<u>不做「有日期就要有附件」那种条件联动</u>——附件那一半系统已经强制了，条件联动是在给一个不存在的场景写代码</td>
     <td><code>test_approval_date_is_required_now</code>、<code>test_the_form_marks_it_as_required</code>（按标签文字精确定位，不用「输入框前后若干字符」的窗口——窗口一宽就会框进邻格的 <code>required</code>，撤掉星号时才发现那条断言是永远绿的）</td></tr>

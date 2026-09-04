@@ -8,6 +8,12 @@
     <i class="bi bi-airplane"></i> 关联出行记录 #{{ travel.id }}：
     <strong>{{ travel.name }}</strong> · {{ travel.destination_passport }} · 计划出行 {{ travel.travel_dates }}
     {% if travel.approval_date %}· 批准日期 {{ travel.approval_date }}{% endif %}
+    {% if travel.intended_cert_type %}
+    <div class="mt-1 small">本次申请<strong>拟用证件种类</strong>：{{ dict_value('cert_type', travel.intended_cert_type) }}
+        <span class="text-muted">——领用登记须与之一致；确需改用其他证件，请先到出国申请里更正。</span></div>
+    {% else %}
+    <div class="mt-1 small text-muted">本次申请未填写拟用证件种类（历史数据），领用种类不作比对。</div>
+    {% endif %}
 </div>
 {% endif %}
 
