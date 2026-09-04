@@ -25,7 +25,7 @@
         <div class="row mt-2">
             <div class="col-md-4"><label class="text-muted">报送单位联系人</label><p>{{ dec.submit_contact }}</p></div>
             <div class="col-md-4"><label class="text-muted">联系电话</label><p>{{ dec.submit_phone }}</p></div>
-            <div class="col-md-4"><label class="text-muted">入库批号</label><p>{{ dec.batch_no }}</p></div>
+            <div class="col-md-4"><label class="text-muted">入库批号</label><p>{{ dec.batch_no or '-' }}</p></div>
         </div>
         <div class="row mt-2">
             <div class="col-md-4"><label class="text-muted">撤控日期</label><p>{{ dec.decontrol_date or '-' }}</p></div>

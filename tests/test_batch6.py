@@ -219,7 +219,7 @@ def test_issuance_button_disabled_when_already_issued(c):
     _issue(c)
     actions = _row_actions(c, 1)
     assert "/issuance/new?travel_id=1" not in actions, "办不了却仍给了入口"
-    assert "已有一条未归还的领用记录" in actions, "按钮灰了却没说为什么"
+    assert "已有未归还的领用记录（#1）" in actions, "按钮灰了却没说为什么、是哪一张"
 
 
 def test_issuance_button_returns_after_the_cert_comes_back(c):

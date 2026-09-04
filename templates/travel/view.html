@@ -12,6 +12,12 @@
         </a>
         {% if travel.trip_status == 'cancelled' %}
         <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#restoreModal"><i class="bi bi-arrow-counterclockwise"></i> 恢复行程</button>
+        {% elif travel.actual_return_date %}
+        {# 人都回来了，「这趟不去了」讲不通。真正的关卡在后端（travel.cancel）：
+           取消会把逾期到期日的基准从「实际回国+10 工作日」换成「取消日+5 工作日」，
+           误点一下就能把一条已逾期的记录从告警里抹掉 5 个工作日。 #}
+        <button type="button" class="btn btn-outline-secondary btn-sm" disabled
+                title="行程已结束（实际回国 {{ travel.actual_return_date }}），不能再取消"><i class="bi bi-x-circle"></i> 取消行程</button>
         {% else %}
         <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal"><i class="bi bi-x-circle"></i> 取消行程</button>
         {% endif %}
@@ -56,6 +62,8 @@
     </div>
 </div>
 
+{# 已结束的行程不能取消（travel.cancel 会拦），弹窗也就不该留在 DOM 里 #}
+{% if not travel.actual_return_date %}
 <!-- 取消行程 -->
 <div class="modal fade" id="cancelModal" tabindex="-1">
     <div class="modal-dialog"><div class="modal-content">
@@ -71,6 +79,7 @@
         </form>
     </div></div>
 </div>
+{% endif %}
 
 <!-- 恢复行程 -->
 <div class="modal fade" id="restoreModal" tabindex="-1">

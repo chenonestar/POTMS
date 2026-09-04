@@ -268,10 +268,15 @@ def _validate_form(data: dict) -> list[str]:
         ("work_unit", "工作单位"), ("supervisor_unit", "人事主管单位"),
         ("submit_unit_name", "报送单位名称"), ("submit_unit_type", "报送单位类别"),
         ("submit_contact", "报送单位联系人"), ("submit_phone", "报送单位联系电话"),
-        ("batch_no", "入库批号"), ("reason", "撤控原因"),
+        ("reason", "撤控原因"),
         # 撤控以证件收缴完毕为前提，移交日期是这件事发生过的凭据，不能留空
         ("cert_handover_date", "证件移交日期"),
     ]
+    # 「入库批号」改为选填。它指的是当初做备案时报给公安的那批纸质材料的批号，
+    # 而系统从没生成过、也从没存过任何批号——personnel_filing 上根本没有这个字段。
+    # 一个必填、却既给不出来源也校不了对错的格子，只会逼人随便敲一个数字进去，
+    # 那比留空更糟：留空至少诚实地表示「不知道」。
+    # 列仍是 NOT NULL，留空写入的是空串——不动 schema，也就不牵动另外四版的生成文件。
     errors += check_required(data, required)
     errors += check_dates(data, [
         ("birth_date", "出生日期"),
@@ -279,5 +284,32 @@ def _validate_form(data: dict) -> list[str]:
         ("decontrol_date", "撤控日期"),
     ])
     errors += check_identity(data)
+    errors += _date_order_errors(data)
 
+    return errors
+
+
+def _date_order_errors(data: dict) -> list[str]:
+    """撤控日期与证件移交日期的先后关系。
+
+    业务上撤控**以证件收缴完毕为前提**（这也是 _unsettled_certs 那道前置校验的
+    依据），所以移交必然发生在撤控之前或当天：
+
+        证件移交日期 ≤ 撤控日期 ≤ 今天
+
+    不要求两者相同——先把证收上来、隔几天再报撤控，是正常节奏。
+    两个日期都不得晚于今天：这两件事都是**已经发生过的事实**，撤控表是报出去的
+    单据，上面不该出现还没发生的日期。此前这两条关系一条都没校验，随便填。
+    """
+    errors = []
+    today = datetime.now().strftime("%Y%m%d")
+    handover = (data.get("cert_handover_date") or "").strip()
+    decontrol = (data.get("decontrol_date") or "").strip()
+    for val, label in ((handover, "证件移交日期"), (decontrol, "撤控日期")):
+        if val and val > today:
+            errors.append(f"{label}不能晚于今天（{today}）——它记的是已经发生过的事。")
+    if handover and decontrol and handover > decontrol:
+        errors.append(
+            f"证件移交日期（{handover}）不能晚于撤控日期（{decontrol}）："
+            "撤控以证件收缴完毕为前提，证要先交回来，才谈得上报撤控。")
     return errors

@@ -214,6 +214,7 @@ def test_travel_form_no_longer_writes_collect_date(c):
         "department": "技术部", "name": "张三", "position": "科长", "id_number": _VALID_ID,
         "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/08/01-2026/08/11", "need_new_passport": "否",
+        "approval_date": "20260701",
         "passport_collect_date": "19990101",      # 伪造：应被忽略
         "passport_return_date": "19990202",       # 伪造：应被忽略
     }, follow_redirects=True)

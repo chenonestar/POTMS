@@ -106,9 +106,10 @@
     </div>
     <div class="row g-3 mt-1">
         <div class="col-md-4">
-            <label class="form-label required">入库批号</label>
+            <label class="form-label">入库批号</label>
             <input type="text" class="form-control" name="batch_no" value="{{ data.batch_no or '' }}"
-                   placeholder="原备案批号" required>
+                   placeholder="该人员当初备案入库时的批号，不清楚可留空">
+            <div class="form-text">系统不产生也不保存备案批号，此栏据纸质备案材料填写；不清楚可留空。</div>
         </div>
         <div class="col-md-8">
             <label class="form-label required">政治面貌</label>

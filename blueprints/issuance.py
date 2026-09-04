@@ -425,28 +425,68 @@ def open_issuance_travel_ids() -> set:
 
     同一申请下不允许两本证同时在外——一次申请一本证。「领用 → 归还 → 再领用」
     仍然可以，因为已归还的记录不在此列。
-
-    出国申请列表要按同一口径决定「证件领用登记」按钮给不给点（见 travel.list），
-    所以这条判据在这里出一次，两边共用；各写一遍迟早漂移。
     """
     return {r[0] for r in get_db().execute(
         "SELECT DISTINCT travel_id FROM cert_issuance "
         "WHERE status = 'issued' AND travel_id IS NOT NULL").fetchall()}
 
 
-def _eligible_travels():
-    """可以办理领用的出国申请。
+def issuance_block_reasons() -> dict:
+    """出国申请 id → 「为什么现在不能办领用」。不在这个字典里的就是能办的。
 
-    排除两类：已取消的行程（不会再出行，没有领用的理由），以及已有一条未归还
-    领用记录的申请（判据见 open_issuance_travel_ids）。
+    判据只此一处，四个调用点共用：领用挑单页（_eligible_travels）、出国申请
+    列表上那个按钮给不给点、领用登记的后端校验、以及提示文案本身。
+    此前这三处各管一段，于是漏得五花八门——按钮灰了 POST 却照样过，
+    挑单页排除了取消行程却没排除已撤控。
+
+    四类都不能办：
+
+    1. 行程已取消——不会再出行，没有领用的理由；
+    2. 已有一条未归还的领用记录——一次申请一本证，办完归还才能再领；
+    3. **行程已经结束**（实际回国日期已填）。这一条是补上的：原判据只看
+       前两项，于是一条 3 月就走完、证也已归还的申请，9 月还能凭它再领一本
+       护照出去——实测复现。「领用 → 归还 → 再领用」的设计本意是同一趟行程
+       中途的反复，不是行程结束之后；
+    4. **申请人已撤控**。撤控以证件收缴移交完毕为前提（见 decontrol._unsettled_certs），
+       人都不在管理范围内了，系统却还允许给他办领用——同样是补上的。
+
+    返回原因串而不是一个 id 集合：按钮的提示文案要说清楚为什么点不了，
+    「办不了」和「为什么办不了」得是同一份判断的两个输出，各写一套就会出现
+    「提示说行程已取消、实际是因为已有未归还记录」这种更难查的错。
     """
-    blocked = open_issuance_travel_ids()
+    reasons = {}
+    # 顺带取出那条未归还记录的编号：「挡下要给明细」——只说「已有未归还记录」，
+    # 经办人还得自己去翻是哪一张。
+    open_iss = {r["travel_id"]: r["iss_id"] for r in get_db().execute(
+        "SELECT travel_id, MIN(id) AS iss_id FROM cert_issuance "
+        "WHERE status = 'issued' AND travel_id IS NOT NULL GROUP BY travel_id").fetchall()}
+    for r in get_db().execute(
+            "SELECT t.id, COALESCE(t.trip_status,'normal') AS st, t.actual_return_date, "
+            "       pf.status AS filing_status "
+            "FROM travel_details t "
+            "LEFT JOIN personnel_filing pf ON pf.id = t.personnel_filing_id").fetchall():
+        # 顺序即优先级：先说最根本的那个原因，一条申请可能同时命中好几项
+        if r["filing_status"] != "active":
+            reasons[r["id"]] = "申请人已撤控，不再办理证件领用"
+        elif r["st"] == "cancelled":
+            reasons[r["id"]] = "行程已取消，不再办理证件领用"
+        elif (r["actual_return_date"] or "").strip():
+            reasons[r["id"]] = (
+                f"行程已结束（实际回国 {r['actual_return_date']}），不再办理证件领用；"
+                "如需再次出行，请另建出国申请")
+        elif r["id"] in open_iss:
+            reasons[r["id"]] = (f"已有未归还的领用记录（#{open_iss[r['id']]}），"
+                                "请先办理归还或作废")
+    return reasons
+
+
+def _eligible_travels():
+    """可以办理领用的出国申请——判据见 issuance_block_reasons。"""
+    blocked = issuance_block_reasons()
     rows = get_db().execute(
         "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, "
         "       t.approval_date, t.need_new_passport "
-        "FROM travel_details t "
-        "WHERE COALESCE(t.trip_status, 'normal') != 'cancelled' "
-        "ORDER BY t.created_at DESC").fetchall()
+        "FROM travel_details t ORDER BY t.created_at DESC").fetchall()
     return [r for r in rows if r["id"] not in blocked]
 
 
@@ -556,17 +596,18 @@ def _validate_form(data: dict) -> list[str]:
         if not tv:
             errors.append("关联的出国申请不存在。")
         else:
-            if tv["trip_status"] == "cancelled":
-                errors.append("该出国申请已取消行程，不能办理证件领用。")
             # 领用人必须就是申请人——证是为这条申请借的，不能借给别人
             if str(tv["personnel_filing_id"]) != str(data.get("personnel_filing_id") or ""):
                 errors.append("领用人与该出国申请的申请人不一致。")
-        # 同一出行下不允许重复的未归还领用记录
-        dup = db.execute(
-            "SELECT id FROM cert_issuance WHERE travel_id = ? AND status = 'issued'",
-            (data["travel_id"],)).fetchone()
-        if dup:
-            errors.append(f"该出行记录已有未归还的领用记录（#{dup['id']}），请先办理归还或作废。")
+        # 这条申请此刻能不能办领用——与列表按钮、挑单页同一个判据。
+        #
+        # 后端这一关不能省：按钮灰掉只是不给入口，伪造的 POST 想提交什么提交什么。
+        # 此前这里只挡「行程已取消」和「同一申请已有未归还记录」两项，于是一条
+        # 已经走完、证也已归还的申请照样能被 POST 出一张新领用单——实测复现。
+        reason = issuance_block_reasons().get(int(data["travel_id"])) \
+            if str(data["travel_id"]).isdigit() else None
+        if reason:
+            errors.append(f"该出国申请不能办理证件领用：{reason}。")
 
     # 一本证同时只能在一个人手上——号码级的跨申请查重。
     #

@@ -194,8 +194,12 @@ def list() -> ResponseReturnValue:
 
     # 「证件领用登记」按钮此前对每一行都亮着，点进去才被挡回来——办不了的事不该
     # 先给个入口。判据与领用模块的准入完全一致（同一个函数），不在这里另写一套。
-    from blueprints.issuance import open_issuance_travel_ids
-    open_issuance = open_issuance_travel_ids()
+    #
+    # 拿的是「原因」而不是一个 id 集合：按钮的 title 要说清楚为什么点不了，
+    # 而「能不能办」与「为什么办不了」必须是同一份判断的两个输出。此前模板里
+    # 按 trip_status / open_issuance 自己拼提示语，判据一扩就对不上了。
+    from blueprints.issuance import issuance_block_reasons
+    block_reasons = issuance_block_reasons()
 
     return render_template(
         "travel/list.html",
@@ -208,7 +212,7 @@ def list() -> ResponseReturnValue:
         date_to=date_to,
         overdue_ids=overdue_ids,
         deadlines=deadlines,
-        open_issuance=open_issuance,
+        block_reasons=block_reasons,
         category_opts=get_dict_options("travel_category"),
     )
 
@@ -544,6 +548,21 @@ def delete(travel_id) -> ResponseReturnValue:
 # =========================================================================
 # 行程取消 / 恢复
 # =========================================================================
+def _travel_label(row) -> str:
+    """一条出行记录在日志里的自述：谁、去哪、什么时候。
+
+    取消与恢复此前写的是「取消行程（20260904）」「恢复行程为正常」——不点名。
+    日志列表上只看得见 detail 那一栏，翻一整页都不知道动的是谁；而同一批日志里
+    别的动作都是「证件领用登记：甲一，普通护照」这个样子，这两条是异类。
+
+    target_id 和前后快照里其实都有，查得回来——但日志列表存在的意义就是
+    一眼看得出，要点开快照才知道动了谁，等于没记。
+    """
+    parts = [row["name"] or "", row["destination_passport"] or "", row["travel_dates"] or ""]
+    return "，".join(p for p in parts if p)
+
+
+
 @travel_bp.route("/travel/<int:travel_id>/cancel", methods=["POST"])
 @login_required
 def cancel(travel_id) -> ResponseReturnValue:
@@ -555,6 +574,18 @@ def cancel(travel_id) -> ResponseReturnValue:
         return redirect(url_for("travel.list"))
     if row["trip_status"] == "cancelled":
         flash("该行程已处于取消状态。", "info")
+        return redirect(url_for("travel.view", travel_id=travel_id))
+
+    # 已经走完的行程不能再「取消」——取消说的是「这趟不去了」，人都回来了。
+    #
+    # 这不只是语义问题：cert_overdue_deadline() 的基准日会随行程状态整个切换，
+    # 正常行程是「实际回国日 + 10 个工作日」，取消行程是「取消日 + 5 个工作日」。
+    # 对一条早就该还证、已经在逾期告警里的记录点一下取消，应还日期会从几个月前
+    # 跳到今天之后——实测：20260403 → 20260911，**首页那条逾期告警当场消失**，
+    # 5 个工作日后才重新出现。一次误点就够了，不需要任何恶意。
+    if (row["actual_return_date"] or "").strip():
+        flash(f"该行程已结束（实际回国 {row['actual_return_date']}），不能再取消。"
+              "如果这个日期填错了，请先到编辑页更正。", "danger")
         return redirect(url_for("travel.view", travel_id=travel_id))
 
     cancel_date = parse_date_input(request.form.get("cancel_date", ""))
@@ -572,7 +603,7 @@ def cancel(travel_id) -> ResponseReturnValue:
     db.commit()
     log_action("cancel", "travel_details", travel_id,
                before=before, after=row_snapshot("travel_details", travel_id),
-               detail=f"取消行程（{cancel_date}）")
+               detail=f"取消行程：{_travel_label(row)}，取消日期 {cancel_date}")
     flash(f"行程已取消（{cancel_date}）。已申领证件请于 5 个工作日内送回保管。", "warning")
     return redirect(url_for("travel.view", travel_id=travel_id))
 
@@ -593,7 +624,8 @@ def restore(travel_id) -> ResponseReturnValue:
     db.commit()
     log_action("restore", "travel_details", travel_id,
                before=before, after=row_snapshot("travel_details", travel_id),
-               detail="恢复行程为正常")
+               detail=f"恢复行程为正常：{_travel_label(row)}"
+                      + (f"，原取消日期 {before['cancel_date']}" if before.get("cancel_date") else ""))
     flash("行程已恢复为正常状态。", "success")
     return redirect(url_for("travel.view", travel_id=travel_id))
 
@@ -686,6 +718,16 @@ def _validate_form(data: dict) -> list[str]:
         ("name", "姓名"), ("position", "职务"), ("id_number", "身份证号"),
         ("destination_passport", "地点、证照"), ("category", "类别"),
         ("travel_dates", "计划出行日期"), ("need_new_passport", "是否做证"),
+        # 批准日期原为选填。需求文档 613 行写着「审批通过后回填」——先建记录、
+        # 批下来再补，这个理由自洽。但同一份文档 634 行写的是相反的流程：
+        # 「管理员根据《个人申请报告》《审批表》等**线下已签批材料**填写明细表」，
+        # 而代码实现的正是后者——《审批表》一直在 _REQUIRED_A 里，没有它连
+        # 记录都建不出来。
+        #
+        # 于是现状是：必须先有那张签好字的审批表扫描件才能建记录，可它上面的
+        # 日期却是选填的。两条规则不可能同时讲得通。附件那一半系统已经强制了，
+        # 这里补上另一半——纸质件与系统记录之间的对应锚点就是这个日期。
+        ("approval_date", "批准日期"),
     ]
     errors += check_required(data, required)
     # 明细表身份证由备案信息自动带入、无性别/出生字段，仅校验号码本身

@@ -42,13 +42,19 @@ def c(tmp_path, monkeypatch):
                "passport_no,passport_expiry,passport_submit_date,operator) "
                "VALUES (1,'总部','技术部','路径A张三','E12345678','20301231','20250101','admin')")
     ago = _long_ago()
-    # 两条出行申请：都回国 90 天，证都没交回。区别只在是否做证。
+    # 两条出行申请：计划出行日期都在 90 天前，证都没交回。区别只在是否做证。
+    #
+    # 刻意**不填**实际回国日期：行程一旦标记为已结束，就不能再办理证件领用了
+    # （见 issuance.issuance_block_reasons 第 3 条）。现实里的顺序本来就是
+    # 领用 → 出行 → 回国 → 归还，回国日期是最后才填上的；这些用例要在
+    # 「还没回国」这个时点上登记领用，才对得上真实流程。
+    # 逾期判定不受影响：没有实际回国日期时，到期日以 travel_end 为基准。
     for tid, pid, nm, mk in ((1, 1, "路径A张三", "否"), (2, 2, "路径B李四", "是")):
         db.execute("INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,"
                    "position,id_number,destination_passport,category,travel_dates,travel_end,"
-                   "need_new_passport,actual_return_date,operator) VALUES "
-                   "(?,?,'总部','技术部',?,'科长',?,'美国/护照','01',?,?,?,?,'admin')",
-                   (tid, pid, nm, _VALID_ID, f"{ago}-{ago}", ago, mk, ago))
+                   "need_new_passport,operator) VALUES "
+                   "(?,?,'总部','技术部',?,'科长',?,'美国/护照','01',?,?,?,'admin')",
+                   (tid, pid, nm, _VALID_ID, f"{ago}-{ago}", ago, mk))
     db.commit(); db.close()
     from app import create_app
     cl = create_app().test_client()
@@ -104,7 +110,7 @@ def test_cancelled_trip_cannot_issue(c):
     db.execute("UPDATE travel_details SET trip_status='cancelled' WHERE id=1")
     db.commit(); db.close()
     r = _post_issue(c)
-    assert "已取消行程" in r.get_data(as_text=True)
+    assert "行程已取消" in r.get_data(as_text=True)
     assert _count_issuance() == 0
 
 

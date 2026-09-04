@@ -708,7 +708,7 @@
 <tr><td><code>category</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>出国（境）类别，字典·<strong>存文字</strong>。</td></tr>
 <tr><td><code>travel_dates</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>行程描述文本（如「历史批次」「2026-03-01 至 03-10」）。</td></tr>
 <tr><td><code>travel_start</code> / <code>travel_end</code></td><td>TEXT</td><td>可空</td><td><span class="badge b-new">录入</span></td><td><strong>由迁移追加，不在建表 SQL 里。</strong>结构化的起止日期。<code>travel_end</code> 是逾期到期日的兜底基准。列表默认排序用 <code>travel_start</code>。</td></tr>
-<tr><td><code>approval_date</code></td><td>TEXT</td><td>可空</td><td><span class="badge b-new">录入</span></td><td>审批日期。审批本身在线下走纸质，系统只记结果。</td></tr>
+<tr><td><code>approval_date</code></td><td>TEXT</td><td>列可空，<strong>应用层必填</strong></td><td><span class="badge b-new">录入</span></td><td>审批日期。审批本身在线下走纸质，系统只记结果。<u>原为选填</u>——旧需求文档写「审批通过后回填」，但同一份文档另一处写的是「根据线下<strong>已签批</strong>材料填写明细表」，而代码实现的是后者：《审批表》一直是必传附件。既然那张签好字的扫描件必然先于记录存在，它上面的日期就没有理由选填。列本身保持可空，不动 schema。</td></tr>
 <tr><td><code>need_new_passport</code></td><td>TEXT</td><td>默认 <code>否</code></td><td><span class="badge b-new">录入</span></td><td><strong>路径 A / 路径 B 的分岔就是这一列。</strong>填「是」＝做证：本人自己去公安办新证，全程没有领用记录。它同时决定附件必备项与逾期判据。</td></tr>
 <tr><td><code>passport_no</code></td><td>TEXT</td><td>可空</td><td><span class="badge b-derive">派生</span>／<span class="badge b-new">录入</span></td>
     <td><strong>双身份，是全表最容易读错的一列。</strong>有未作废领用记录时由 <code>_sync_travel_derived()</code> 回写、界面只读；路径 B 没有领用记录，这一栏是系统里唯一的号码来源，由人拿到证后回本页补录。<u>领用记录全部作废时也不清空</u>——那仍是当时用的号码。</td></tr>
@@ -753,7 +753,7 @@
     <td>建单时从备案表整体复制。<strong>永不同步</strong>——撤控单是报出去的那张纸。也正因为它自带快照，撤销撤控时才能在人员备案已被删除的情况下仍完整留下日志。</td></tr>
 <tr><td><code>submit_unit_name</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>报送单位名称，<strong>文字引用</strong> <code>sys_submit_unit.name</code>，改名要走同步。</td></tr>
 <tr><td><code>submit_unit_type</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>字典·存文字。</td></tr>
-<tr><td><code>submit_contact</code> / <code>submit_phone</code> / <code>batch_no</code> / <code>reason</code></td><td>TEXT</td><td>全部 NOT NULL</td><td><span class="badge b-new">录入</span></td><td>联系人 / 电话 / 入库批号 / 撤控原因。<u>撤控原因只此一份</u>，物理删除时靠日志快照留存。</td></tr>
+<tr><td><code>submit_contact</code> / <code>submit_phone</code> / <code>batch_no</code> / <code>reason</code></td><td>TEXT</td><td>全部 NOT NULL</td><td><span class="badge b-new">录入</span></td><td>联系人 / 电话 / 入库批号 / 撤控原因。<u>撤控原因只此一份</u>，物理删除时靠日志快照留存。<br><code>batch_no</code> <u>应用层已改为选填</u>（列仍 NOT NULL，留空写空串）：它指的是当初备案时报给公安的那批纸质材料的批号，而 <code>personnel_filing</code> 上<strong>从没存过任何批号</strong>——一个必填、却既给不出来源也校不了对错的格子，只会逼人随便敲一个数字进去，那比留空更糟。</td></tr>
 <tr><td><code>decontrol_date</code></td><td>TEXT</td><td>列上可空</td><td><span class="badge b-new">录入</span></td><td>撤控日期，表单默认今天。</td></tr>
 <tr><td><code>cert_handover_date</code></td><td>TEXT</td><td>列上可空</td><td><span class="badge b-new">录入</span></td>
     <td><span class="badge b-p1">schema 比业务宽松</span> 列上可空，<strong>但校验里是必填</strong>（<code>_validate_form</code>）。理由：撤控以证件收缴完毕为前提，这个日期是这件事发生过的凭据。<u>上一版需求文档写的是「选填」，那是它最贵的一处错误。</u></td></tr>
@@ -1858,7 +1858,7 @@
 <thead><tr><th style="width:70px">优先级</th><th style="width:300px">欠什么</th><th>影响</th></tr></thead>
 <tbody>
 <tr><td><span class="badge b-p1">高</span></td>
-    <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的三批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
+    <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的四批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
     <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。<br><span class="badge b-new">新增</span> 本轮第 2 批给身份证号加了<strong>库层唯一索引</strong>。索引是库的属性，对五版一视同仁：这是好事（约束不再依赖哪一版在写），但另外四版的编辑路径若仍不查重，撞号时拿到的是一个 <code>IntegrityError</code>，多半直接 500，而不是一句能看懂的提示。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td><code>release.yml</code>（425 行，五版一次出齐）<strong>从来没有真正跑过一次</strong></td>
     <td>真到发版那天才第一次跑，是最不该冒的险。应当先拿一个测试 tag 空跑一遍。</td></tr>
@@ -1904,6 +1904,24 @@
 <tr><td><span class="badge b-new">顺带</span> 出国明细「证件状态」下拉里残留<strong>老口径</strong>的「在库 / 领用中」两档，判据是 <code>passport_collect_date</code> 有没有值——按出行记录行算，而现在的「在库」按证件本数算（<code>stock_split</code>）。同一个词在两个页面指两件事</td>
     <td>整档撤掉，不重新对口径：出国明细本来就不是盘库的地方。下拉只剩与首页同源的「新办未入库 / 逾期未交回」</td>
     <td><code>test_retired_stock_and_inuse_options_are_gone</code><br><code>test_both_remaining_filters_share_the_dashboard_functions</code>：筛出的 id 集合必须与函数返回的完全相同</td></tr>
+<tr><td><strong>批准日期选填，与《审批表》必传自相矛盾</strong>——旧需求文档一处写「审批通过后回填」（先建记录、批下来再补），另一处写「根据线下<u>已签批</u>材料填写明细表」；代码把两半都实现了：附件强制、日期选填</td>
+    <td>改为必填并在表单上标 <code>*</code>。<u>不做「有日期就要有附件」那种条件联动</u>——附件那一半系统已经强制了，条件联动是在给一个不存在的场景写代码</td>
+    <td><code>test_approval_date_is_required_now</code>、<code>test_the_form_marks_it_as_required</code>（按标签文字精确定位，不用「输入框前后若干字符」的窗口——窗口一宽就会框进邻格的 <code>required</code>，撤掉星号时才发现那条断言是永远绿的）</td></tr>
+<tr><td><strong>入库批号必填，系统却没有任何来源</strong>——placeholder 写「原备案批号」，而 <code>personnel_filing</code> 上从没存过批号；随便敲什么都过</td>
+    <td>改为选填，并在字段下写明它从哪来。列保持 NOT NULL（留空写空串），不动 schema，也就不牵动另外四版的生成文件</td>
+    <td><code>test_batch_no_can_be_left_blank</code> ＋ <code>test_the_form_no_longer_stars_it_and_says_where_it_comes_from</code></td></tr>
+<tr><td><strong>撤控日期与证件移交日期之间没有任何关系校验</strong>，两者也都不与今天比较——未来日期一路放行</td>
+    <td>判据 <code>证件移交日期 ≤ 撤控日期 ≤ 今天</code>。不要求两者相同：先收证、隔几天再报撤控是正常节奏</td>
+    <td>五条覆盖全部边界：先后合法 / 同日 / 反序被拦 / 未来日期被拦 / <u>今天本身要放行</u>（边界写成 <code>&gt;=</code> 当天就办不了事）</td></tr>
+<tr><td><strong>领用准入判据漏了两项</strong>——只排除「行程已取消」和「同一申请已有未归还记录」。实测：一条 3 月走完、证也已归还的申请，9 月还能凭它领出一本护照；已撤控人员的申请照样列在「可办理领用」里</td>
+    <td>判据收进 <code>issuance_block_reasons()</code>，补上「行程已结束」与「申请人已撤控」，四个调用点共用。<u>返回原因串而不是 id 集合</u>：「能不能办」与「为什么办不了」必须是同一份判断的两个输出，模板自己拼提示语，判据一扩就会出现「提示说 A、其实是因为 B」这种更难查的错。后端校验也补上——按钮灰掉只是不给入口，伪造的 POST 想提交什么提交什么</td>
+    <td>五条：四个原因各点名 + 正常那条仍要能领；另有「按钮 title 就是后端给的那句原因」一条</td></tr>
+<tr><td><span class="badge b-p1">最险</span> <strong>已完成的行程还能「取消」</strong>，而 <code>cert_overdue_deadline()</code> 的基准日随行程状态整个切换（正常＝实际回国+10 工作日，取消＝取消日+5 工作日）。对一条早该还证、已在逾期告警里的记录点一下取消，应还日期会从几个月前跳到今天之后——实测 <code>20260403 → 20260911</code>，<strong>首页那条逾期告警当场消失 5 个工作日</strong></td>
+    <td>填了实际回国日期就不许取消；详情页的按钮灰掉、弹窗一并不渲染。要改先去更正那个日期</td>
+    <td><code>test_a_finished_trip_cannot_be_cancelled</code> ＋ <code>test_cancelling_would_have_pushed_the_overdue_deadline_forward</code>——后者不调路由，直接拿判据函数把「为什么必须拦」摆出来</td></tr>
+<tr><td><strong>取消 / 恢复行程的日志不点名</strong>——写的是「取消行程（20260904）」「恢复行程为正常」，翻一整页都不知道动的是谁。同一批日志里别的动作都是「证件领用登记：甲一，普通护照」这个样子，这两条是异类</td>
+    <td>抽出 <code>_travel_label()</code>：谁、去哪、什么时候。恢复时还带上它撤掉的那个取消日期。<u>信息本来查得回来</u>（target_id 与前后快照都有），但要点开快照才知道动了谁，等于没记——日志列表存在的意义就是一眼看得出</td>
+    <td><code>test_cancel_log_names_the_record</code>、<code>test_restore_log_names_the_record_and_the_date_it_undoes</code></td></tr>
 <tr><td><strong>日志与附件的日期筛选用 UTC，与本地显示错开 8 小时</strong>——同一个模块里 <code>_log_years</code> 与 <code>export_logs</code> 明明转过时区，就这两处 <code>date(created_at)</code> 没转。本地当天 00:00–08:00 的记录筛不出来，前一天同一时段反被错误命中</td>
     <td>偏移量收进 <code>helpers.tz_modifier()</code> 只成形一次，四处调用它（日志列表、年份下拉、日志导出、附件总览）。用 <code>:+d</code> 而不是手写 <code>'+'</code>：负偏移会拼出 <code>'+-5 hours'</code>，SQLite 不报错只是悄悄忽略</td>
     <td><code>test_filtering_logs_by_the_local_day_finds_it</code> ＋ <u>反向对照</u> <code>..._by_the_utc_day_does_not_find_it</code>（只断言「本地筛得到」，把判据写成「两天都命中」也能变绿）<br><code>test_the_offset_is_spelled_once_and_survives_a_negative_value</code></td></tr>

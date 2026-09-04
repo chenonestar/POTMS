@@ -60,10 +60,9 @@
         <td><div class="btn-group btn-group-sm">
             <a href="{{ url_for('travel.view', travel_id=row.id) }}" class="btn btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
             <a href="{{ url_for('export.print_view', print_type='travel', id=row.id) }}" class="btn btn-outline-secondary" title="打印" target="_blank"><i class="bi bi-printer"></i></a>
-            {% if row.trip_status == 'cancelled' %}
-            <a class="btn btn-outline-secondary disabled" tabindex="-1" aria-disabled="true" title="行程已取消，不再办理证件领用"><i class="bi bi-vector-pen"></i></a>
-            {% elif row.id in open_issuance %}
-            <a class="btn btn-outline-secondary disabled" tabindex="-1" aria-disabled="true" title="已有一条未归还的领用记录，办完归还才能再领"><i class="bi bi-vector-pen"></i></a>
+            {# 提示语直接用后端给出的原因，模板不自己拼——判据一扩，这里就会对不上 #}
+            {% if row.id in block_reasons %}
+            <a class="btn btn-outline-secondary disabled" tabindex="-1" aria-disabled="true" title="{{ block_reasons[row.id] }}"><i class="bi bi-vector-pen"></i></a>
             {% else %}
             <a href="{{ url_for('issuance.new', travel_id=row.id) }}" class="btn btn-outline-success" title="证件领用登记"><i class="bi bi-vector-pen"></i></a>
             {% endif %}

@@ -114,6 +114,7 @@ def test_travel_edit_cannot_override_derived_passport_no(c):
         "department": "技术部", "name": "有证张三", "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/08/01-2026/08/11", "need_new_passport": "否",
+        "approval_date": "20260701",
         "passport_no": "伪造的号码",
     }, follow_redirects=True)
     assert _travel_passport_no() == "E12345678"
@@ -138,6 +139,7 @@ def test_path_b_passport_no_still_hand_entered(c):
         "department": "技术部", "name": "无证李四", "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/09/01-2026/09/11", "need_new_passport": "是",
+        "approval_date": "20260701",
         "passport_no": "E99999999",
     }, follow_redirects=True)
     assert _travel_passport_no(2) == "E99999999"
@@ -161,6 +163,7 @@ def _new_travel(cl, pfid, name, need):
         "department": "技术部", "name": name, "position": "科长",
         "id_number": _VALID_ID, "destination_passport": "美国/护照", "category": "01",
         "travel_dates": "2026/10/01-2026/10/11", "need_new_passport": need,
+        "approval_date": "20260701",
         "att_application": (io.BytesIO(b"%PDF-1.4 x"), "a.pdf"),
         "att_approval": (io.BytesIO(b"%PDF-1.4 x"), "b.pdf"),
     }
