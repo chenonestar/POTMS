@@ -280,11 +280,11 @@ def e(tmp_path, monkeypatch):
     return _client()
 
 
-def _issue(cl, travel_id, pid="1", nm="甲一"):
+def _issue(cl, travel_id, pid="1", nm="甲一", issue_date=None):
     return cl.post("/issuance/new", data={
         "csrf_token": _tok(cl), "travel_id": str(travel_id), "personnel_filing_id": pid,
         "holder_name": nm, "id_number": valid_id(int(pid)), "cert_types": "01",
-        "cert_nos": "E1", "issue_date": _days_ago(110), "sign_png": _PNG,
+        "cert_nos": "E1", "issue_date": issue_date or _days_ago(110), "sign_png": _PNG,
     }, follow_redirects=True)
 
 
@@ -295,25 +295,48 @@ def _reasons():
         return issuance_block_reasons()
 
 
-def test_the_four_reasons_are_each_spelled_out(e):
-    """四个分支各给一句能看懂的原因，正常那条不在字典里。"""
+def test_the_hard_reasons_are_each_spelled_out(e):
+    """两个硬拦分支各给一句能看懂的原因。
+
+    「行程已结束」**不在**这个字典里：它不整条封死申请，只挡住领用日期晚于
+    回国日期的那一次登记（见 issuance.late_issue_error 与下面两条用例）。
+    """
     r = _reasons()
     assert 1 not in r, "正常在办的申请被挡了"
-    assert "行程已结束" in r[2]
+    assert 2 not in r, "行程已结束不该整条封死——事后补录是正当业务"
     assert "申请人已撤控" in r[3]
     assert "行程已取消" in r[4]
 
 
-def test_a_finished_trip_cannot_be_issued_again(e):
-    """行程已结束——不能再领。
+def test_issuing_a_finished_trip_after_the_return_date_is_refused(e):
+    """行程已结束的申请，领用日期晚于实际回国日期——挡下。
 
     这正是报出来的那条：3 月走完、证也已归还的申请，9 月还能凭它再领一本
-    护照出去。「领用 → 归还 → 再领用」的设计本意是同一趟行程中途的反复，
-    不是行程结束之后。
+    护照出去。挡它的理由不是「这条申请办完了」，而是**一本证不可能在人回国
+    之后才为这趟行程借出去**——那是个物理事实，所以挡得干净。
     """
-    body = _issue(e, 2).get_data(as_text=True)
-    assert "行程已结束" in body
+    body = _issue(e, 2, issue_date=_today()).get_data(as_text=True)
+    assert "晚于实际回国日期" in body
     assert _one("SELECT COUNT(*) FROM cert_issuance") == 0
+
+
+def test_a_late_entry_within_the_trip_is_allowed(e):
+    """同一条已结束的申请，补登一条回国之前的领用记录——放行。
+
+    第一版判据是「行程一结束就不许再办领用」，它把事后补录也堵死了：现实里
+    顺序是 领用 → 出行 → 回国 → 归还，而回国日期由经办人手填，完全可能先填了
+    回国日期、再回头补登那条本该在出发前登记的记录。没有这条对照，判据
+    退回「整条封死」也能让上一条变绿。
+    """
+    _issue(e, 2, issue_date=_days_ago(115))
+    assert _one("SELECT COUNT(*) FROM cert_issuance WHERE travel_id=2") == 1
+
+
+def test_the_return_date_itself_is_allowed(e):
+    """回国当天领用——放行。边界是 >，不是 >=。"""
+    ret = _one("SELECT actual_return_date FROM travel_details WHERE id=2")
+    _issue(e, 2, issue_date=ret)
+    assert _one("SELECT COUNT(*) FROM cert_issuance WHERE travel_id=2") == 1
 
 
 def test_a_decontrolled_applicant_cannot_be_issued(e):
@@ -323,8 +346,8 @@ def test_a_decontrolled_applicant_cannot_be_issued(e):
     assert _one("SELECT COUNT(*) FROM cert_issuance") == 0
 
 
-def test_the_button_is_grey_for_all_three_and_says_why(e):
-    """列表上这三行的按钮都点不了，且 title 就是后端给的那句原因。
+def test_the_button_is_grey_for_the_hard_ones_and_says_why(e):
+    """硬拦的两行按钮点不了，title 就是后端给的那句原因。
 
     「能不能办」与「为什么办不了」必须是同一份判断的两个输出：模板自己拼提示语，
     判据一扩就会出现「提示说行程已取消、其实是因为别的」这种更难查的错。
@@ -332,18 +355,30 @@ def test_the_button_is_grey_for_all_three_and_says_why(e):
     html = e.get("/travel/").get_data(as_text=True)
     body = html[html.find("<tbody"):html.find("</tbody>")]
     assert "/issuance/new?travel_id=1" in body, "正常那条反而没了入口"
-    for tid in (2, 3, 4):
+    for tid in (3, 4):
         assert f"/issuance/new?travel_id={tid}" not in body, f"申请 {tid} 办不了却仍给了入口"
-    for phrase in ("行程已结束", "申请人已撤控", "行程已取消"):
+    for phrase in ("申请人已撤控", "行程已取消"):
         assert phrase in body, f"按钮灰了却没说「{phrase}」"
 
 
-def test_the_picker_lists_only_the_one_that_can_be_issued(e):
-    """挑单页与按钮同源：只列那条真能办的。"""
+def test_a_finished_trip_keeps_its_entry_with_a_warning(e):
+    """行程已结束那一行按钮**照亮**，但把「只能补登到哪一天」写在 title 上。
+
+    能点、点了要注意什么，得在同一个地方说清楚。整条灰掉就等于告诉人
+    「这事办不了」，而它其实办得了。
+    """
+    html = e.get("/travel/").get_data(as_text=True)
+    body = html[html.find("<tbody"):html.find("</tbody>")]
+    assert "/issuance/new?travel_id=2" in body, "补录的入口被一并去掉了"
+    assert "仅可补登领用日期不晚于该日期的记录" in body, "能点，却没说清楚约束"
+
+
+def test_the_picker_lists_the_issuable_ones(e):
+    """挑单页与按钮同源：硬拦的不列，已结束的仍列（补录走这条路进去）。"""
     from app import create_app
     with create_app().app_context():
         from blueprints.issuance import _eligible_travels
-        assert [r["id"] for r in _eligible_travels()] == [1]
+        assert sorted(r["id"] for r in _eligible_travels()) == [1, 2]
 
 
 def test_a_normal_application_still_works(e):

@@ -420,7 +420,8 @@ def _travel_brief(travel_id):
     db = get_db()
     return db.execute(
         "SELECT id, personnel_filing_id, name, id_number, unit, department, "
-        "destination_passport, intended_cert_type, travel_dates, approval_date, passport_no "
+        "destination_passport, intended_cert_type, travel_dates, approval_date, "
+        "passport_no, actual_return_date "
         "FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
 
 
@@ -443,16 +444,18 @@ def issuance_block_reasons() -> dict:
     此前这三处各管一段，于是漏得五花八门——按钮灰了 POST 却照样过，
     挑单页排除了取消行程却没排除已撤控。
 
-    四类都不能办：
+    三类都不能办：
 
     1. 行程已取消——不会再出行，没有领用的理由；
     2. 已有一条未归还的领用记录——一次申请一本证，办完归还才能再领；
-    3. **行程已经结束**（实际回国日期已填）。这一条是补上的：原判据只看
-       前两项，于是一条 3 月就走完、证也已归还的申请，9 月还能凭它再领一本
-       护照出去——实测复现。「领用 → 归还 → 再领用」的设计本意是同一趟行程
-       中途的反复，不是行程结束之后；
-    4. **申请人已撤控**。撤控以证件收缴移交完毕为前提（见 decontrol._unsettled_certs），
-       人都不在管理范围内了，系统却还允许给他办领用——同样是补上的。
+    3. **申请人已撤控**。撤控以证件收缴移交完毕为前提（见 decontrol._unsettled_certs），
+       人都不在管理范围内了，系统却还允许给他办领用。
+
+    **「行程已结束」不在此列**，它归 late_issue_error() 管。理由见那个函数：
+    行程结束之后仍然可能有正当的补录，只有「领用日期晚于实际回国日期」才是
+    真正不可能的事。这一条一度写在这里（整条行程直接封死），代价是把补录也
+    堵死了——判据从「这条申请还能不能办」换成「这一次登记本身成不成立」，
+    才既挡住了荒谬情形，又没伤到正常业务。
 
     返回原因串而不是一个 id 集合：按钮的提示文案要说清楚为什么点不了，
     「办不了」和「为什么办不了」得是同一份判断的两个输出，各写一套就会出现
@@ -474,18 +477,57 @@ def issuance_block_reasons() -> dict:
             reasons[r["id"]] = "申请人已撤控，不再办理证件领用"
         elif r["st"] == "cancelled":
             reasons[r["id"]] = "行程已取消，不再办理证件领用"
-        elif (r["actual_return_date"] or "").strip():
-            reasons[r["id"]] = (
-                f"行程已结束（实际回国 {r['actual_return_date']}），不再办理证件领用；"
-                "如需再次出行，请另建出国申请")
         elif r["id"] in open_iss:
             reasons[r["id"]] = (f"已有未归还的领用记录（#{open_iss[r['id']]}），"
                                 "请先办理归还或作废")
     return reasons
 
 
+def finished_trip_returns() -> dict:
+    """已经结束的出行 id → 实际回国日期。
+
+    这些申请**仍可办理领用**（补录是正当业务），但只能补登领用日期不晚于
+    回国日期的记录。给出日期而不是一个布尔：界面上要把这条约束讲清楚，
+    「不能晚于哪一天」得说出那一天。
+    """
+    return {r["id"]: r["actual_return_date"] for r in get_db().execute(
+        "SELECT id, actual_return_date FROM travel_details "
+        "WHERE actual_return_date IS NOT NULL AND actual_return_date != ''").fetchall()}
+
+
+def late_issue_error(travel_id, issue_date: str) -> str:
+    """补登的领用日期晚于实际回国日期——这在物理上就不可能，返回错误串；否则空串。
+
+    这条判据换过一次口径，值得记下为什么。
+
+    第一版是「行程一结束就不许再办领用」，直接封死整条申请。它确实挡住了
+    报出来的那个情形（3 月走完的申请，9 月还能凭它领出一本护照），但同时
+    把**事后补录**也堵死了：现实里的顺序是 领用 → 出行 → 回国 → 归还，
+    而回国日期由经办人手填，完全可能先填了回国日期、再回头补登那条本该在
+    出发前登记的领用记录。堵死之后，那条记录就永远补不进系统了。
+
+    第二版（现在这条）把判据从「这条申请还能不能办」换成「这一次登记本身
+    成不成立」：**一本证不可能在人回国之后才为这趟行程借出去**。这是个物理
+    事实，不是政策取舍，所以它挡得干净——荒谬的挡住了，补录放行了。
+    """
+    if not travel_id or not (issue_date or "").strip():
+        return ""
+    ret = finished_trip_returns().get(int(travel_id) if str(travel_id).isdigit() else -1)
+    ret = (ret or "").strip()
+    if ret and issue_date.strip() > ret:
+        return (f"领用日期（{issue_date}）晚于实际回国日期（{ret}）——"
+                "证件不可能在本人回国之后才为这趟行程借出。"
+                "如果是事后补登，请填写当时实际发放证件的日期；"
+                "如果本人要再次出行，请另建出国申请。")
+    return ""
+
+
 def _eligible_travels():
-    """可以办理领用的出国申请——判据见 issuance_block_reasons。"""
+    """可以办理领用的出国申请——判据见 issuance_block_reasons。
+
+    已结束的行程仍列在这里：补录是正当业务，只是领用日期不能晚于回国日期
+    （见 late_issue_error）。
+    """
     blocked = issuance_block_reasons()
     rows = get_db().execute(
         "SELECT t.id, t.name, t.unit, t.destination_passport, t.travel_dates, "
@@ -629,6 +671,11 @@ def _validate_form(data: dict) -> list[str]:
             if str(data["travel_id"]).isdigit() else None
         if reason:
             errors.append(f"该出国申请不能办理证件领用：{reason}。")
+        # 行程已结束的申请不整条封死（补录是正当业务），只挡住物理上不可能的
+        # 那一种：领用日期晚于实际回国日期。
+        late = late_issue_error(data["travel_id"], data.get("issue_date") or "")
+        if late:
+            errors.append(late)
 
     # 一本证同时只能在一个人手上——号码级的跨申请查重。
     #

@@ -14,6 +14,12 @@
     {% else %}
     <div class="mt-1 small text-muted">本次申请未填写拟用证件种类（历史数据），领用种类不作比对。</div>
     {% endif %}
+    {% if travel.actual_return_date %}
+    <div class="mt-1 small"><i class="bi bi-clock-history"></i>
+        本次行程已结束（实际回国 <strong>{{ travel.actual_return_date }}</strong>）。
+        这是<strong>事后补登</strong>：领用日期请填当时实际发放证件的那一天，
+        <span class="text-muted">不能晚于回国日期——证件不可能在本人回国之后才为这趟行程借出。</span></div>
+    {% endif %}
 </div>
 {% endif %}
 

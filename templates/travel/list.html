@@ -64,6 +64,9 @@
             {# 提示语直接用后端给出的原因，模板不自己拼——判据一扩，这里就会对不上 #}
             {% if row.id in block_reasons %}
             <a class="btn btn-outline-secondary disabled" tabindex="-1" aria-disabled="true" title="{{ block_reasons[row.id] }}"><i class="bi bi-vector-pen"></i></a>
+            {% elif row.id in finished_returns %}
+            {# 行程已结束：能点，但只能补登领用日期不晚于回国日期的记录 #}
+            <a href="{{ url_for('issuance.new', travel_id=row.id) }}" class="btn btn-outline-warning" title="行程已结束（实际回国 {{ finished_returns[row.id] }}），仅可补登领用日期不晚于该日期的记录"><i class="bi bi-vector-pen"></i></a>
             {% else %}
             <a href="{{ url_for('issuance.new', travel_id=row.id) }}" class="btn btn-outline-success" title="证件领用登记"><i class="bi bi-vector-pen"></i></a>
             {% endif %}

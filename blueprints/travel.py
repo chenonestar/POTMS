@@ -208,8 +208,12 @@ def list() -> ResponseReturnValue:
     # 拿的是「原因」而不是一个 id 集合：按钮的 title 要说清楚为什么点不了，
     # 而「能不能办」与「为什么办不了」必须是同一份判断的两个输出。此前模板里
     # 按 trip_status / open_issuance 自己拼提示语，判据一扩就对不上了。
-    from blueprints.issuance import issuance_block_reasons
+    from blueprints.issuance import finished_trip_returns, issuance_block_reasons
     block_reasons = issuance_block_reasons()
+    # 行程已结束的不封死入口——事后补录是正当业务，只是领用日期不能晚于回国
+    # 日期（判据见 issuance.late_issue_error）。按钮照亮，但把这条约束写在
+    # title 上：能点、点了要注意什么，得在同一个地方说清楚。
+    finished_returns = finished_trip_returns()
 
     return render_template(
         "travel/list.html",
@@ -223,6 +227,7 @@ def list() -> ResponseReturnValue:
         overdue_ids=overdue_ids,
         deadlines=deadlines,
         block_reasons=block_reasons,
+        finished_returns=finished_returns,
         category_opts=get_dict_options("travel_category"),
     )
 
