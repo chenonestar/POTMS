@@ -85,7 +85,7 @@ def create_app() -> Flask:
     from flask import render_template
     from jinja2 import TemplateNotFound
 
-    def _error_page(template: str, fallback: str, code: int):
+    def _error_page(template: str, fallback: str, code: int, **ctx):
         r"""错误页本身不能再成为错误源。
 
         打包成单文件 exe 时，PyInstaller 把资源解压到 %TEMP%\_MEIxxxx，程序退出时
@@ -96,7 +96,7 @@ def create_app() -> Flask:
         状态码，日志里也只剩一行有用的信息。
         """
         try:
-            return render_template(template), code
+            return render_template(template, **ctx), code
         except TemplateNotFound:
             return fallback, code, {"Content-Type": "text/plain; charset=utf-8"}
 
@@ -110,6 +110,33 @@ def create_app() -> Flask:
     @app.errorhandler(404)
     def _not_found(err):
         return _error_page("errors/404.html", "404 页面不存在", 404)
+
+    @app.errorhandler(413)
+    def _too_large(err):
+        """上传超过 MAX_CONTENT_LENGTH。
+
+        此前没有这个处理器，走的是 werkzeug 的默认页：整屏英文
+        「413 Request Entity Too Large / The data value transmitted exceeds
+        the capacity limit.」，没有导航、没有中文，而且是整页替换——填了半天
+        的表单当场丢光。
+
+        **不能说「单个文件超过 10MB」。** MAX_CONTENT_LENGTH 限的是整个请求体，
+        三个各 4MB 的附件每个都合规、合计 12MB 照样被拒。而且请求体在这一步
+        根本没被解析过，服务端不知道是哪个文件大——只能说「合计」。
+
+        真正的修复在前端（提交前用 file.size 预检，请求根本不发出去，
+        表单和已填内容都留在页面上）；这里是兜底：JS 被禁、或伪造的 POST。
+        """
+        limit = app.config.get("MAX_CONTENT_LENGTH") or 0
+        limit_mb = round(limit / (1024 * 1024), 1) if limit else "—"
+        # 数字里有小数点才留小数位，10.0MB 读起来像是精确到了 0.1MB
+        if isinstance(limit_mb, float) and limit_mb.is_integer():
+            limit_mb = int(limit_mb)
+        return _error_page(
+            "errors/413.html",
+            f"413 上传内容过大。本次提交的文件合计超过 {limit_mb}MB 上限——"
+            "这是整次提交的总量，不是单个文件的上限。请减小附件后重新提交。",
+            413, limit_mb=limit_mb)
 
     @app.errorhandler(500)
     def _server_error(err):

@@ -457,3 +457,64 @@ function clientWindowPaginate() {
     render();
 }
 document.addEventListener('DOMContentLoaded', clientWindowPaginate);
+
+/* ---------------------------------------------------------------------------
+ * 上传总量预检
+ *
+ * MAX_CONTENT_LENGTH 限的是**整个请求体**，不是单个文件。超了之后服务端只能
+ * 回一个 413——那是一次整页跳转，填了半天的表单当场丢光，而且请求体在那一步
+ * 根本没被解析过，服务端说不出是哪个文件大。
+ *
+ * 所以真正的修复在这里：提交之前把这个表单里所有 file 输入的 file.size 加起来，
+ * 超了就当场提示并拦下提交。请求根本不发出去，表单和已填内容原样留在页面上。
+ * 服务端那个 413 处理器是兜底（JS 被禁、伪造的 POST），不是主力。
+ *
+ * form   ── 表单元素或它的 id
+ * limit  ── 上限字节数（由后端把 MAX_CONTENT_LENGTH 下发到模板）
+ * ------------------------------------------------------------------------- */
+function attachUploadSizeGuard(form, limit) {
+    if (typeof form === 'string') form = document.getElementById(form);
+    if (!form || !limit) return;
+
+    var box = document.createElement('div');
+    box.className = 'alert alert-danger mt-2';
+    box.hidden = true;
+    form.appendChild(box);
+
+    function mb(n) { return (n / 1048576).toFixed(1); }
+
+    function total() {
+        var sum = 0;
+        form.querySelectorAll('input[type="file"]').forEach(function (inp) {
+            for (var i = 0; i < inp.files.length; i++) sum += inp.files[i].size;
+        });
+        return sum;
+    }
+
+    function check() {
+        var sum = total();
+        if (sum <= limit) { box.hidden = true; return true; }
+        // 把每个文件多大都列出来。只说「太大了」，人还得自己去文件夹里一个个看。
+        var parts = [];
+        form.querySelectorAll('input[type="file"]').forEach(function (inp) {
+            for (var i = 0; i < inp.files.length; i++) {
+                parts.push(inp.files[i].name + '（' + mb(inp.files[i].size) + 'MB）');
+            }
+        });
+        box.innerHTML = '<strong>本次要上传的文件合计 ' + mb(sum) + 'MB，超过 '
+            + mb(limit) + 'MB 上限。</strong><br>'
+            + '这个上限是整次提交的<u>总量</u>，不是单个文件：' + parts.join('、') + '。<br>'
+            + '请换用更小的扫描件（黑白或灰度、200–300 dpi）后再提交。';
+        box.hidden = false;
+        return false;
+    }
+
+    form.querySelectorAll('input[type="file"]').forEach(function (inp) {
+        inp.addEventListener('change', check);
+    });
+    // 用捕获阶段：页面上可能还有别的 submit 监听器（如签名板的 commit），
+    // 冒泡阶段绑定的话，谁先注册谁先跑，拦不住已经注册在前面的那些。
+    form.addEventListener('submit', function (ev) {
+        if (!check()) { ev.preventDefault(); ev.stopPropagation(); box.scrollIntoView({ block: 'center' }); }
+    }, true);
+}

@@ -8,11 +8,12 @@
         <div class="card mb-3">
             <div class="card-header"><strong>上传文件</strong></div>
             <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" id="importForm" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label class="form-label">选择 Excel 文件（.xlsx）</label>
                         <input type="file" class="form-control" name="file" accept=".xlsx" required>
-                        <div class="form-text">请先下载模板，按模板格式填写数据后上传。</div>
+                        {# 这个入口同样受 MAX_CONTENT_LENGTH 限制，原先一句提示都没有。 #}
+                        <div class="form-text">请先下载模板，按模板格式填写数据后上传。文件不得超过 {{ (config.MAX_CONTENT_LENGTH / 1048576) | round | int }}MB。</div>
                     </div>
                     <button type="submit" class="btn btn-primary"><i class="bi bi-upload"></i> 开始导入</button>
                     <a href="{{ url_for('import_data.download_template') }}" class="btn btn-outline-success">
@@ -98,4 +99,11 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    attachUploadSizeGuard('importForm', {{ config.MAX_CONTENT_LENGTH }});
+});
+</script>
 {% endblock %}

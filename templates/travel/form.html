@@ -2,7 +2,7 @@
 {% block title %}因私出国（境）人员明细表{% endblock %}
 {% block content %}
 <h4 class="mb-3"><i class="bi bi-airplane"></i> {{ '编辑' if editing else '新增' }}因私出国（境）人员明细表</h4>
-<form method="POST" enctype="multipart/form-data" class="needs-validation" novalidate {% if not editing %}data-draft="travel"{% endif %}>
+<form method="POST" id="travelForm" enctype="multipart/form-data" class="needs-validation" novalidate {% if not editing %}data-draft="travel"{% endif %}>
 
 <div class="form-section">
     <h5>选择备案人员</h5>
@@ -96,10 +96,15 @@
 <div class="form-section">
     <h5>附件上传（PDF扫描件）</h5>
     <p class="text-muted small">路径A（已有证件）：须上传《个人申请报告》《审批表》。路径B（新办证件）：须增传《同意申办函》。</p>
+    {# 上限是**整次提交的总量**（MAX_CONTENT_LENGTH 限的是整个请求体），不是单个文件。
+       原先每栏下面写的是「PDF格式，≤10MB」，读起来像单文件上限——三个各 4MB 的附件
+       每个都合规、合计 12MB 照样被服务器拒收，回来的还是一屏英文的 413 裸页。 #}
+    <p class="text-muted small"><i class="bi bi-exclamation-circle"></i>
+        本次提交的附件<strong>合计</strong>不得超过 {{ (config.MAX_CONTENT_LENGTH / 1048576) | round | int }}MB——这是总量，不是每个文件的上限。</p>
     <div class="row g-3">
-        <div class="col-md-4"><label class="form-label">个人申请报告 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_application" accept=".pdf"><div class="form-text">PDF格式，≤10MB</div></div>
-        <div class="col-md-4"><label class="form-label">审批表 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_approval" accept=".pdf"><div class="form-text">PDF格式，≤10MB</div></div>
-        <div class="col-md-4"><label class="form-label">同意申办函</label><input type="file" class="form-control" name="att_consent" accept=".pdf"><div class="form-text">路径B（新办证件）时上传</div></div>
+        <div class="col-md-4"><label class="form-label">个人申请报告 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_application" accept=".pdf"><div class="form-text">PDF 格式</div></div>
+        <div class="col-md-4"><label class="form-label">审批表 <span class="text-danger">*</span></label><input type="file" class="form-control" name="att_approval" accept=".pdf"><div class="form-text">PDF 格式</div></div>
+        <div class="col-md-4"><label class="form-label">同意申办函</label><input type="file" class="form-control" name="att_consent" accept=".pdf"><div class="form-text">PDF 格式，路径B（新办证件）时上传</div></div>
     </div>
     {% if editing and attachments %}
     <div class="mt-2"><strong>已有附件：</strong><ul class="list-group list-group-flush">{% for att in attachments %}<li class="list-group-item d-flex justify-content-between align-items-center py-1"><span><i class="bi bi-file-pdf text-danger"></i> [{{ att.file_type }}] {{ att.file_name }} ({{ (att.file_size / 1024) | round | int }} KB)</span><span><a href="{{ url_for('travel.attachment_preview', att_id=att.id) }}" target="_blank" class="btn btn-sm btn-outline-info" title="预览"><i class="bi bi-eye"></i></a> <a href="{{ url_for('travel.attachment_download', att_id=att.id) }}" class="btn btn-sm btn-outline-secondary" title="下载"><i class="bi bi-download"></i></a><button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmModal" data-action="{{ url_for('travel.attachment_delete', att_id=att.id) }}" data-message="确定要删除附件 {{ att.file_name }} 吗？"><i class="bi bi-trash"></i></button></span></li>{% endfor %}</ul></div>
@@ -146,6 +151,9 @@ function filterPersons(searchId, selectId) {
 // 证件领用日期已迁移至「证件领用」模块（须手写签名），此处仅只读展示，无需必填联动。
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('personSelect').value) autoFillTravel();
+    // 提交前拦下超量上传：请求不发出去，表单和已填内容就都留在页面上。
+    // 服务端的 413 处理器是兜底，不是主力——那一条是整页跳转。
+    attachUploadSizeGuard('travelForm', {{ config.MAX_CONTENT_LENGTH }});
 });
 </script>
 {% endblock %}

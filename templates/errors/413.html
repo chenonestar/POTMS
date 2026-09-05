@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上传内容过大 - 因私出国（境）人员审批管理系统</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="d-flex align-items-center justify-content-center min-vh-100 py-4">
+        <div class="text-center" style="max-width:640px;">
+            <i class="bi bi-file-earmark-excel text-warning" style="font-size:56px;"></i>
+            <h1 class="mt-3" style="font-size:48px;font-weight:800;color:#1a5276;">上传内容过大</h1>
+            <p class="fs-5">本次提交的文件<strong>合计</strong>超过了 {{ limit_mb }}MB 上限，服务器已拒收。</p>
+
+            {# 「合计」两个字是这一页的重点。MAX_CONTENT_LENGTH 限的是整个请求体，
+               不是单个文件——三个各 4MB 的附件每个都合规，加起来照样被打回。
+               表单上原先写的「PDF格式，≤10MB」正是这么误导人的。 #}
+            <div class="alert alert-warning text-start mt-4">
+                <div class="fw-bold mb-2"><i class="bi bi-info-circle"></i> 这个上限是<u>整次提交的总量</u></div>
+                一次提交里的几个附件是加在一起算的：三个各 4MB 的 PDF 每个都不超
+                {{ limit_mb }}MB，合计 12MB，仍会被拒收。
+            </div>
+
+            <div class="alert alert-light border text-start">
+                <div class="fw-bold mb-2"><i class="bi bi-arrow-counterclockwise"></i> 刚才填的内容还在</div>
+                点浏览器的<strong>「后退」</strong>按钮回到刚才那张表单，填过的内容通常还留着，
+                只需换掉过大的附件再提交一次。
+            </div>
+
+            <div class="text-start">
+                <div class="fw-bold mb-2"><i class="bi bi-tools"></i> 怎么把 PDF 改小</div>
+                <ul class="text-muted">
+                    <li>重新扫描时选<strong>黑白</strong>或<strong>灰度</strong>，不要彩色；</li>
+                    <li>分辨率降到 <strong>200–300 dpi</strong>，证照材料足够清晰；</li>
+                    <li>一份材料多页时，确认没有把同一页重复扫进去。</li>
+                </ul>
+            </div>
+
+            <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary mt-2"><i class="bi bi-house"></i> 返回首页</a>
+        </div>
+    </div>
+</body>
+</html>
