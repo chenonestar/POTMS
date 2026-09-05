@@ -120,11 +120,20 @@
                 {% set picked = ',' ~ (item.cert_types or '') ~ ',' %}
                 {% for o in dict_opts('cert_type') %}
                 <div class="form-check">
-                    <input class="form-check-input" type="radio" name="cert_types" value="{{ o.code }}" id="fx{{ o.code }}"
+                    <input class="form-check-input fix-type" type="radio" name="cert_types" value="{{ o.code }}" id="fx{{ o.code }}"
+                           data-no="{{ ledger_nos.get(o.code, '') }}"
                            {{ 'checked' if (',' ~ o.code ~ ',') in picked }}>
-                    <label class="form-check-label" for="fx{{ o.code }}">{{ o.value }}</label>
+                    <label class="form-check-label" for="fx{{ o.code }}">{{ o.value }}{% if ledger_nos.get(o.code) %} <span class="text-muted small">（台账：{{ ledger_nos[o.code] }}）</span>{% endif %}</label>
                 </div>
                 {% endfor %}
+                {# 号码必须跟着种类一起改。把护照记录订正成港澳通行证、号码却
+                   还留着那串护照号，账面上就指着一本不存在的证——而这个号码
+                   正是「哪本实体证在谁手上」的唯一凭据。 #}
+                <div class="mt-3">
+                    <label class="form-label required">证件号码</label>
+                    <input type="text" class="form-control" name="cert_nos" id="fixCertNos" value="{{ item.cert_nos or '' }}" required>
+                    <div class="form-text">改了种类，号码也要跟着改成那一本的号码，否则借出账指向一本不存在的证。</div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -133,5 +142,21 @@
         </form>
     </div></div>
 </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if can_fix %}
+<script>
+// 换种类时把号码换成台账上那一本的号码。台账里没有就清空，让经办人自己填——
+// 留着上一种证的号码更糟：那串号码会原样进借出账，指向一本不存在的证。
+document.addEventListener('DOMContentLoaded', function () {
+    var box = document.getElementById('fixCertNos');
+    if (!box) return;
+    document.querySelectorAll('.fix-type').forEach(function (r) {
+        r.addEventListener('change', function () { box.value = r.dataset.no || ''; });
+    });
+});
+</script>
 {% endif %}
 {% endblock %}

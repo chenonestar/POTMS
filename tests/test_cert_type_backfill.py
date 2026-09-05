@@ -203,14 +203,67 @@ def _cert_types(iss_id):
     return v
 
 
+def _cert_nos(iss_id):
+    db = sqlite3.connect(Config.DATABASE)
+    v = db.execute("SELECT cert_nos FROM cert_issuance WHERE id=?", (iss_id,)).fetchone()[0]
+    db.close()
+    return v
+
+
 def test_pending_row_can_be_corrected(client):
-    """周八那条判不出，必须能人工补上，否则订正等于制造死数据。"""
-    assert _cert_types(6) == ""
+    """周八那条判不出，必须能人工补上，否则订正等于制造死数据。
+
+    号码要跟着一起报上来：周八三本证都有，判不出种类的同时号码也是空的
+    （出行表没填）。只补种类不补号码，改出来的是「港澳通行证 + 空号码」，
+    那本证在借出账上照样不存在——lent_out_numbers() 按号码收集，空的滤掉。
+    """
+    assert _cert_types(6) == "" and _cert_nos(6) == ""
     r = client.post("/issuance/6/cert-types",
-                    data={"csrf_token": _tok(client), "cert_types": "02"},
+                    data={"csrf_token": _tok(client), "cert_types": "02",
+                          "cert_nos": "C60000001"},
                     follow_redirects=True)
     assert "证件种类已更正" in r.get_data(as_text=True)
     assert _cert_types(6) == "02"
+    assert _cert_nos(6) == "C60000001"
+
+
+def test_correction_without_a_number_is_refused(client):
+    """只改种类、不给号码——挡回。
+
+    新建那一头刚把号码改成必填；这一头若能放空，等于换了个错法：
+    记录看着有了正确的种类，那本证在借出账上依然不存在。
+    """
+    r = client.post("/issuance/6/cert-types",
+                    data={"csrf_token": _tok(client), "cert_types": "02"},
+                    follow_redirects=True)
+    assert "证件号码为必填项" in r.get_data(as_text=True)
+    assert _cert_types(6) == ""          # 原值未动，没被改成一个更烂的状态
+
+
+def test_correction_shows_the_ledger_numbers_to_pick_from(client):
+    """更正弹窗要把台账上那三个号码摆出来，并让 JS 按种类带入。
+
+    不摆出来，经办人就得开另一个页面去查号码再手打——手打的号码没有任何
+    东西校验，打错了照样存进去，而它是借出账的唯一凭据。
+    """
+    html = client.get("/issuance/6").get_data(as_text=True)
+    assert 'data-no="C60000001"' in html, "更正弹窗没带上台账里的港澳通行证号码"
+    assert "台账：C60000001" in html, "没把号码显示给经办人看"
+
+
+def test_correction_refuses_a_number_already_lent_to_someone_else(client):
+    """更正时填的号码若已在别人手上未还，挡回——与新建同一条规则。
+
+    这个入口原先根本不写号码，也就无从撞号；改成可写之后，跨申请查重
+    必须一并跟过来，否则「一本证同时只能在一个人手上」就只在新建那一头成立。
+    """
+    r = client.post("/issuance/6/cert-types",
+                    data={"csrf_token": _tok(client), "cert_types": "01",
+                          "cert_nos": "E12345678"},     # 张三（记录 #1）正持有
+                    follow_redirects=True)
+    body = r.get_data(as_text=True)
+    assert "已由" in body and "尚未归还" in body
+    assert _cert_types(6) == ""
 
 
 def test_correction_rejected_on_signed_record(client):

@@ -328,6 +328,44 @@ def get_org_children(parent_id: int = 0) -> list[dict]:
     return [{"id": r["id"], "name": r["name"]} for r in rows]
 
 
+def certificate_number_maps() -> tuple[dict, dict]:
+    """台账上每个人已登记的证件号码，两种索引方式。
+
+    返回 (扁平列表 map, 按证件种类代码索引的 map)，键都是 personnel_filing_id：
+
+        ({12: ['E1', 'C1']}, {12: {'01': 'E1', '02': 'C1'}})
+
+    一个人可能有多条证照记录（历史遗留：先登记了护照，过一阵办港澳通行证时
+    没找到原记录，又新建了一条），所以三个号码槽要**跨行合并**；同一个槽位
+    重复出现时以先登记的那条为准（setdefault）。
+
+    单独抽出来是因为这份映射有两个消费方：下拉选项下发给前端的
+    data-cert0X（JS 选完种类带出号码），以及领用登记的服务端预填。
+    两处必须同源——各写一套的下场是「页面上显示一个号码、存下来另一个」，
+    而这个号码正是「哪本证在谁手上」的唯一凭据。
+    """
+    flat: dict = {}
+    by_type: dict = {}
+    for cr in get_db().execute(
+        "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates"
+    ).fetchall():
+        lst = flat.setdefault(cr["personnel_filing_id"], [])
+        typed = by_type.setdefault(cr["personnel_filing_id"], {})
+        for code, v in (("01", cr["passport_no"]), ("02", cr["hm_pass_no"]), ("03", cr["tw_pass_no"])):
+            if v and v.strip():
+                if v.strip() not in lst:
+                    lst.append(v.strip())
+                typed.setdefault(code, v.strip())
+    return flat, by_type
+
+
+def cert_no_of(personnel_filing_id, cert_type: str) -> str:
+    """某人台账上某一种证件的号码；没登记过返回空串。"""
+    if not personnel_filing_id or not cert_type:
+        return ""
+    return certificate_number_maps()[1].get(int(personnel_filing_id), {}).get(cert_type, "")
+
+
 def get_personnel_options() -> list[dict]:
     """获取所有有效备案人员列表（用于下拉选择，含完整信息）"""
     db = get_db()
@@ -339,20 +377,9 @@ def get_personnel_options() -> list[dict]:
         "LEFT JOIN personnel_info pi ON pf.personnel_info_id = pi.id "
         "WHERE pf.status = 'active' ORDER BY pf.surname, pf.given_name"
     ).fetchall()
-    # 每人已登记的证件号（护照/港澳/台湾），一次查询建映射
-    # cert_map：扁平列表（下游 datalist 用）；cert_type_map：按证件种类代码索引（领用登记用）
-    cert_map: dict = {}
-    cert_type_map: dict = {}
-    for cr in db.execute(
-        "SELECT personnel_filing_id, passport_no, hm_pass_no, tw_pass_no FROM certificates"
-    ).fetchall():
-        lst = cert_map.setdefault(cr["personnel_filing_id"], [])
-        by_type = cert_type_map.setdefault(cr["personnel_filing_id"], {})
-        for code, v in (("01", cr["passport_no"]), ("02", cr["hm_pass_no"]), ("03", cr["tw_pass_no"])):
-            if v and v.strip():
-                if v.strip() not in lst:
-                    lst.append(v.strip())
-                by_type.setdefault(code, v.strip())
+    # cert_map：扁平列表（下游 datalist 用）；cert_type_map：按证件种类代码索引
+    # （领用登记的 data-cert0X 用）。两份映射与服务端预填同源，见上。
+    cert_map, cert_type_map = certificate_number_maps()
     result = []
     for r in rows:
         name = f"{r['surname']}{r['given_name']}"

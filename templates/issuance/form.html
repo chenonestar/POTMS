@@ -84,9 +84,10 @@
             </div>
         </div>
         <div class="col-md-6">
-            <label class="form-label">证件号码 <span class="text-muted">(按所选种类自动带入，可修改)</span></label>
-            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="选择证件种类后自动带入">
-            <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。</div>
+            <label class="form-label required">证件号码 <span class="text-muted">(按所选种类自动带入，可修改)</span></label>
+            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="选择证件种类后自动带入" required>
+            <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。<br>
+                这一栏是「哪一本实体证在谁手上」的唯一凭据：留空这本证就会从借出账上消失，仍被算作在库。</div>
         </div>
     </div>
     <div class="row g-3 mt-2">
@@ -149,6 +150,13 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.cert-type').forEach(function (cb) {
         cb.addEventListener('change', syncCertNos);
     });
+
+    // 页面刚打开时也带一次。此前 syncCertNos 只挂在 change 上，而证件种类是
+    // 服务端按申请预选好的——经办人没有理由再去点一下那个已经选中的单选钮，
+    // 于是号码框一直空着，看上去却像填好了。
+    // 已有值不覆盖：服务端预填可能来自出行记录上的号码（路径B 的新证还没进
+    // 台账，data-cert0X 里查不到），那一份不能被这里的空值清掉。
+    if (!nosEl.value) syncCertNos();
 
     // 从出行记录带入时人员已确定，禁止改选以免与出行记录脱节
     if (sel.getAttribute('data-locked')) {

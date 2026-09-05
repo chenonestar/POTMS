@@ -23,7 +23,8 @@ from flask.typing import ResponseReturnValue
 from auth import login_required
 from config import Config
 from database import get_db
-from utils.helpers import log_action, list_all, row_snapshot, get_dict_value, operator_name
+from utils.helpers import (log_action, list_all, row_snapshot, get_dict_value,
+                           operator_name, cert_no_of, certificate_number_maps)
 from utils.validators import parse_date_input, check_required, check_dates, comparable_ymd
 
 issuance_bp = Blueprint("issuance", __name__)
@@ -215,6 +216,7 @@ def new() -> ResponseReturnValue:
             flash("指定的出国申请不存在。", "warning")
         return render_template("issuance/pick_travel.html", travels=_eligible_travels())
     if travel:
+        code = (travel["intended_cert_type"] or "").strip()
         prefill.update({
             "travel_id": travel_id,
             "personnel_filing_id": travel["personnel_filing_id"],
@@ -223,7 +225,20 @@ def new() -> ResponseReturnValue:
             # 证件种类按申请上写明的那一种预选。校验那一关反正也要求一致，
             # 让人先选一遍再被打回来，是纯粹的为难。
             # 存量申请这一栏可能是空的（回填判不出的那批），空就不预选。
-            "cert_types": (travel["intended_cert_type"] or "").strip(),
+            "cert_types": code,
+            # 号码也在服务端带出来，不只靠 JS。
+            #
+            # 原先这一栏只有前端 syncCertNos() 会填，而它只挂在 change 事件上：
+            # 种类是服务端预选好的，经办人没有理由再去点一下那个已经选中的
+            # 单选钮，于是号码框一直是空的——**看上去却像填好了**。实测就这么
+            # 登记出了一条号码为空的领用记录，而 certificate.lent_out_numbers()
+            # 是按号码收集的，空号码直接被滤掉：证已经在人手上，首页却仍把它
+            # 算作「在库」，四档恒等式照样平，孤儿号码也是空的，**一处都不喊**。
+            #
+            # 台账优先、出行记录上的号码兜底：路径B 的新证还没进台账，
+            # travel_details.passport_no 是系统里唯一的来源。
+            "cert_nos": cert_no_of(travel["personnel_filing_id"], code)
+                        or (travel["passport_no"] or "").strip(),
         })
     return render_template("issuance/form.html", data=prefill, travel=travel)
 
@@ -238,7 +253,10 @@ def view(iss_id) -> ResponseReturnValue:
     travel = _travel_brief(row["travel_id"]) if row["travel_id"] else None
     return render_template("issuance/view.html", item=row, travel=travel,
                            type_labels=_types_label(row["cert_types"]),
-                           can_fix=can_fix_cert_types(row))
+                           can_fix=can_fix_cert_types(row),
+                           # 更正弹窗里按种类带出台账号码，与新建那一头同源
+                           ledger_nos=certificate_number_maps()[1].get(
+                               row["personnel_filing_id"], {}))
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +381,28 @@ def fix_cert_types(iss_id) -> ResponseReturnValue:
         flash("一次出国申请只能领用一本证件。", "danger")
         return redirect(url_for("issuance.view", iss_id=iss_id))
 
+    # 号码必须跟着种类一起改。
+    #
+    # 这个入口原先只写 cert_types，号码原封不动：把一条回填成「护照 E1」的
+    # 记录人工订正为「往来港澳通行证」，存下来就是「港澳通行证 E1」——账面上
+    # 指着一本不存在的证。新建那一头刚把号码改成必填，这一头再放空或放错，
+    # 等于换了个错法。同一条判据（号码是「哪本实体证在谁手上」的唯一凭据）
+    # 必须在两个入口都成立。
+    cert_nos = request.form.get("cert_nos", "").strip()
+    if not cert_nos:
+        flash("证件号码为必填项——更正种类时号码要一并改成那一本的号码。", "danger")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
+    # 这本证是不是已经在别人手上了。与新建同一条规则，排除本记录自身。
+    if cert_nos != (row["cert_nos"] or "").strip():
+        held = get_db().execute(
+            "SELECT id, holder_name FROM cert_issuance "
+            "WHERE cert_nos = ? AND status = 'issued' AND id != ? LIMIT 1",
+            (cert_nos, iss_id)).fetchone()
+        if held:
+            flash(f"证件号码 {cert_nos} 已由 {held['holder_name']} 领用且尚未归还"
+                  f"（领用记录 #{held['id']}）。一本证件同时只能在一个人手上。", "danger")
+            return redirect(url_for("issuance.view", iss_id=iss_id))
+
     before = row_snapshot("cert_issuance", iss_id)
     db = get_db()
     # 备注里「待核实 / 按护照推定」这类字样已经不成立，一并清掉；人工核定的结果
@@ -370,13 +410,18 @@ def fix_cert_types(iss_id) -> ResponseReturnValue:
     remarks = "历史数据回填（证件种类已人工核定，无签名）" \
         if (row["remarks"] or "").startswith("历史数据回填") else row["remarks"]
     db.execute(
-        "UPDATE cert_issuance SET cert_types=?, remarks=?, updated_at=CURRENT_TIMESTAMP "
-        "WHERE id=?", (",".join(types), remarks, iss_id))
+        "UPDATE cert_issuance SET cert_types=?, cert_nos=?, remarks=?, "
+        "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        (",".join(types), cert_nos, remarks, iss_id))
     db.commit()
+    # 号码变了要在日志里点名——它决定这本证算不算借出，改动必须看得见。
+    old_no = (row["cert_nos"] or "").strip()
+    no_part = f"，证件号码 {old_no or '（空）'} → {cert_nos}" if old_no != cert_nos else ""
     log_action("update", "cert_issuance", iss_id,
                detail=f"更正证件种类：{row['holder_name']}，"
-                      f"{_types_label(row['cert_types'])} → {_types_label(','.join(types))}",
+                      f"{_types_label(row['cert_types'])} → {_types_label(','.join(types))}{no_part}",
                before=before, after=row_snapshot("cert_issuance", iss_id))
+    _sync_travel_derived(row["travel_id"])
     flash("证件种类已更正。", "success")
     return redirect(url_for("issuance.view", iss_id=iss_id))
 
@@ -622,6 +667,19 @@ def _validate_form(data: dict) -> list[str]:
         ("personnel_filing_id", "领用人（备案人员）"),
         ("holder_name", "领用人姓名"),
         ("cert_types", "领用证件种类"),
+        # 证件号码是「哪一本实体证此刻在谁手上」的唯一凭据，不能留空。
+        #
+        # 空号码不是少了一格信息，是让这本证从账上消失：lent_out_numbers()
+        # 按号码收集借出集合，空的直接被滤掉，于是 stock_split() 仍把它算进
+        # 「在库」——那个数的存在意义就是拿去和柜子里的实体证核对。同时失效的
+        # 还有号码级跨申请查重（下面那段 `if no:` 直接跳过，同一本证可以被
+        # 两个人同时领走）和 _sync_travel_derived 的号码回写。
+        #
+        # 所有能合法办领用的场景，号码都是可知的：「是否做证=否」时台账里
+        # 必然有那本在有效期内的证（travel._validate_form 强制过）；路径B
+        # 走到能领用这一步，说明新证已经入台账，或至少号码已补录到出行记录上。
+        # 服务端预填与前端带入都指着同一份台账映射，正常操作根本不用手打。
+        ("cert_nos", "证件号码"),
         ("issue_date", "领用日期"),
     ])
     errors += check_dates(data, [("issue_date", "领用日期")])
