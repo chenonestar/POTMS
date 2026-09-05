@@ -1761,7 +1761,8 @@
 <tr><td>数据目录</td><td><code>POTMS_BASE</code> 环境变量优先（与其余四版一致，便于把数据放到程序目录外，如服务账户无写权限或指向共享盘）；未设置且打包为单文件 exe 时用 <strong>exe 所在目录</strong>——不能用临时解压目录，那个目录退出即删。</td></tr>
 <tr><td>时区</td><td>库内统一存 UTC，展示时按 <code>DISPLAY_TZ_OFFSET_HOURS</code>（默认 +8）换算；可用 <code>POTMS_TZ_OFFSET</code> 覆盖。<br>
     <strong>「存 UTC / 显示本地」这条规约有第二半，容易只做前一半：凡是<u>按日期筛选</u>的 SQL，也必须先换算再取 <code>date()</code>。</strong>偏移量统一由 <code>helpers.tz_modifier()</code> 给出（<code>'+8 hours'</code>），不在各处手拼——手写 <code>'+'</code> 时负偏移会拼出 <code>'+-5 hours'</code>，SQLite <u>不报错、只是悄悄忽略</u>，筛选无声退回 UTC 口径。<br>
-    漏掉换算的后果同样无声：本地当天 00:00–08:00 那一段（UTC 还在前一天）<u>筛不出来</u>，而前一天同一时段反被错误命中。<strong>筛不到的东西不会喊，操作员只会以为那天没人操作。</strong></td></tr>
+    漏掉换算的后果同样无声：本地当天 00:00–08:00 那一段（UTC 还在前一天）<u>筛不出来</u>，而前一天同一时段反被错误命中。<strong>筛不到的东西不会喊，操作员只会以为那天没人操作。</strong><br>
+    <strong>部署约束：运行机器的操作系统时区必须与 <code>POTMS_TZ_OFFSET</code> 一致（默认二者都是 +8）。</strong>这条前提是系统里另一套时间口径带来的——业务上的「今天」（撤控默认日期、逾期判定、有效期预警、取消日期、领用日期预填）取的是 <code>datetime.now()</code>，即<u>机器本地时钟</u>，<code>POTMS_TZ_OFFSET</code> 管不到它。两套口径靠「机器时区恰好等于该偏移」才对齐：若把机器设成 UTC 而偏移仍留 +8，则每天过了 UTC 16:00 之后，页面显示的时间已进入次日，业务日期却还停在当日，<u>差一天，且不报错</u>。详见 15.3 欠账最后一条。</td></tr>
 <tr><td><span class="badge b-p1">运行环境差异</span></td>
     <td><strong>构建机是 Windows，开发机是 Linux。</strong><u>凡是可能出现中文的输出口，都必须显式指定 UTF-8</u>——不指定时 Windows 用 cp1252，遇到中文直接 <code>UnicodeEncodeError</code>；本地全绿、CI 炸掉。<strong>这不是编码风格问题，是一条非功能需求。</strong><br>
         本项目为此炸过<strong>三次</strong> CI，而且规则是被一次次撑大的：<br>
@@ -1886,6 +1887,11 @@
     <td>真出事时操作员要停服、找文件、改文件名（README 三步），容易再出错。</td></tr>
 <tr><td><span class="badge b-p3">低</span></td><td>Go 与 Python 版<strong>没有版本号字符串</strong></td>
     <td>拿到一个 exe 无法判断是哪次构建的。</td></tr>
+<tr><td><span class="badge b-p3">低</span></td><td><span class="badge b-new">新增</span> <strong>系统里并存两套时间口径，靠「机器时区恰好等于 +8」这个假设对齐</strong></td>
+    <td><u>时间戳类</u>（<code>created_at</code> 等）由 SQLite <code>CURRENT_TIMESTAMP</code> 写入，存的是 <strong>UTC</strong>，展示与日期筛选都按 <code>DISPLAY_TZ_OFFSET_HOURS</code> 换算；<u>业务日期类</u>（<code>datetime.now().strftime("%Y%m%d")</code>）直接取<strong>机器本地时钟</strong>，<code>POTMS_TZ_OFFSET</code> 对它<u>完全无效</u>。<br>
+    命中面：blueprints 里 <strong>10 处</strong>业务「今天」（撤控默认与不晚于今天的校验、有效期预警与今天、逾期判定、取消日期、领用日期预填），外加备份的「今天是否已备份」与保留期裁剪。<br>
+    单机部署在北京时区的 Windows 上<u>不发作</u>，所以现在不动。但若将来上服务器或容器（镜像默认多为 UTC），每天 UTC 16:00 之后业务日期与展示时间会<strong>差一天</strong>——与本文反复出现的那一类问题同型：<u>不报错，只是悄悄算错</u>。<br>
+    真要统一，正解是给业务「今天」也配一个走同一偏移的取值函数（如 <code>helpers.today_local()</code>），把这 10 余处全部换掉；<strong>且五版都要改</strong>，否则共享同一个 <code>data.db</code> 时反而多出一种口径。</td></tr>
 </tbody></table></div>
 </div>
 
@@ -2087,7 +2093,7 @@
 </section>
 
 <p style="text-align:center;color:var(--text-muted);font-size:13px;margin-top:50px">
-— 因私出国（境）人员审批管理系统 · 系统需求与分析文档 V2.1 · 编制于 2026-08-29 · 2026-09-04 增补 15.5 第二轮复盘与 15.2 第 12–18 条 —
+— 因私出国（境）人员审批管理系统 · 系统需求与分析文档 V2.1 · 编制于 2026-08-29 · 2026-09-04 增补 15.5 第二轮复盘与 15.2 第 12–18 条 · 2026-09-05 补记时区部署约束（§14）与两套时间口径欠账（§15.3）—
 </p>
 
 </div>
