@@ -24,7 +24,7 @@ from auth import login_required
 from config import Config
 from database import get_db
 from utils.helpers import log_action, list_all, row_snapshot, get_dict_value, operator_name
-from utils.validators import parse_date_input, check_required, check_dates
+from utils.validators import parse_date_input, check_required, check_dates, comparable_ymd
 
 issuance_bp = Blueprint("issuance", __name__)
 
@@ -626,6 +626,15 @@ def _validate_form(data: dict) -> list[str]:
     ])
     errors += check_dates(data, [("issue_date", "领用日期")])
 
+    # 领用日期不能在将来。领用单上有本人手写签名——人站在柜台前签的字，
+    # 那一刻必然已经发生。默认预填就是今天，填出个未来日期只可能是敲错。
+    issue_date = data.get("issue_date") or ""
+    today = datetime.now().strftime("%Y%m%d")
+    if comparable_ymd(issue_date) and issue_date > today:
+        errors.append(
+            f"领用日期（{issue_date}）不能是将来的日期（今天 {today}）——"
+            "领用单上有本人手写签名，签字的那一刻已经发生。")
+
     # 证件种类必须是字典内的合法代码。一次申请一本证，所以只能有一个。
     codes = [c for c in (data.get("cert_types") or "").split(",") if c]
     for c in codes:
@@ -637,7 +646,7 @@ def _validate_form(data: dict) -> list[str]:
     if data.get("travel_id"):
         db = get_db()
         tv = db.execute(
-            "SELECT personnel_filing_id, trip_status, intended_cert_type "
+            "SELECT personnel_filing_id, trip_status, intended_cert_type, approval_date "
             "FROM travel_details WHERE id = ?",
             (data["travel_id"],)).fetchone()
         if not tv:
@@ -662,6 +671,20 @@ def _validate_form(data: dict) -> list[str]:
                     f"该出国申请拟用证件种类为「{_types_label(want)}」，"
                     f"本次领用登记的是「{_types_label(got)}」，两者不一致。"
                     "如确需改用其他证件，请先到出国申请里更正拟用证件种类。")
+            # 证是为一次**已批准**的出行借出的，不该在审批完成之前发放。
+            #
+            # 与 late_issue_error 那条（领用日期 ≤ 实际回国日期）性质不同：
+            # 那条是物理不可能，这条是程序违规——现实中做得出来，只是不该做。
+            # 而管住这个程序正是这套系统存在的理由，所以同样做硬拦。
+            #
+            # 批准日期现在是必填（第 4 批），来源是那张签好字的《审批表》，
+            # 不存在「系统给不出值」的情形；存量记录里若为空，就不比。
+            appr = (tv["approval_date"] or "").strip()
+            if comparable_ymd(issue_date) and comparable_ymd(appr) and issue_date < appr:
+                errors.append(
+                    f"领用日期（{issue_date}）早于该出国申请的批准日期（{appr}）——"
+                    "证件是为已批准的出行借出的，不应在审批完成之前发放。"
+                    "如果是补登旧记录，请核对两个日期是否都填对了。")
         # 这条申请此刻能不能办领用——与列表按钮、挑单页同一个判据。
         #
         # 后端这一关不能省：按钮灰掉只是不给入口，伪造的 POST 想提交什么提交什么。

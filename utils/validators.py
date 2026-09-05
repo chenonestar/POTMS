@@ -115,6 +115,20 @@ def validate_date_format(date_str: str) -> tuple[bool, str]:
         return False, "日期不合法。"
 
 
+def comparable_ymd(value: str) -> bool:
+    """这个值能不能拿去和另一个日期比先后。
+
+    YYYYMMDD 是定长的，字符串比较就等于日期比较——前提是两边都真的是
+    YYYYMMDD。不合法的值必须先挡在外面：`'2026131' > '20261101'` 在 Python
+    里是 False，比出来的结果没有任何意义，却会被当成「通过」。
+
+    格式本身错在哪，check_dates 已经报过一条了。这里只负责决定「要不要比」，
+    不重复报错——否则同一个填错的日期会一次弹出两条互不相干的提示。
+    """
+    return bool(value) and len(value) == 8 and value.isdigit() \
+        and validate_date_format(value)[0]
+
+
 def parse_date_input(raw: str) -> str:
     """
     清洗用户输入的日期，支持 2023-06-20 / 2023/06/20 / 20230620。

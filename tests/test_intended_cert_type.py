@@ -21,6 +21,7 @@
 import io
 import re
 import sqlite3
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -30,6 +31,28 @@ from conftest import seed_required_attachments, valid_id
 _CSRF = re.compile(r'name="csrf-token" content="([^"]+)"')
 _PNG = __import__("tests.test_issuance", fromlist=["_PNG_DATA_URL"])._PNG_DATA_URL
 _PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\ntrailer\n<<>>\n%%EOF\n"
+
+
+def _today():
+    return datetime.now().strftime("%Y%m%d")
+
+
+def _shift(n):
+    return (datetime.now() + timedelta(days=n)).strftime("%Y%m%d")
+
+
+def _range(a, b):
+    """计划出行日期文本，a、b 为距今天数。
+
+    这里的日期原先是写死的（2026/11/01、批准 20261001）。第 8 批补上
+    「批准日期 ≤ 今天 ≤ 计划出行开始日」之后，那份数据成了非法数据——
+    一张批准日期还没到的审批表现实里不存在，fixture 造的是假的。
+    改成相对今天算，顺便也不会再随墙上时钟腐烂。
+    """
+    def f(n):
+        s = _shift(n)
+        return f"{s[:4]}/{s[4:6]}/{s[6:]}"
+    return f"{f(a)}-{f(b)}"
 
 
 def _paths(tmp_path, monkeypatch):
@@ -90,8 +113,8 @@ def _new_travel(cl, pfid=1, nm="甲一", need="否", cert_type="02", **over):
     d = {"csrf_token": _tok(cl), "personnel_filing_id": str(pfid), "unit": "总部",
          "department": "技术部", "name": nm, "position": "科长",
          "id_number": valid_id(pfid), "destination_passport": "中国香港/往来港澳通行证",
-         "category": "01", "travel_dates": "2026/11/01-2026/11/11",
-         "need_new_passport": need, "approval_date": "20261001",
+         "category": "01", "travel_dates": _range(60, 70),
+         "need_new_passport": need, "approval_date": _shift(-30),
          "intended_cert_type": cert_type,
          "att_application": (io.BytesIO(_PDF), "a.pdf"),
          "att_approval": (io.BytesIO(_PDF), "b.pdf")}
@@ -185,8 +208,8 @@ def d(tmp_path, monkeypatch):
                "id_number,destination_passport,intended_cert_type,category,travel_dates,"
                "travel_start,travel_end,need_new_passport,approval_date,operator) VALUES "
                "(1,1,'总部','技术部','甲一','科长',?,'中国香港/往来港澳通行证','02','01',"
-               "'2026/11/01-2026/11/11','20261101','20261111','否','20261001','admin')",
-               (valid_id(1),))
+               "?,?,?,'否',?,'admin')",
+               (valid_id(1), _range(60, 70), _shift(60), _shift(70), _shift(-30)))
     seed_required_attachments(db, 1, "否")
     db.commit(); db.close()
     return _client()
@@ -196,7 +219,7 @@ def _issue(cl, cert_type, cert_no):
     return cl.post("/issuance/new", data={
         "csrf_token": _tok(cl), "travel_id": "1", "personnel_filing_id": "1",
         "holder_name": "甲一", "id_number": valid_id(1), "cert_types": cert_type,
-        "cert_nos": cert_no, "issue_date": "20261025", "sign_png": _PNG,
+        "cert_nos": cert_no, "issue_date": _today(), "sign_png": _PNG,
     }, follow_redirects=True)
 
 

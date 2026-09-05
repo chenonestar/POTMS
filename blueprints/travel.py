@@ -13,7 +13,7 @@ from database import get_db
 from blueprints.certificate import CERT_SLOTS
 from utils.helpers import (log_action, list_all, get_dict_options, get_dict_value,
                            row_snapshot, operator_name, tz_modifier)
-from utils.validators import (parse_date_input, validate_date_format,
+from utils.validators import (parse_date_input, validate_date_format, comparable_ymd,
                               parse_travel_range, validate_travel_range, format_travel_range,
                               is_cert_overdue, is_new_cert_overdue, cert_overdue_deadline,
                               check_required, check_dates, check_identity)
@@ -731,6 +731,50 @@ def _extract_form(form):
     }
 
 
+def _date_order_errors(data: dict) -> list[str]:
+    """明细表上几个日期之间的先后关系。
+
+    此前这里只校验每个日期**自己**合不合法（格式、是不是真实存在的日子），
+    跨字段的先后一条都没有——实测批准日期填成出行之后、甚至填成 400 天后的
+    未来日期，都照收不误，页面上一句话不说。
+
+    三条都不是政策取舍，是纸面上的事实，所以做硬拦：
+
+    1. **批准日期不能在将来。**《审批表》是必传附件（见 _REQUIRED_A），
+       没有那张签好字的扫描件连记录都建不出来；纸此刻就在手上，它上面的
+       日期不可能还没到。这条同时能挡住最常见的一类手误：年份敲错一位。
+    2. **批准日期不能晚于计划出行开始日。** 因私出国（境）先批准后出行，
+       反过来只能说明两个日期里有一个填错了。
+    3. **实际回国日期不能早于计划出行开始日。** 人不可能在出发之前就回国。
+
+    与「计划出行起 ≤ 止」（validate_travel_range）分开写：那条只看
+    travel_dates 这一个字段内部，这里看的是字段之间。
+    """
+    errors = []
+    today = datetime.now().strftime("%Y%m%d")
+    appr = data.get("approval_date") or ""
+    ret = data.get("actual_return_date") or ""
+    # 出行起始日要从 travel_dates 文本里现解析：new/edit 都是先校验、
+    # 后写回规范化的 travel_start，此刻库里那一列还是旧值（编辑时）或
+    # 根本不存在（新增时），不能拿来比。
+    t_start, _t_end = parse_travel_range(data.get("travel_dates") or "")
+
+    if comparable_ymd(appr) and appr > today:
+        errors.append(
+            f"批准日期（{appr}）不能是将来的日期（今天 {today}）——"
+            "《审批表》是必传附件，那张签好字的纸此刻就在手上，"
+            "它上面的日期不可能还没到。请核对是不是年份或月份敲错了。")
+    if comparable_ymd(appr) and comparable_ymd(t_start) and appr > t_start:
+        errors.append(
+            f"批准日期（{appr}）晚于计划出行开始日（{t_start}）——"
+            "因私出国（境）须先批准后出行，这两个日期里有一个填错了。")
+    if comparable_ymd(ret) and comparable_ymd(t_start) and ret < t_start:
+        errors.append(
+            f"实际回国日期（{ret}）早于计划出行开始日（{t_start}）——"
+            "人不可能在出发之前就回国。如果是行程有变，请一并更正计划出行日期。")
+    return errors
+
+
 def _validate_form(data: dict) -> list[str]:
     errors = []
     required = [
@@ -768,6 +812,7 @@ def _validate_form(data: dict) -> list[str]:
         ("approval_date", "批准日期"),
         ("actual_return_date", "实际回国日期"),
     ])
+    errors += _date_order_errors(data)
 
     # 证件领用日期原在此校验必填，现已迁移至证件领用模块（须手写签名后登记），
     # 出行表单不再收集该字段。

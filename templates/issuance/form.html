@@ -93,6 +93,9 @@
         <div class="col-md-3">
             <label class="form-label required">领用日期</label>
             <input type="text" class="form-control" name="issue_date" value="{{ data.issue_date or '' }}" placeholder="YYYYMMDD" maxlength="8" required>
+            {# 补录允许，但两头都有界：不能早于审批签批那天，也不能晚于今天。
+               界是后端划的（_validate_form），这里把它说在明处。 #}
+            <div class="form-text">补录请填当时实际发放的日期{% if travel and travel.approval_date %}；不早于批准日 {{ travel.approval_date }}，不晚于今天{% else %}，不晚于今天{% endif %}</div>
         </div>
         <div class="col-md-3">
             <label class="form-label">经办人（发放人）</label>

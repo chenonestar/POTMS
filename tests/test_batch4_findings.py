@@ -46,6 +46,18 @@ def _days_ago(n):
     return (datetime.now() - timedelta(days=n)).strftime("%Y%m%d")
 
 
+def _shift(n):
+    return (datetime.now() + timedelta(days=n)).strftime("%Y%m%d")
+
+
+def _range(a, b):
+    """计划出行日期文本，a、b 为距今天数。"""
+    def f(n):
+        s = _shift(n)
+        return f"{s[:4]}/{s[4:6]}/{s[6:]}"
+    return f"{f(a)}-{f(b)}"
+
+
 def _fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "t.db"))
     up = tmp_path / "up"; up.mkdir()
@@ -108,8 +120,12 @@ def _new_travel(cl, **over):
     d = {"csrf_token": _tok(cl), "personnel_filing_id": "1", "unit": "总部",
          "department": "技术部", "name": "甲一", "position": "科长",
          "id_number": valid_id(1), "destination_passport": "美国/护照", "category": "01",
-         "travel_dates": "2026/11/01-2026/11/11", "need_new_passport": "否",
-         "approval_date": "20261001", "intended_cert_type": "01",
+         # 日期一律相对今天算。原先写死的 2026/11/01 与批准日 20261001 在
+         # 第 8 批补上「批准日期 ≤ 今天 ≤ 计划出行」之后就成了非法数据——
+         # 一张批准日期还没到的审批表，现实里不存在。写死的日期还会随墙上
+         # 时钟慢慢腐烂，索性都改成相对值。
+         "travel_dates": _range(60, 70), "need_new_passport": "否",
+         "approval_date": _days_ago(30), "intended_cert_type": "01",
          "att_application": (io.BytesIO(_PDF), "a.pdf"),
          "att_approval": (io.BytesIO(_PDF), "b.pdf")}
     d.update(over)
@@ -145,7 +161,7 @@ def test_the_form_marks_it_as_required(t):
 def test_a_normal_submission_still_goes_through(t):
     """填了就正常保存——别把必填改成了谁也过不去。"""
     _new_travel(t)
-    assert _one("SELECT approval_date FROM travel_details") == "20261001"
+    assert _one("SELECT approval_date FROM travel_details") == _days_ago(30)
 
 
 # ===========================================================================
