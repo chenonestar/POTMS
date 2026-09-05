@@ -47,7 +47,11 @@
     </div>
     <div class="row g-3 mt-1">
         <div class="col-md-3"><label class="form-label">身份证号</label><input type="text" class="form-control" name="id_number" id="tIdno" value="{{ data.id_number or '' }}" readonly></div>
-        <div class="col-md-6"><label class="form-label required">地点、证照</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport or '' }}" placeholder="目的地国家/地区及使用的证照类型" required></div>
+        {# 这一栏原名「地点、证照」，要求「目的地国家/地区**及使用的证照类型**」两样都写。
+           第 7 批加了结构化的「拟用证件种类」之后，「证照」那一半就成了同一件事的
+           第二处录入：两边可以互相矛盾，而校验和领用比对全走结构化那一栏，自由文本
+           里写错的那句照样印在打印件上。所以这一栏收窄成只填地点，名字也跟着改。 #}
+        <div class="col-md-6"><label class="form-label required">目的地</label><input type="text" class="form-control" name="destination_passport" value="{{ data.destination_passport or '' }}" placeholder="前往的国家或地区，如：美国、中国香港" required><div class="form-text">只填地点。用哪种证件请在右侧「拟用证件种类」选择——校验与领用比对都以那一栏为准。</div></div>
         {# 拟用证件种类：这趟打算用哪一本证。领用登记时必须与它一致，
            「说不做证」时也按这一本去查有没有、在不在有效期内。 #}
         <div class="col-md-3"><label class="form-label required">拟用证件种类</label>

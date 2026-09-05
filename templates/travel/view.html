@@ -42,7 +42,7 @@
             <div class="col-md-6"><label class="text-muted">身份证号</label><p><code>{{ travel.id_number }}</code></p></div>
         </div>
         <div class="row mt-2">
-            <div class="col-md-4"><label class="text-muted">地点、证照</label><p>{{ travel.destination_passport }}</p></div>
+            <div class="col-md-4"><label class="text-muted">目的地</label><p>{{ travel.destination_passport }}</p></div>
             <div class="col-md-2"><label class="text-muted">拟用证件种类</label><p>{% if travel.intended_cert_type %}{{ dict_value('cert_type', travel.intended_cert_type) }}{% else %}<span class="badge bg-warning text-dark">待核实</span>{% endif %}</p></div>
             <div class="col-md-3"><label class="text-muted">类别</label><p>{{ travel.category }}</p></div>
             <div class="col-md-3"><label class="text-muted">计划出行日期</label><p>{{ travel.travel_dates }}</p></div>

@@ -704,7 +704,9 @@
 <tr><td><code>id</code> / <code>personnel_filing_id</code></td><td>INTEGER</td><td>PK / FK NOT NULL</td><td><span class="badge b-p3">系统</span></td><td>有索引。</td></tr>
 <tr><td><code>unit</code> / <code>department</code> / <code>name</code> / <code>position</code> / <code>title</code> / <code>id_number</code></td><td>TEXT</td><td><code>title</code> 可空，其余 NOT NULL</td><td><span class="badge b-frozen">定格</span></td>
     <td><strong>这是单据，不是台账。</strong>建单时从人员信息带入并<u>就此定格</u>；人员事后改名改单位，这里一律不动——申请表是报上去的那张纸。界面上这几栏 <code>readonly</code>，只能通过换申请人整体带入。</td></tr>
-<tr><td><code>destination_passport</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>前往国家（地区）/ 所持证件。</td></tr>
+<tr><td><code>destination_passport</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>界面名<strong>「目的地」</strong>。前往的国家或地区。<br>
+    <span class="badge b-new">改名</span> 原名<strong>「地点、证照」</strong>，要求「目的地及使用的证照类型」两样写在一起——列名沿袭纸质表格。第 7 批加了结构化的 <code>intended_cert_type</code> 之后，「证照」那一半就成了<u>同一件事的第二处录入</u>：两边可以互相矛盾而系统只信后者，自由文本里写错的那句照样印在打印件上；系统内部的叫法也已分裂成四个（表单「地点、证照」／列表「目的地」／筛选「姓名 / 目的地」／导出「地点、证照」）。故收窄为只填地点，<u>全部展示口径统一为「目的地」</u>，含打印件与导出表头。<br>
+    <strong>列名不动</strong>：改列要动 schema 与其余四版，而这只是展示口径问题。<code>infer_cert_type</code> 的第②级判据仍读这段文字，那一级只对存量数据有意义。</td></tr>
 <tr><td><code>category</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>出国（境）类别，字典·<strong>存文字</strong>。</td></tr>
 <tr><td><code>travel_dates</code></td><td>TEXT</td><td>NOT NULL</td><td><span class="badge b-new">录入</span></td><td>行程描述文本（如「历史批次」「2026-03-01 至 03-10」）。</td></tr>
 <tr><td><code>travel_start</code> / <code>travel_end</code></td><td>TEXT</td><td>可空</td><td><span class="badge b-new">录入</span></td><td><strong>由迁移追加，不在建表 SQL 里。</strong>结构化的起止日期。<code>travel_end</code> 是逾期到期日的兜底基准。列表默认排序用 <code>travel_start</code>。</td></tr>

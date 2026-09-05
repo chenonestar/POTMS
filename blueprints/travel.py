@@ -780,7 +780,7 @@ def _validate_form(data: dict) -> list[str]:
     required = [
         ("personnel_filing_id", "备案人员"), ("unit", "单位"), ("department", "部门"),
         ("name", "姓名"), ("position", "职务"), ("id_number", "身份证号"),
-        ("destination_passport", "地点、证照"), ("category", "类别"),
+        ("destination_passport", "目的地"), ("category", "类别"),
         ("travel_dates", "计划出行日期"), ("need_new_passport", "是否做证"),
         # 批准日期原为选填。需求文档 613 行写着「审批通过后回填」——先建记录、
         # 批下来再补，这个理由自洽。但同一份文档 634 行写的是相反的流程：
@@ -793,9 +793,10 @@ def _validate_form(data: dict) -> list[str]:
         # 这里补上另一半——纸质件与系统记录之间的对应锚点就是这个日期。
         ("approval_date", "批准日期"),
         # 拟用证件种类。在此之前「这趟要用哪种证」在系统里没有结构化答案，
-        # 只有「地点、证照」那段自由文本，于是一路串出三个后果：够不够用判不了、
-        # 领用时领哪本没人管（去香港领护照，系统一句话不说）、历史数据只能靠
-        # infer_cert_type 去猜。判据的源头就是这一栏。
+        # 只有那段自由文本（当时叫「地点、证照」，要求把目的地和证件类型写在
+        # 一起），于是一路串出三个后果：够不够用判不了、领用时领哪本没人管
+        # （去香港领护照，系统一句话不说）、历史数据只能靠 infer_cert_type 去猜。
+        # 判据的源头就是这一栏；那段自由文本已收窄为只填地点，改名「目的地」。
         ("intended_cert_type", "拟用证件种类"),
     ]
     errors += check_required(data, required)

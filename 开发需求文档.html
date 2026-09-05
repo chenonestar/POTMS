@@ -607,11 +607,12 @@
                 <tr><td>职务</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
                 <tr><td>职称</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td>自动带入（取自信息登记表），无需重复选择</td></tr>
                 <tr><td>身份证号</td><td>CHAR(18)</td><td><span class="badge must">必填</span></td><td>自动带入（取自信息登记表）</td></tr>
-                <tr><td>地点、证照</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>目的地国家/地区及使用证照类型</td></tr>
+                <tr><td>目的地</td><td>VARCHAR(200)</td><td><span class="badge must">必填</span></td><td>前往的国家或地区，如「美国」「中国香港」。<br><em>原名「地点、证照」，原要求「目的地国家/地区<u>及使用证照类型</u>」。加入结构化字段「拟用证件种类」后，「证照」那一半成了同一件事的第二处录入，两边可以互相矛盾而系统只信结构化那一栏；现收窄为只填地点。库列名 destination_passport 不变。</em></td></tr>
                 <tr><td>类别</td><td>VARCHAR(30)</td><td><span class="badge must">必填</span></td><td>出国/出境类别（字典维护）</td></tr>
                 <tr><td>计划出行日期</td><td>VARCHAR(50)</td><td><span class="badge must">必填</span></td><td>统一格式 YYYY/MM/DD-YYYY/MM/DD（如 2026/08/01-2026/08/11），前端固定掩码输入；历史数据自动转换</td></tr>
-                <tr><td>批准日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>审批通过后回填</td></tr>
-                <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证。<strong>校验</strong>：该备案人员名下没有任何在有效期内的出入境证件时，只能填「是」（系统不判断证件种类是否匹配目的地，如持港澳通行证赴美，须由经办人自行判断）</td></tr>
+                <tr><td>批准日期</td><td>DATE</td><td><span class="badge must">必填</span></td><td>取《审批表》上的签批日期。<br><em>原为「选填，审批通过后回填」。但《审批表》一直是<u>必传附件</u>——没有那张签好字的扫描件连记录都建不出来，纸既然已在手上，它上面的日期就没有理由选填。<strong>校验</strong>：不得晚于今天，也不得晚于计划出行开始日。</em></td></tr>
+                <tr><td>拟用证件种类</td><td>VARCHAR(10)</td><td><span class="badge must">必填</span></td><td>这趟打算用哪一本证（护照 / 往来港澳通行证 / 大陆居民往来台湾通行证，取自 cert_type 字典）。「够不够用」的判断、领用登记的证件比对都以本栏为准。<br><em>后加字段。存量由迁移三级推断回填，判不出的留空标「待核实」——留空的不参与领用比对。</em></td></tr>
+                <tr><td>是否做证</td><td>ENUM('是','否')</td><td><span class="badge must">必填</span></td><td>是否办理新证。<strong>校验</strong>：填「否」时，该备案人员名下必须有一本<u>与「拟用证件种类」相同</u>且在有效期内的证件，否则只能填「是」。<br><em>原校验只判「一本都没有」，注释里写明了原因：系统当时不知道这趟要用哪种证，「持港澳通行证赴美」只能由经办人自行判断。加了「拟用证件种类」之后判据可以精确到那一本。</em></td></tr>
                 <tr><td>证件号码</td><td>VARCHAR(30)</td><td><span class="badge opt">选填</span></td><td><strong>派生字段</strong>：已办理证件领用的，由领用记录回写并置为只读，与领用凭证同源；路径B（做证）无领用记录，此栏为系统内唯一来源，拿到证后回本页手工补录</td></tr>
                 <tr><td>证件领用日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td><strong>派生字段</strong>：由《证件领用》模块登记后自动带入，出行表单不收集</td></tr>
                 <tr><td>实际回国日期</td><td>DATE</td><td><span class="badge opt">选填</span></td><td>归国（境）实际日期；作为"10个工作日交回证件"的起算日，留空则以计划出行结束日计</td></tr>

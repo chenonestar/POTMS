@@ -65,7 +65,7 @@ FIELD_LABELS = {
     "passport_no": "护照号", "passport_expiry": "护照有效期", "passport_submit_date": "护照上交日期",
     "hm_pass_no": "港澳通行证号", "hm_pass_expiry": "港澳有效期", "hm_pass_submit_date": "港澳上交日期",
     "tw_pass_no": "台湾通行证号", "tw_pass_expiry": "台湾有效期", "tw_pass_submit_date": "台湾上交日期",
-    "destination_passport": "地点、证照", "category": "类别", "travel_dates": "计划出行日期",
+    "destination_passport": "目的地", "category": "类别", "travel_dates": "计划出行日期",
     "travel_start": "出行起", "travel_end": "出行止", "approval_date": "批准日期",
     "need_new_passport": "是否做证", "passport_collect_date": "领用日期", "passport_return_date": "归还日期",
     "actual_return_date": "实际回国日期", "trip_status": "行程状态", "cancel_date": "取消日期",
