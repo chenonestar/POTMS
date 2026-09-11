@@ -47,6 +47,27 @@
     </form>
 </div></div>
 
+{# 存量体检：一本证挂着多张未归还领用单。一个号码点一行，给出能筛到它们的链接。
+   这是待办不是提示，订正干净之前一直显示——订正完库层唯一索引也就建上了。
+   （与人员备案列表页那条同号告警同一个套路。） #}
+{% if dup_cert_nos %}
+<div class="alert alert-danger" data-block="dup-cert-nos">
+    <div class="d-flex align-items-center mb-1">
+        <i class="bi bi-exclamation-octagon-fill me-2"></i>
+        <strong>发现同一本证件挂着多张「未归还」领用单，请订正</strong>
+    </div>
+    <div class="small">
+        证件号码是「哪一本实体证此刻在谁手上」的唯一凭据。一物两单时，归还该销哪一张说不清；
+        首页「借出未还（本）」按号码去重只算一本，与这里的行数对不上。
+        订正完成前，数据库层的唯一约束也建不上。
+    </div>
+    {% for no, n in dup_cert_nos %}
+    <div class="small mt-1">证件号码 <code>{{ no }}</code> 共 {{ n }} 张未归还 —
+        <a href="{{ url_for('issuance.list', search=no, status='issued') }}">筛出这几张</a></div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <div class="table-card"><div class="table-responsive">
 <table id="mainTable" class="table table-hover mb-0">
     <thead class="table-light"><tr>

@@ -486,6 +486,23 @@ def run_migrations():
             "WHERE id_number IS NOT NULL AND id_number != ''",
             "CREATE UNIQUE INDEX IF NOT EXISTS ux_pf_active_id_number ON personnel_filing(id_number) "
             "WHERE status = 'active' AND id_number IS NOT NULL AND id_number != ''",
+            # 一本实体证同时只能在一个人手上。
+            #
+            # 这条规则从第 1 批起就有，但一直只是应用层的**先查后插**：
+            # 先 SELECT 有没有人占着，没有就 INSERT。两个请求同时进来时，
+            # 两句 SELECT 都在对方 INSERT 之前跑完，于是两个都「查到没人占用」。
+            # 实测 6 个并发**六个全过**；一次双击「保存领用登记」也能复现
+            # （表单没有 disable-on-submit，双击就是两个 POST）。
+            #
+            # 更要紧的是另外四版：Go / Rust / .NET / Java 的领用校验里
+            # **一条号码查重都没有**（已逐个核过源码），cert_nos 连必填都不是。
+            # 五版共享同一个 data.db，从那边录进来的账，Python 版下次启动照单全收。
+            # 唯一能同时管住五版的就是索引——索引是库的属性，不是某一版的代码。
+            #
+            # 只在「已领用未归还」这一档内唯一，不是全表唯一：还了再借、
+            # 作废后重录都是正常业务，全表唯一会把它们一起误拦。
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_issuance_active_cert_no ON cert_issuance(cert_nos) "
+            "WHERE status = 'issued' AND cert_nos IS NOT NULL AND cert_nos != ''",
         ):
             try:
                 db.execute(uidx_sql)

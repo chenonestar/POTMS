@@ -20,7 +20,7 @@
 </div>
 {% endif %}
 
-<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_filing"{% endif %}>
+<form method="POST" data-no-double-submit class="needs-validation" novalidate {% if not editing %}data-draft="personnel_filing"{% endif %}>
 <div class="form-section">
     <h5>身份信息</h5>
     <div class="row g-3">

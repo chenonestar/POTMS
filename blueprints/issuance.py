@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import sqlite3
 from datetime import datetime
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
@@ -158,6 +159,7 @@ def list() -> ResponseReturnValue:
     return render_template(
         "issuance/list.html",
         items=pg,
+        dup_cert_nos=duplicate_issued_cert_nos(),
         search=request.args.get("search", "").strip(),
         status_filter=request.args.get("status", "").strip(),
         cert_type_filter=request.args.get("cert_type", "").strip(),
@@ -188,15 +190,35 @@ def new() -> ResponseReturnValue:
                                    travel=_travel_brief(data.get("travel_id")))
 
         meta = _clean_meta(request.form.get("sign_meta", ""))
-        db.execute(
-            "INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, "
-            "cert_types, cert_nos, issue_date, issuer, sign_image, sign_meta, status, remarks, operator) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)",
-            (data["travel_id"] or None, data["personnel_filing_id"], data["holder_name"],
-             data["id_number"], data["cert_types"], data["cert_nos"], data["issue_date"],
-             data["issuer"], blob, meta, data["remarks"], data["operator"]),
-        )
-        db.commit()
+        try:
+            db.execute(
+                "INSERT INTO cert_issuance (travel_id, personnel_filing_id, holder_name, id_number, "
+                "cert_types, cert_nos, issue_date, issuer, sign_image, sign_meta, status, remarks, operator) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)",
+                (data["travel_id"] or None, data["personnel_filing_id"], data["holder_name"],
+                 data["id_number"], data["cert_types"], data["cert_nos"], data["issue_date"],
+                 data["issuer"], blob, meta, data["remarks"], data["operator"]),
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            # 走到这里说明上面那道应用层查重没拦住，库层唯一索引兜住了。
+            #
+            # 两种情形会这样：两个请求同时提交（两句 SELECT 都在对方 INSERT
+            # 之前跑完），以及一次双击「保存」——它们之间只差几毫秒，应用层
+            # 判据看不见。不接住的话用户看到的是 500，比现在还糟：他会以为
+            # 系统坏了，然后再点一次。
+            db.rollback()
+            held = db.execute(
+                "SELECT id, holder_name FROM cert_issuance "
+                "WHERE cert_nos = ? AND status = 'issued' LIMIT 1",
+                (data["cert_nos"],)).fetchone()
+            who = f"（领用记录 #{held['id']}，领用人 {held['holder_name']}）" if held else ""
+            flash(f"证件号码 {data['cert_nos']} 已被登记为领用中{who}——"
+                  "一本证件同时只能在一个人手上。"
+                  "如果刚才连点了两次「保存」，那一次已经登记成功，请到领用列表查看，不必重复提交。",
+                  "danger")
+            return render_template("issuance/form.html", data=data,
+                                   travel=_travel_brief(data.get("travel_id")))
         iss_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         _sync_travel_derived(data["travel_id"])
         log_action("create", "cert_issuance", iss_id,
@@ -409,11 +431,18 @@ def fix_cert_types(iss_id) -> ResponseReturnValue:
     # 不该继续挂着机器推断的说明。
     remarks = "历史数据回填（证件种类已人工核定，无签名）" \
         if (row["remarks"] or "").startswith("历史数据回填") else row["remarks"]
-    db.execute(
-        "UPDATE cert_issuance SET cert_types=?, cert_nos=?, remarks=?, "
-        "updated_at=CURRENT_TIMESTAMP WHERE id=?",
-        (",".join(types), cert_nos, remarks, iss_id))
-    db.commit()
+    try:
+        db.execute(
+            "UPDATE cert_issuance SET cert_types=?, cert_nos=?, remarks=?, "
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (",".join(types), cert_nos, remarks, iss_id))
+        db.commit()
+    except sqlite3.IntegrityError:
+        # 这个入口也能写 cert_nos，所以也要接住唯一索引。上面那道应用层查重
+        # 拦不住并发，兜底在这里；同样不能让它变成 500。
+        db.rollback()
+        flash(f"证件号码 {cert_nos} 已被登记为领用中——一本证件同时只能在一个人手上。", "danger")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
     # 号码变了要在日志里点名——它决定这本证算不算借出，改动必须看得见。
     old_no = (row["cert_nos"] or "").strip()
     no_part = f"，证件号码 {old_no or '（空）'} → {cert_nos}" if old_no != cert_nos else ""
@@ -565,6 +594,25 @@ def late_issue_error(travel_id, issue_date: str) -> str:
                 "如果是事后补登，请填写当时实际发放证件的日期；"
                 "如果本人要再次出行，请另建出国申请。")
     return ""
+
+
+def duplicate_issued_cert_nos() -> list:
+    """存量体检：库里**已经**存在的「同一本证挂着多张未归还领用单」。
+
+    加索引只挡新的，挡不住已经躺在库里的——而这条不变量长期只有应用层
+    先查后插守着（并发下形同虚设），另外四版更是一条查重都没有。所以存量里
+    很可能已经有了。不报出来会有两个后果：库层唯一索引静默建不上（
+    database.run_migrations 里那三条的 except 不中断启动），而经办人永远
+    不知道账上有一本证同时记在两个人名下。
+
+    WHERE 子句与索引 ux_issuance_active_cert_no 逐字对应——两处口径必须一致，
+    否则「告警说没问题、索引却建不上」，人会去查一个查不出来的东西。
+    返回 [(号码, 条数), ...]。
+    """
+    return [(r["cert_nos"], r["n"]) for r in get_db().execute(
+        "SELECT cert_nos, COUNT(*) AS n FROM cert_issuance "
+        "WHERE status = 'issued' AND cert_nos IS NOT NULL AND cert_nos != '' "
+        "GROUP BY cert_nos HAVING n > 1 ORDER BY cert_nos")]
 
 
 def _eligible_travels():

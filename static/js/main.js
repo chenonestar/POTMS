@@ -518,3 +518,62 @@ function attachUploadSizeGuard(form, limit) {
         if (!check()) { ev.preventDefault(); ev.stopPropagation(); box.scrollIntoView({ block: 'center' }); }
     }, true);
 }
+
+/* ---------------------------------------------------------------------------
+ * 防重复提交
+ *
+ * 表单上的提交按钮原先都是光秃秃的 <button type="submit">。签名板画完字点保存，
+ * 页面要编码 PNG、写 BLOB、跑一堆校验，慢半拍很正常——人下意识就会再点一下，
+ * 而那就是**两个 POST**，由 waitress 的两个线程并行处理。
+ *
+ * 后果不是多一条记录那么简单：领用登记里「一本证同时只能在一个人手上」是
+ * 应用层的先查后插，两句 SELECT 都在对方 INSERT 之前跑完，于是两张都进去了。
+ * 实测一次双击就复现。
+ *
+ * 但这一层只是**入口**：伪造的 POST、JS 被禁、以及另外四版都绕得过去。
+ * 真正的保证是库层的部分唯一索引（ux_issuance_active_cert_no）。两者都要有，
+ * 缺哪个都不算修好——入口挡住手滑，索引挡住其余一切。
+ *
+ * 按钮不置灰，只是禁用并换文案：置灰会让人以为「没点上」，再去点别处。
+ * ------------------------------------------------------------------------- */
+function preventDoubleSubmit(form) {
+    if (typeof form === 'string') form = document.getElementById(form);
+    if (!form || form.dataset.noDoubleSubmit) return;
+    form.dataset.noDoubleSubmit = '1';
+
+    form.addEventListener('submit', function (ev) {
+        // 放到下一个事件循环里再看结果，有两个理由：
+        //  1. 校验类监听器（签名必填、上传总量预检）可能 preventDefault 拦下提交，
+        //     那时按钮必须还能再点——否则修一个 bug 顺手造一个：签名忘了画，
+        //     按钮禁掉了，人就再也提交不了，只能刷新重填整张表。
+        //  2. 监听器的执行顺序取决于注册顺序，同步阶段读 defaultPrevented 读不准；
+        //     setTimeout(0) 排在所有同步监听器之后，那时它才是最终结论。
+        setTimeout(function () {
+            if (ev.defaultPrevented) return;
+            if (form.dataset.submitting) return;
+            form.dataset.submitting = '1';
+            form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (b) {
+                b.disabled = true;
+                if (b.tagName === 'BUTTON') {
+                    b.dataset.originalHtml = b.innerHTML;
+                    b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>提交中…';
+                }
+            });
+        }, 0);
+    });
+
+    // 从浏览器「后退」回到本页时，Firefox/Safari 会还原 DOM 状态（bfcache），
+    // 按钮会停在禁用态，人就再也提交不了了。pageshow 里恢复。
+    window.addEventListener('pageshow', function () {
+        delete form.dataset.submitting;
+        form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (b) {
+            b.disabled = false;
+            if (b.dataset.originalHtml) { b.innerHTML = b.dataset.originalHtml; }
+        });
+    });
+}
+
+// 凡是标了 data-no-double-submit 的表单自动接上，省得每个页面各写一遍
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form[data-no-double-submit]').forEach(preventDoubleSubmit);
+});

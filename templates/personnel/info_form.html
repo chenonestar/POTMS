@@ -21,7 +21,7 @@
 {% endif %}
 
 {% set all_orgs = org_flat() %}{# 缓存一次查询，下方三处循环复用 #}
-<form method="POST" class="needs-validation" novalidate {% if not editing %}data-draft="personnel_info"{% endif %}>
+<form method="POST" data-no-double-submit class="needs-validation" novalidate {% if not editing %}data-draft="personnel_info"{% endif %}>
 <div class="form-section">
     <h5>基本信息</h5>
     <div class="row g-3">

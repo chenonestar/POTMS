@@ -23,7 +23,7 @@
 </div>
 {% endif %}
 
-<form method="POST" id="signForm" class="needs-validation" novalidate>
+<form method="POST" data-no-double-submit id="signForm" class="needs-validation" novalidate>
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="travel_id" value="{{ data.travel_id or '' }}">
 

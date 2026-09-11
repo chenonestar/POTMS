@@ -9,7 +9,7 @@
     · 领用日期 {{ item.issue_date }} · 经办人 {{ item.issuer }}
 </div>
 
-<form method="POST" id="signForm" class="needs-validation" novalidate>
+<form method="POST" data-no-double-submit id="signForm" class="needs-validation" novalidate>
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
 <div class="form-section">
