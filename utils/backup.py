@@ -13,7 +13,7 @@
 """
 import os
 import re
-import shutil
+import sqlite3
 from datetime import datetime, timedelta
 
 from config import Config
@@ -32,6 +32,41 @@ _checked_date: str | None = None
 
 def _backup_path(date_str: str) -> str:
     return os.path.join(Config.BACKUP_FOLDER, f"{_PREFIX}{date_str}{_SUFFIX}")
+
+
+def copy_database(dest: str) -> None:
+    """把当前数据库完整复制到 dest。
+
+    **不能用 shutil.copy2。** 库开的是 WAL（见 database.get_db 的
+    `PRAGMA journal_mode=WAL`）：一次 commit 之后数据先落在 `data.db-wal`，
+    要等一次 checkpoint 才搬进 `data.db`，而 checkpoint 只在没有连接正在读时
+    才做得成。只拷主库文件，就会把还留在 -wal 里的那部分**整段丢掉**。
+
+    实测（主库已 checkpoint 含 50 条，随后在有连接开着的情况下又提交 300 条）：
+
+        shutil.copy2(data.db)  → 备份里 50 条，静默丢失 300 条
+        Connection.backup()    → 备份里 350 条
+
+    丢了也不会报错：拷出来的是一个完全合法、能打开的数据库，只是停在过去。
+    只有真去恢复那天才发现当天的活儿一条都没有。
+
+    单机单人时每个请求结束就 close_db()，最后一个连接关闭会自动 checkpoint，
+    所以这个坑平时不发作。**但断电、进程被杀、以及多人在线（8 个 waitress
+    线程里总有连接活着）这三种情况下都会发作。**
+
+    Connection.backup() 走 SQLite 官方的在线备份 API：它复制的是数据库的
+    **逻辑内容**（自然包含 -wal 里已提交的部分），且在正确的锁下进行，
+    写入方同时在写也能得到一个一致的快照。
+    """
+    src = sqlite3.connect(Config.DATABASE)
+    try:
+        dst = sqlite3.connect(dest)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
 
 
 def latest_backup() -> tuple[str, str] | tuple[None, None]:
@@ -90,7 +125,9 @@ def run_daily_backup(force: bool = False) -> dict:
 
     created = False
     if os.path.exists(Config.DATABASE) and (force or not os.path.exists(dest)):
-        shutil.copy2(Config.DATABASE, dest)
+        # force=True 会覆盖当天已有的那份：backup() 写进一个已存在的文件时会
+        # 整体替换它的内容，不会与旧内容混在一起。
+        copy_database(dest)
         created = True
 
     pruned = prune_old_backups()
@@ -116,5 +153,5 @@ def snapshot_before_change(tag: str) -> str:
     while os.path.exists(os.path.join(Config.BACKUP_FOLDER, name)):
         name = f"{_SNAP_PREFIX}{safe}_{stamp}_{n}{_SUFFIX}"
         n += 1
-    shutil.copy2(Config.DATABASE, os.path.join(Config.BACKUP_FOLDER, name))
+    copy_database(os.path.join(Config.BACKUP_FOLDER, name))
     return name

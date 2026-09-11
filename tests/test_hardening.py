@@ -151,10 +151,38 @@ def test_session_cookie_flags():
     assert Config.SESSION_COOKIE_SAMESITE == "Lax"
 
 
+def _make_db(path, marker: str) -> None:
+    """造一个**真的** SQLite 库，里面放一个可辨认的标记。
+
+    原先这两条备份用例写的是 `write_bytes(b"x")` / `b"first"`——那不是数据库，
+    是几个字节的文本。`shutil.copy2` 不在乎文件内容，所以一直是绿的；换成
+    SQLite 官方的备份 API 之后，`b"first"` 那条当场炸出
+    `sqlite3.DatabaseError: file is not a database`。
+
+    而 `b"x"` 那条没炸，只是因为它**从不断言备份出来的内容**——那才更糟：
+    它是一条即使备份成了空文件也照样绿的用例（见 15.2 第 2、17 条）。
+    两条一起改成真库，并把内容也断言上。
+    """
+    c = sqlite3.connect(str(path))
+    c.execute("CREATE TABLE IF NOT EXISTS mark(v TEXT)")
+    c.execute("DELETE FROM mark")
+    c.execute("INSERT INTO mark(v) VALUES (?)", (marker,))
+    c.commit()
+    c.close()
+
+
+def _read_mark(path) -> str:
+    c = sqlite3.connect(str(path))
+    try:
+        return c.execute("SELECT v FROM mark").fetchone()[0]
+    finally:
+        c.close()
+
+
 def test_backup_daily_marker(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "d.db"))
     monkeypatch.setattr(Config, "BACKUP_FOLDER", str(tmp_path / "bk"))
-    (tmp_path / "d.db").write_bytes(b"x")
+    _make_db(tmp_path / "d.db", "原始")
     import utils.backup as bk
     bk._checked_date = None
     r1 = bk.run_daily_backup()
@@ -164,6 +192,9 @@ def test_backup_daily_marker(tmp_path, monkeypatch):
     assert r2["created"] is False and r2["path"] is None
     r3 = bk.run_daily_backup(force=True)           # force 不受标记影响
     assert r3["created"] is True
+    # 备出来的必须是个能打开、内容对得上的库。原先这条只看 created 标志，
+    # 备成一个空文件也照样绿。
+    assert _read_mark(r3["path"]) == "原始"
 
 
 def test_change_snapshots_never_overwrite(tmp_path, monkeypatch):
@@ -174,17 +205,17 @@ def test_change_snapshots_never_overwrite(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(Config, "DATABASE", str(tmp_path / "d.db"))
     monkeypatch.setattr(Config, "BACKUP_FOLDER", str(tmp_path / "bk"))
-    (tmp_path / "d.db").write_bytes(b"first")
+    _make_db(tmp_path / "d.db", "第一次改动之前")
     import utils.backup as bk
 
     a = bk.snapshot_before_change("org_rename")
-    (tmp_path / "d.db").write_bytes(b"second")
+    _make_db(tmp_path / "d.db", "第二次改动之前")
     b = bk.snapshot_before_change("org_rename")     # 同一秒、同一 tag
 
     assert a != b, f"同 tag 连着两次留下了同名文件，后一份盖掉了前一份：{a}"
     bak = tmp_path / "bk"
-    assert (bak / a).read_bytes() == b"first", "第一份快照的内容被后来的改动覆盖了"
-    assert (bak / b).read_bytes() == b"second"
+    assert _read_mark(bak / a) == "第一次改动之前", "第一份快照的内容被后来的改动覆盖了"
+    assert _read_mark(bak / b) == "第二次改动之前"
     assert a.startswith("before_org_rename_") and a.endswith(".db"), \
         f"快照名看不出是哪次改动：{a}"
 
