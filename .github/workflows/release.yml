@@ -8,6 +8,17 @@ name: 发布 Release（五版一次出齐）
 #   1. 推 tag：git tag v1.0.0 && git push origin v1.0.0
 #   2. Actions 页面点「Run workflow」填版本号——不用推 tag，工作流自己建
 #
+# **默认只出 Python 版。** 这不是偷工，是当前状态的实情：Python 版是源头，
+# 另外四版落后它 6–13 批修复（Go / Rust 停在 2026-08-29，.NET / Java 停在
+# 2026-09-04）。而第 2、13 批往库里加了三条唯一索引，索引是库的属性、对五版
+# 一视同仁——那四版的编辑路径与领用登记都不查重，撞上约束时拿到的是
+# IntegrityError 而不是一句能看懂的提示，大概率直接 500。它们自己的测试
+# 不会炸（索引在 run_migrations 里、不在 SCHEMA 里，建出来的空库没有索引），
+# 只有跑在 Python 迁移过的那个共享 data.db 上才发作，所以 CI 绿不代表没事。
+#
+# 四版同步之后（见文档 §15.3 第一条），把 include_lagging 的 default 改成
+# true，这段注释一并删掉。
+#
 # 产出的 Release 一律是**草稿**。发版是对外且不好收回的动作，草稿这一步就是
 # 确认环节：产物下下来试过了，再手动点 Publish。
 
@@ -19,6 +30,10 @@ on:
       version:
         description: '版本号，形如 v1.0.0（前面的 v 可省）'
         required: true
+      include_lagging:
+        description: '同时构建 Go / Rust / .NET / Java 版（它们落后于 Python 版，见文件头注释）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write        # gh release create 要写 Release 与 tag
@@ -32,11 +47,14 @@ jobs:
       version: ${{ steps.v.outputs.version }}          # 1.0.0 / 1.1.0-rc1
       tag: ${{ steps.v.outputs.tag }}                  # v1.0.0
       app_version: ${{ steps.v.outputs.app_version }}  # 1.0.0（jpackage 只认三段数字）
+      include_lagging: ${{ steps.v.outputs.include_lagging }}   # 'true' / 'false'
     steps:
       - id: v
         # 经环境变量传入，不把用户输入直接拼进脚本
         env:
           RAW: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          # 推 tag 时没有 inputs，按默认走——只出 Python 版
+          LAGGING: ${{ github.event_name == 'workflow_dispatch' && inputs.include_lagging || false }}
         run: |
           ver="${RAW#v}"
           if ! echo "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+].+)?$'; then
@@ -48,7 +66,8 @@ jobs:
           echo "version=$ver"     >> "$GITHUB_OUTPUT"
           echo "tag=v$ver"        >> "$GITHUB_OUTPUT"
           echo "app_version=$app" >> "$GITHUB_OUTPUT"
-          echo "版本 $ver（jpackage 用 $app）"
+          echo "include_lagging=$LAGGING" >> "$GITHUB_OUTPUT"
+          echo "版本 $ver（jpackage 用 $app）；同时构建落后四版：$LAGGING"
 
       # 同名 Release 已存在的话，越早发现越好——放到最后会白等五版构建十几分钟，
       # 而且那时已经攒了一堆 artifact 要收拾。
@@ -158,6 +177,7 @@ jobs:
   go:
     name: Go 版
     needs: meta
+    if: needs.meta.outputs.include_lagging == 'true'
     runs-on: windows-latest
     env:
       PKG: POTMS-go-${{ needs.meta.outputs.version }}
@@ -196,6 +216,7 @@ jobs:
   rust:
     name: Rust 版
     needs: meta
+    if: needs.meta.outputs.include_lagging == 'true'
     runs-on: windows-latest
     env:
       PKG: POTMS-rust-${{ needs.meta.outputs.version }}
@@ -232,6 +253,7 @@ jobs:
   dotnet:
     name: .NET 版
     needs: meta
+    if: needs.meta.outputs.include_lagging == 'true'
     runs-on: windows-latest
     env:
       PKG: POTMS-dotnet-${{ needs.meta.outputs.version }}
@@ -271,6 +293,7 @@ jobs:
   java:
     name: Java 版
     needs: meta
+    if: needs.meta.outputs.include_lagging == 'true'
     runs-on: windows-latest
     env:
       PKG: POTMS-java-${{ needs.meta.outputs.version }}
@@ -358,6 +381,18 @@ jobs:
   release:
     name: 创建 Release（草稿）
     needs: [meta, python, go, rust, dotnet, java]
+    # needs 里有任务被跳过时，依赖它的任务默认也会被跳过——而四版可选正是靠
+    # 跳过实现的，所以这里必须 always() 再逐个判结果。
+    # 写成 `== 'success' || == 'skipped'` 而不是 `!= 'failure'`：后者会把
+    # cancelled 也当成通过，那是「没构建出来」却照样发了草稿。
+    if: >-
+      always()
+      && needs.meta.result == 'success'
+      && needs.python.result == 'success'
+      && (needs.go.result == 'success' || needs.go.result == 'skipped')
+      && (needs.rust.result == 'success' || needs.rust.result == 'skipped')
+      && (needs.dotnet.result == 'success' || needs.dotnet.result == 'skipped')
+      && (needs.java.result == 'success' || needs.java.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -380,27 +415,53 @@ jobs:
         env:
           VER: ${{ needs.meta.outputs.version }}
           TAG: ${{ needs.meta.outputs.tag }}
+          LAGGING: ${{ needs.meta.outputs.include_lagging }}
         run: |
+          # 说明里的版本表必须与**这次真的构建了什么**一致。写死一张五版表，
+          # 而实际只出了 Python 版，那就是在 Release 页面上骗人——而且骗的正是
+          # 要把包拷进内网的那个人。
           cat > notes.md <<EOF
           因私出国（境）人员审批管理系统 $VER
 
-          同一套需求的五个语言实现，共用同构的 \`data.db\`，功能对齐。
-          全部为 Windows x64、免安装、解压即用，均由本次工作流在同一个提交上
-          **先跑完各自的测试**再构建。
+          Windows x64、免安装、解压即用，由本次工作流在同一个提交上
+          **先跑完测试**再构建。
 
           | 版本 | 形态 | 说明 |
           |---|---|---|
-          | Python  | 单文件 exe | 模板与静态资源打包在内，运行时解压到临时目录 |
+          | Python | 单文件 exe | 模板与静态资源打包在内，运行时解压到临时目录 |
+          EOF
+
+          if [ "$LAGGING" = "true" ]; then
+            cat >> notes.md <<EOF
           | Go      | exe + 目录 | \`templates/\` 与 \`static/\` 在 exe 旁边，可直接改 |
           | Rust    | 单文件 exe | 资源由 rust-embed 编进二进制，真正的单文件 |
           | .NET    | 自包含目录 | 免装 .NET 运行时 |
           | Java    | 免装 JRE 目录 | jlink 裁剪运行时，另附胖 jar 备用 |
 
+          五个语言实现共用同构的 \`data.db\`。
+          EOF
+          else
+            cat >> notes.md <<EOF
+
+          > **本次只发布 Python 版。** 仓库里另有 Go / Rust / .NET / Java 四个实现，
+          > 它们共用同构的 \`data.db\`，但目前**落后 Python 版 6–13 批修复**，
+          > 其中包括三条库层唯一约束的配套处理。索引是库的属性、对五版一视同仁，
+          > 那四版撞上约束时不会给出可读提示，因此**不随本版一同发布**，
+          > 也不建议与本版混用同一个 \`data.db\`。
+          EOF
+          fi
+
+          cat >> notes.md <<EOF
+
           **首次运行**：默认管理员 \`admin\` / \`admin123\`，请立即修改。
           数据库、上传件、导出件、备份都落在程序所在目录，换机器整个目录拷走即可。
 
-          **升级**：只替换可执行文件（Python / Go / Rust）或程序目录中除数据外的部分
-          （.NET / Java），\`data.db\`、\`uploads/\`、\`backup/\`、\`.secret_key\` 不要动。
+          **部署约束**：运行机器的操作系统时区须与 \`POTMS_TZ_OFFSET\`（默认 +8）一致，
+          否则业务日期与展示时间会差一天，且不报错。默认只监听 \`127.0.0.1\`；
+          本版为**单用户**设计，改监听 \`0.0.0.0\` 供多人同时使用前请先读文档 §15.3。
+
+          **升级**：只替换可执行文件，\`data.db\`、\`uploads/\`、\`backup/\`、\`.secret_key\`
+          不要动。首次启动会自动跑迁移。
 
           **校验**：\`SHA256SUMS.txt\` 与各 zip 一同发布，拷贝进内网后可比对。
 
