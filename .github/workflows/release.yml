@@ -47,6 +47,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}          # 1.0.0 / 1.1.0-rc1
       tag: ${{ steps.v.outputs.tag }}                  # v1.0.0
       app_version: ${{ steps.v.outputs.app_version }}  # 1.0.0（jpackage 只认三段数字）
+      prerelease: ${{ steps.v.outputs.prerelease }}     # 'true' / 'false'
       include_lagging: ${{ steps.v.outputs.include_lagging }}   # 'true' / 'false'
     steps:
       - id: v
@@ -63,11 +64,23 @@ jobs:
           fi
           # jpackage 的 --app-version 只接受纯数字三段，预发布后缀要摘掉
           app=$(echo "$ver" | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+')
+
+          # 版本号带 -rc1 / -beta.2 这类后缀的就是预发布版，Release 要标出来，
+          # 否则 v0.9.0-rc1 在 Releases 页面上和正式版长得一模一样。
+          # 先摘掉 +build 元数据再看有没有 '-'：按 semver，1.0.0+build.5 是正式版，
+          # 只有 1.0.0-rc1 才是预发布——拿整个串找 '-' 会把前者也判错。
+          core="${ver%%+*}"
+          case "$core" in
+            *-*) pre=true ;;
+            *)   pre=false ;;
+          esac
+
           echo "version=$ver"     >> "$GITHUB_OUTPUT"
           echo "tag=v$ver"        >> "$GITHUB_OUTPUT"
           echo "app_version=$app" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$pre"  >> "$GITHUB_OUTPUT"
           echo "include_lagging=$LAGGING" >> "$GITHUB_OUTPUT"
-          echo "版本 $ver（jpackage 用 $app）；同时构建落后四版：$LAGGING"
+          echo "版本 $ver（jpackage 用 $app）；预发布：$pre；同时构建落后四版：$LAGGING"
 
       # 同名 Release 已存在的话，越早发现越好——放到最后会白等五版构建十几分钟，
       # 而且那时已经攒了一堆 artifact 要收拾。
@@ -476,11 +489,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.meta.outputs.tag }}
           VER: ${{ needs.meta.outputs.version }}
+          PRE: ${{ needs.meta.outputs.prerelease }}
+          SHA: ${{ github.sha }}
         run: |
-          gh release create "$TAG" \
-            --title "POTMS $VER" \
-            --notes-file notes.md \
-            --draft \
-            --target "${{ github.sha }}" \
-            assets/*.zip assets/SHA256SUMS.txt
+          # 用数组拼参数，不用 ${PRE:+--prerelease} 那种空字符串展开：
+          # 后者读起来像个笔误，而这里要让人一眼看出「什么情况下多传一个开关」。
+          args=(--title "POTMS $VER" --notes-file notes.md --draft --target "$SHA")
+          if [ "$PRE" = "true" ]; then
+            args+=(--prerelease)
+            echo "版本号带后缀，标记为预发布版"
+          fi
+          gh release create "$TAG" "${args[@]}" assets/*.zip assets/SHA256SUMS.txt
           echo "::notice::草稿 Release 已建好，确认无误后到 Releases 页面手动 Publish"
