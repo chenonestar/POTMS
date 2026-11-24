@@ -131,7 +131,7 @@
     <h1>因私出国（境）人员审批管理系统</h1>
     <p class="subtitle">系 统 需 求 与 分 析 文 档</p>
     <div class="verdict">写现状，不写理想 &nbsp;·&nbsp; 每一条规则都能追到代码与测试</div>
-    <p class="meta">文档版本：V2.2 &nbsp;|&nbsp; 编制日期：2026-08-29 &nbsp;|&nbsp; 末次修订：2026-09-05 &nbsp;|&nbsp; 基线：第三轮四批修复后（用例 395） &nbsp;|&nbsp; 密级：内部</p>
+    <p class="meta">文档版本：V2.2 &nbsp;|&nbsp; 编制日期：2026-08-29 &nbsp;|&nbsp; 末次修订：2026-11-24 &nbsp;|&nbsp; 基线：第 14 批（框架默认页兜底）后（用例 428） &nbsp;|&nbsp; 密级：内部</p>
 </div>
 
 <div class="container">
@@ -1410,6 +1410,9 @@
 　　包含式，<u>不是相加</u>。第二个测试 <span class="badge b-done">test_new_making_is_not_automatically_overdue</span> 专门钉住它是<strong>真</strong>子集：数据里放了一个「下个月才出发的做证人员」，他在「新办未入库」里而不在「逾期」里；<u>少了这个样本，逾期恰好等于「借出＋新办」，把 <code>⊆</code> 写成 <code>=</code> 也测不出来</u>。<br>
 ③ <span class="badge b-done">test_decontrolled_certificate_is_not_in_stock</span>　撤控人员的证退出在库。<br>
 ④ <span class="badge b-done">test_stock_page_and_dashboard_agree</span>　盘库页的总数与首页四档一致。<br>
+<br>
+<strong>推论：这四档<u>不能</u>画成饼图 / 环形图。</strong>饼图隐含的语义是「各扇区互斥、合计等于整体」，而恒等式②是 <code>⊆</code>——逾期那几本<u>已经</u>被数在「借出未还」或「新办未入库」里了。把四档各占一个扇区，总数凭空变大，而<strong>图看起来完全正常，没有任何地方会报错</strong>。这与 15.2 第 2 条是同一个坑的另一种形态：<code>⊆</code> 当成 <code>＝</code>，恰好时看不出来。<br>
+　　能画成互斥整体的只有「在库 ∣ 借出未还」（恒等式①）与「在控 ∣ 已撤控」；<u>逾期只能画成落在它实际所属那两段上的标记，不能自占一块</u>；「新办未入库」是路径 B、不计入在库，不与前两档共用同一个整体。
 ⑤ <span class="badge b-done">test_stock_export_lists_the_same_documents</span> / <span class="badge b-done">test_stock_export_respects_the_filter</span>　导出与页面同源同筛选。</div>
 
 <h3>10.3 两行之间的可比性 <span class="badge b-done">已修</span></h3>
@@ -1892,14 +1895,25 @@
 <tr><td><span class="badge b-p1">高</span></td>
     <td><strong>第 4–6 批、仪表盘四档改造、以及本轮问题复核的五批修复，都只做了 Python 版</strong>，Go / Rust / .NET / Java 尚未同步</td>
     <td>四版目前仍可能删掉被引用的证照、带证撤控、把路径 B 漏出告警。而<u>五版共享同一个 <code>data.db</code></u>——从任何一版做出的破坏，其余四版都要承受。这是「修好一个 bug 不等于消除这一类 bug」在项目层面的翻版。<br><span class="badge b-new">新增</span> 本轮第 2 批给身份证号加了<strong>库层唯一索引</strong>。索引是库的属性，对五版一视同仁：这是好事（约束不再依赖哪一版在写），但另外四版的编辑路径若仍不查重，撞号时拿到的是一个 <code>IntegrityError</code>，多半直接 500，而不是一句能看懂的提示。<br><span class="badge b-new">第 7 批</span> 出国明细表新增了 <code>intended_cert_type</code> 列。四版都按<u>列名</u>映射行（Go <code>queryMaps</code>、Rust <code>query_maps</code> 均如此），所以加列<strong>不会让它们崩</strong>——但它们不认这一栏，从那边建的出国申请这一列恒为空，在 Python 版里一律显示「待核实」，领用比对也随之失效。<br><span class="badge b-new">第三轮</span> 又多了四批只在 Python 版做的改动（见 15.6）：<u>五条日期先后校验</u>、<u>领用证件号码必填</u>、上传超限提示、「目的地」口径统一。其中<strong>号码必填这一条最要紧</strong>——从另外四版登记的领用记录仍可能号码为空，而空号码会让那本证从借出账上消失、仍被算作在库，<u>四档恒等式照样平，一处都不喊</u>。这不是「那一版界面不好看」，是共享库里多出一批算不对账的数据。</td></tr>
-<tr><td><span class="badge b-p2">中</span></td><td><code>release.yml</code>（425 行，五版一次出齐）<strong>从来没有真正跑过一次</strong></td>
-    <td>真到发版那天才第一次跑，是最不该冒的险。应当先拿一个测试 tag 空跑一遍。</td></tr>
+<tr><td><span class="badge b-done">已销账</span></td><td><s><code>release.yml</code>（五版一次出齐）从来没有真正跑过一次</s> → <strong>已空跑两次，均全绿</strong>（2026-11-24）</td>
+    <td>原欠账：真到发版那天才第一次跑，是最不该冒的险。<br>
+    先把它改成「落后的四版可选、默认只出 Python 版」（<code>include_lagging</code>，默认 <code>false</code>），再拿 <code>v0.9.0-rc1</code>、<code>v0.9.0-rc2</code> 空跑：两次都出了草稿与附件，Windows exe 冒烟（起真 exe 打 HTTP）通过。<u>第一次空跑才发现工作流没传 <code>--prerelease</code></u>——草稿里 <code>prerelease: false</code>，真点 Publish 的话一个 rc 在 Releases 页面上和正式版长得一模一样；这正是「不真的跑一次就不知道它长什么样」第二次应验（第一次是 413 兜底页）。<br>
+    仍留的口子：<strong>四版同步之后要把 <code>include_lagging</code> 的默认值改回 <code>true</code></strong>，并删掉文件头那段说明，否则正式发版会静默地只出一版。</td></tr>
 <tr><td><span class="badge b-done">已销账</span></td><td><s>仓库里没有约定文档</s> → <strong>已新增 <code>CLAUDE.md</code></strong>（2026-09-05）</td>
     <td>原欠账：「Python 为源头」「schema 改了要重新生成两份」「新测试必须验证会红」这些规矩全靠口头传，换人就断；而在「上下文会被压缩、容器会重启」的协作形态下，比换人还脆弱——<u>一份未提交的草稿就是这么丢的</u>。<br>
     落成的操作规程含：五版关系与 schema 生成、三条硬约束（运行时产物 / 所有输出口 UTF-8 / 两套时间口径）、三组易错概念（台账 vs 单据、路径 A/B、四档恒等式）、交付三道工序、自检清单 23 条（<u>编号沿用 15.2，两处可互相对照</u>）、已知欠账。<br>
     <strong>写法上针对一个具体风险：清单会制造完成感。</strong>核对过第三轮那 5 个新问题与当时 18 条清单的对应关系——<u>只有第 9 条（真的打开浏览器看过吗）可能产出它们，另外 17 条一条都产不出</u>，而那 5 条确实全部由那 1 条产出。<strong>17 : 1</strong>。所以那份文档里：开门第 0 节就写「它找不到新问题」并摊开这个比例；<strong>「真人把页面点一遍」被拎出清单、作为交付的第三道工序</strong>，不与「写了 <code>encoding=&quot;utf-8&quot;</code> 吗」并列——并列会让它看起来打个勾就过；23 条各自保留「来自哪次返工」，这一列同时说明<u>清单的覆盖面等于历史、不等于未来</u>。</td></tr>
 <tr><td><span class="badge b-p2">中</span></td><td><strong>盘库只能出清单，盘点结果回不到系统</strong></td>
     <td>现在能打印一张带勾选框的清单、逐本划勾，但划完的那张纸没有入口回到系统。查不到「上次什么时候盘的、应到多少、实到多少、缺哪几本、谁盘的」。<u>「盘库」目前实为「打印一张单子」。</u></td></tr>
+<tr><td><span class="badge b-new">排期<br>v1.1.0</span></td><td><strong>首页仪表盘图形化</strong>（<u>需求，不是缺陷</u>——业务方提出「图形展示是不是更漂亮一点」，2026-11-24 议定排在 v1.0.0 之后）</td>
+    <td>现状：8 张数字卡 + 近期出行 5 行表，每张卡都是指向对应筛选列表的链接。<br>
+    <strong>先决条件（三条，全部是约束不是偏好）：</strong><br>
+    ① <u>四档不能画成饼图</u>——理由见 §10 恒等式②下的推论（<code>逾期 ⊆ …</code>，画成互斥扇区总数凭空变大而图看起来完全正常）。能画成互斥整体的只有「在库 ∣ 借出未还」与「在控 ∣ 已撤控」。<br>
+    ② <u>前端不引 CDN</u>（§1，完全离线）。图表库须 vendor 进 <code>static/vendor/</code> 并进单文件 exe；而<strong>新增静态文件后 <code>build-windows</code> 必须跑过</strong>——<code>--add-data</code> 漏打在 pytest 里一律测不出来，装到内网机上就是一块空白。<br>
+    ③ <u>卡片的可点性不能让出去</u>（15.2 第 13 条，出现最多的根因）：汇总数字与它点开的明细必须是同一个函数出的。canvas 画的图点不动。<br>
+    <strong>倾向的做法：</strong>不引任何 JS 库，用纯 CSS ＋ 内联 SVG 做一条「在库 ∣ 借出未还」堆叠横条（把恒等式①直接画出来），<u>逾期做成落在它实际所属那两段上的标记而不自占一块</u>（这样恒等式②也被画对了），「新办未入库」单独一条不与前两档共用整体。数字仍来自 <code>stock_split()</code>，零新增依赖、零 <code>--add-data</code> 风险、卡片仍可点。<br>
+    <strong>若要上真正的图表库，前提是先有趋势数据</strong>（按月申请量、在外人数曲线）——系统现在<u>一个趋势数据都没有算</u>，而 <code>dashboard.py</code> 刚刚因为「算了三段分布统计、模板从第一版起没用过」把它们删掉。那是另一条独立需求，不是改样式。<br>
+    <strong>验收单要加条目：</strong>图与数字对不对得上、以及图在 exe 里真的画出来了，<u>只有真人能验</u>（§15.6 的工序三）。</td></tr>
 <tr><td><span class="badge b-p3">低</span></td><td>系统内<strong>没有「从备份恢复」的入口</strong></td>
     <td>真出事时操作员要停服、找文件、改文件名（README 三步），容易再出错。</td></tr>
 <tr><td><span class="badge b-p3">低</span></td><td>Go 与 Python 版<strong>没有版本号字符串</strong></td>
@@ -2250,7 +2264,7 @@ JS 里的 <code>syncCertNos()</code> 也确实拿得到号码（人员下拉上�
 </section>
 
 <p style="text-align:center;color:var(--text-muted);font-size:13px;margin-top:50px">
-— 因私出国（境）人员审批管理系统 · 系统需求与分析文档 V2.2 · 编制于 2026-08-29 · 2026-09-04 增补 15.5 第二轮复盘与 15.2 第 12–18 条 · 2026-09-05 补记时区部署约束（§14）与两套时间口径欠账（§15.3）、增补 15.6 第三轮复盘与 15.2 第 19–23 条、新增 CLAUDE.md 并销账（§0、§15.3）—
+— 因私出国（境）人员审批管理系统 · 系统需求与分析文档 V2.2 · 编制于 2026-08-29 · 2026-09-04 增补 15.5 第二轮复盘与 15.2 第 12–18 条 · 2026-09-05 补记时区部署约束（§14）与两套时间口径欠账（§15.3）、增补 15.6 第三轮复盘与 15.2 第 19–23 条、新增 CLAUDE.md 并销账（§0、§15.3） · 2026-11-24 §15.2 第 23 条补第三种形态（凭记忆写比对串）、§10 补「四档不能画成饼图」推论、§15.3 销 release.yml 空跑欠账并记入 v1.1.0 仪表盘图形化排期—
 </p>
 
 </div>
