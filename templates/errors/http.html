@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - 因私出国（境）人员审批管理系统</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="d-flex align-items-center justify-content-center min-vh-100 py-4">
+        <div class="text-center" style="max-width:600px;">
+            <i class="bi {{ icon }} text-secondary" style="font-size:56px;"></i>
+            <h1 class="mt-3" style="font-size:52px;font-weight:800;color:#1a5276;">{{ status }}</h1>
+            <p class="fs-5">{{ title }}</p>
+
+            {# 按状态码查中文文案，**不显示 err.description**。werkzeug 自带的
+               description 是英文的通用句子（The method is not allowed for the
+               requested URL.），把它打到页面上等于把英文又搬回来了，只是外面
+               套了个中文框。 #}
+            <div class="alert alert-light border text-start mt-4">{{ detail | safe }}</div>
+
+            {% if reassure %}
+            {# 405 最该说的不是「这页怎么是英文」，而是「我刚才是不是把东西删了」。
+               那 21 条 POST-only 路由全是删除 / 取消 / 恢复 / 作废 / 备份这类动作。 #}
+            <div class="alert alert-success text-start">
+                <i class="bi bi-shield-check"></i> <strong>{{ reassure }}</strong>
+            </div>
+            {% endif %}
+
+            <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary mt-2"><i class="bi bi-house"></i> 返回首页</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -148,6 +148,63 @@ def create_app() -> Flask:
             500,
         )
 
+    # ------------------------------------------------------------------
+    # 其余所有 HTTP 错误的兜底
+    #
+    # 上面三个（404 / 413 / 500）有各自的专页。问题是**没有专页的那些**原先
+    # 一律走 werkzeug 默认页：英文、没有导航、整页替换。实测过的：
+    #
+    #   405  ✗ 框架默认页   真实可达：21 条 POST-only 路由（删除 / 取消 / 恢复 /
+    #                       作废 / 备份 / 字典与组织机构增删），地址栏手输、
+    #                       收藏、对提交后的页面按刷新都会撞到
+    #   400  ✗ 框架默认页   非 CSRF 的那一支（CSRF 失败另有处理，见 utils/csrf.py）
+    #   403  ✗ 框架默认页   目前无调用点，但那一支敞着
+    #   401  ✗ 框架默认页   同上
+    #
+    # 不一条条补，补根：注册一个 HTTPException 处理器。Flask 查处理器时**先按
+    # 状态码找，找不到再按异常类的 MRO 找**，所以 404 / 413 / 500 仍走各自专页，
+    # 其余一律落到这里。这样保证的不是「这三个补上了」，而是**框架默认页再也
+    # 逃不出去**——下次冒出个 409、422 同样接得住。
+    #
+    # 这些码在本系统的部署形态下根本不会出现，所以不写：
+    #   502 / 504  要有反向代理才会出，而这是单机 waitress
+    #   429        没有限流
+    #   waitress 自己在进 Flask 之前拒掉的（请求行过长、HTTP 报文畸形）——
+    #              那层这个处理器管不到，只能记在这里
+    # ------------------------------------------------------------------
+    from werkzeug.exceptions import HTTPException
+
+    # 状态码 → (标题, 说明, 图标, 「什么都没发生」的安心话)
+    # 说明一律是自己写的中文；**不透传 err.description**，理由见模板里的注释。
+    _HTTP_TEXT = {
+        400: ("请求无法识别", "浏览器送来的数据不完整或格式不对，服务器没能读懂。"
+                             "通常是页面停留过久或中途刷新导致的，<strong>回到首页重新操作一次</strong>即可。",
+              "bi-question-circle", "服务器没有执行任何操作，数据没有改动。"),
+        401: ("需要登录", "这个页面要登录后才能访问。", "bi-person-lock", None),
+        403: ("没有权限", "当前账号不能访问这个页面或执行这个操作。", "bi-shield-lock", None),
+        405: ("这个地址不能直接打开",
+              "删除、取消、恢复、作废、备份这类<strong>操作</strong>只能通过页面上的按钮来提交，"
+              "不能在地址栏里直接输入、不能收藏后打开、也不能对提交完的页面按刷新。"
+              "<br>请回到对应的列表页，用那一行上的按钮操作。",
+              "bi-sign-do-not-enter",
+              "你刚才的操作没有被执行，数据没有任何改动。"),
+    }
+
+    @app.errorhandler(HTTPException)
+    def _http_error(err):
+        code = err.code or 500
+        title, detail, icon, reassure = _HTTP_TEXT.get(
+            code,
+            ("请求未能完成",
+             "服务器无法处理这次请求。请回到首页重新操作；若反复出现，请记下这个页面的编号后联系维护人员。",
+             "bi-exclamation-circle", None))
+        return _error_page(
+            "errors/http.html",
+            f"{code} {title}。请返回首页重新操作。",
+            # 模板里那个变量不能也叫 code：_error_page 的第三个形参就叫 code，
+            # 同名会撞成 TypeError: got multiple values for argument 'code'。
+            code, status=code, title=title, detail=detail, icon=icon, reassure=reassure)
+
     # 数据库连接关闭
     from database import close_db
     app.teardown_appcontext(close_db)

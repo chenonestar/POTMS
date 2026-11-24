@@ -7,7 +7,7 @@
 """
 import secrets
 
-from flask import session, request, abort, redirect, url_for, flash
+from flask import session, request, redirect, url_for, flash
 
 CSRF_SESSION_KEY = "_csrf_token"
 CSRF_FIELD = "csrf_token"
@@ -44,17 +44,21 @@ def init_csrf(app):
         expected = session.get(CSRF_SESSION_KEY)
         sent = _submitted_token()
         if not expected or not sent or not secrets.compare_digest(str(expected), str(sent)):
-            abort(400, description="CSRF 令牌校验失败，请刷新页面后重试。")
+            # 直接返回重定向，不走 abort(400)。
+            #
+            # before_request 返回响应就会跳过视图，效果与原来一样（都是 302 到
+            # 登录页），但**不再需要一个 400 处理器**。原先那个处理器里有一支
+            # `return err`：非 CSRF 的 400 原样返回，也就是 werkzeug 的英文默认页。
+            # 目前全仓只有这一处 abort(400)，那一支还不可达，但它是个装好了的
+            # 陷阱——谁写一句 abort(400, "参数不对")，当场就是一屏英文。
+            #
+            # 去掉那个处理器之后，任何 400 都落到 app.py 里的 HTTPException
+            # 兜底处理器，拿到中文页。少一个处理器，少一条要维护的判据。
+            #
+            # CSRF 失败多因会话过期，所以不是停在错误页，而是引导重新登录。
+            flash("会话已过期或页面已失效，请重新登录后再试。", "warning")
+            return redirect(url_for("auth.login"))
 
     @app.context_processor
     def _inject_csrf():
         return {"csrf_token": generate_csrf}
-
-    @app.errorhandler(400)
-    def _csrf_error(err):
-        # CSRF 失败多因会话过期：友好地引导重新登录；其它 400 沿用默认
-        desc = getattr(err, "description", "") or ""
-        if "CSRF" in desc:
-            flash("会话已过期或页面已失效，请重新登录后再试。", "warning")
-            return redirect(url_for("auth.login"))
-        return err
