@@ -147,8 +147,34 @@ def test_the_database_itself_refuses_a_second_active_row(cl):
 # ===========================================================================
 # 二、正常业务不能被误拦（部分索引的 WHERE 就是为它们写的）
 # ===========================================================================
+def _second_travel_for_person_1(tid=3):
+    """给人1 再造一条已批准的出国申请。
+
+    「还了再借」必须由**同一个人**凭第二条申请再借一次来表达。原先这条用例
+    写的是「把人1 的护照 E0001 借给人2」——那在现实里不成立：人2 手上不可能
+    拿到人1 的那本实体证。既有判据只查了「领用人 = 申请人」（这里人2 领人2 的
+    申请，过），**号码属于谁从来没查过**，所以一直绿着。
+    第 15 批补上「号码必须属于所选种类」之后它才红——第 17 条，第四次命中。
+    """
+    d = sqlite3.connect(Config.DATABASE)
+    d.execute(
+        "INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,"
+        "id_number,destination_passport,intended_cert_type,category,travel_dates,travel_start,"
+        "travel_end,approval_date,need_new_passport,operator) "
+        "VALUES (?,1,'总部','技术部','人1一','科长',?,'美国','01','01',"
+        "'2026/12/20-2026/12/28','20261220','20261228','20260101','否','admin')",
+        (tid, valid_id(1)))
+    from conftest import seed_required_attachments
+    seed_required_attachments(d, tid, "否")
+    d.commit(); d.close()
+    return tid
+
+
 def test_borrowing_again_after_returning_is_allowed(cl):
-    """还了之后再借同一本证——放行。全表唯一会把这条最普通的流程拦死。"""
+    """还了之后再借同一本证——放行。全表唯一会把这条最普通的流程拦死。
+
+    同一个人、同一本证、第二条申请。见 _second_travel_for_person_1 说明。
+    """
     _issue(cl)
     iss_id = _one("SELECT id FROM cert_issuance")
     r = cl.post(f"/issuance/{iss_id}/return",
@@ -156,9 +182,14 @@ def test_borrowing_again_after_returning_is_allowed(cl):
                       "sign_png": _PNG, "sign_meta": "{}"}, follow_redirects=True)
     assert _one("SELECT status FROM cert_issuance WHERE id=?", iss_id) == "returned", \
         r.get_data(as_text=True)[:300]
-    _issue(cl, travel_id=2, cert_nos="E0001",
-           personnel_filing_id="2", holder_name="人2一", id_number=valid_id(2))
-    assert _one("SELECT COUNT(*) FROM cert_issuance") == 2
+    tid = _second_travel_for_person_1()
+    # _issue 的默认值把 personnel_filing_id 绑成 travel_id（这个文件里人 i 对
+    # 应申请 i），而申请 3 是**人1** 的，所以领用人必须显式传——否则撞上
+    # 既有的「领用人与该出国申请的申请人不一致」，红的不是想测的那条。
+    r2 = _issue(cl, travel_id=tid, cert_nos="E0001",
+                personnel_filing_id="1", holder_name="人1一", id_number=valid_id(1))
+    assert _one("SELECT COUNT(*) FROM cert_issuance") == 2, \
+        r2.get_data(as_text=True)[:400]
 
 
 def test_reissuing_after_voiding_is_allowed(cl):

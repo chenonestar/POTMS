@@ -25,7 +25,8 @@ from auth import login_required
 from config import Config
 from database import get_db
 from utils.helpers import (log_action, list_all, row_snapshot, get_dict_value,
-                           operator_name, cert_no_of, certificate_number_maps)
+                           operator_name, cert_no_of, certificate_number_maps,
+                           certificate_slots_of)
 from utils.validators import parse_date_input, check_required, check_dates, comparable_ymd
 
 issuance_bp = Blueprint("issuance", __name__)
@@ -414,6 +415,25 @@ def fix_cert_types(iss_id) -> ResponseReturnValue:
     if not cert_nos:
         flash("证件号码为必填项——更正种类时号码要一并改成那一本的号码。", "danger")
         return redirect(url_for("issuance.view", iss_id=iss_id))
+    # 号码必须就是所选种类那一本的——与新建共用同一个判据函数。
+    #
+    # 这个入口原先只检查「号码非空」与「号码没被别人占用」，于是把一条
+    # 「护照 E1」订正成「往来港澳通行证」、号码仍留 E1，照样保存成功，页面
+    # 还提示「证件种类已更正。」——实测复现。弹窗里每个种类旁边本来就显示着
+    # 台账号码当提示，模板注释也写明了这条规则，唯独没人执行它。
+    #
+    # 本入口服务的是**无签名的历史回填行**，travel_id 可能为空：那时判不出
+    # 路径，对「台账里查不到」按路径B（宽）处理；而「号码坐在别的槽里」照样
+    # 拦——后者不需要知道路径（见 cert_no_slot_error）。
+    tv = get_db().execute(
+        "SELECT need_new_passport FROM travel_details WHERE id = ?",
+        (row["travel_id"],)).fetchone() if row["travel_id"] else None
+    slot_err = cert_no_slot_error(
+        row["personnel_filing_id"], types[0], cert_nos,
+        ledger_required=bool(tv and (tv["need_new_passport"] or "").strip() == "否"))
+    if slot_err:
+        flash(slot_err, "danger")
+        return redirect(url_for("issuance.view", iss_id=iss_id))
     # 这本证是不是已经在别人手上了。与新建同一条规则，排除本记录自身。
     if cert_nos != (row["cert_nos"] or "").strip():
         held = get_db().execute(
@@ -495,6 +515,10 @@ def _travel_brief(travel_id):
     return db.execute(
         "SELECT id, personnel_filing_id, name, id_number, unit, department, "
         "destination_passport, intended_cert_type, travel_dates, approval_date, "
+        # need_new_passport：表单上那句「号码须与台账一致」只在路径A 成立，
+        # 模板要按它分支。不取出来的话那个 {% if %} 会静默地永远走 else——
+        # 和 CLAUDE.md 第 4 节点名的那种「判据静默永不触发」同一个形态。
+        "need_new_passport, "
         "passport_no, actual_return_date "
         "FROM travel_details WHERE id = ?", (travel_id,)).fetchone()
 
@@ -706,6 +730,83 @@ def _extract_form(form):
     }
 
 
+def cert_no_slot_error(personnel_filing_id, code: str, no: str,
+                       ledger_required: bool) -> str | None:
+    """领用登记的号码，必须就是「所选那个种类」那一本的号码。
+
+    这条判据此前**根本不存在**。种类与申请的拟用种类比对过（硬拦），号码的
+    唯一性查过（应用层 + 库层索引），但**号码与种类之间从来没有比对**：种类
+    留着服务端预选的「往来港澳通行证」、号码填成同一个人的护照号，一路放行。
+    实测复现，新建与更正两个入口都没拦。
+
+    触发它不需要刻意操作：号码框是文本输入，浏览器会按输入框名字做历史填充，
+    把以前敲过的号码（包括给别人登记时敲的）作为候选弹出来。业务方就是这么
+    撞上的。所以表单那一头也加了 autocomplete="off"，但那只是减少触发概率，
+    判据必须在后端。
+
+    **后果比空号码更难发现。** 空号码让那本证从借出账上消失、总数少一本；
+    填错槽位是两本证的状态**互相调换**：
+
+        在库     = C7654321（往来港澳通行证，实际在人手上）
+        借出未还 = E1234567（普通护照，实际在柜子里）
+
+    而「在库 + 借出未还 = 在控人员台账登记总本数」照样平，孤儿号码为空，
+    一处都不喊。盘库的人去柜子里找不到那本港澳通行证，却多出一本系统说已
+    借出的护照——两个差错在总数上互相抵消。而那张签了字的领用单写着「往来
+    港澳通行证」却带着护照号，「证件号码是哪本实体证此刻在谁手上的唯一凭据」
+    这件事（CLAUDE.md 第 3 节）当场失效。
+
+    三种情形，三条判断：
+
+        号码 = 所选种类那个槽的值      放行
+        号码 = 该人**其它**槽的值      硬拦（两条路径都拦）
+        号码在该人台账查不到          ledger_required 为真才拦
+
+    **第二条不看路径**，因为它不需要目标槽位有值就能判：号码坐在 01 槽里就
+    说明它是一本护照，与所选的 02 矛盾——02 槽是空的还是满的都不影响这个推理。
+    而它堵的正是第三条堵不住的那个洞：路径B 新办港澳通行证时 02 槽本来就是
+    空的，「查不到就放行」那条规则对护照号压根不适用（它查得到），只有第二条
+    拦得住。
+
+    ledger_required：
+        路径A（是否做证=否）为真——travel.py 的「说不做证就得真有那本证、
+        且在有效期内」已经保证台账里有那本证，所以一个查不到的号码没有合法
+        出处，只可能是敲错或填串了。
+        路径B（新证还没入台账）为假——travel_details.passport_no 是系统里
+        唯一的号码来源，此时「查不到」是正常的；拦了路径B 就没法领用。
+    """
+    no = (no or "").strip()
+    code = (code or "").strip()
+    # 号码必填、种类合法各有自己的判据，这里不重复报错（否则同一个错报两遍）
+    if not no or code not in CERT_NO_FIELD or not personnel_filing_id:
+        return None
+
+    # 看全部槽位值，不用 cert_no_of()——它只保留同槽位先登记的那一个，
+    # 一人两条港澳通行证记录时会把正当操作判成错误。见 certificate_slots_of。
+    slots = certificate_slots_of(personnel_filing_id)
+
+    if no in slots.get(code, set()):
+        return None
+
+    for other, nums in slots.items():
+        if other != code and no in nums:
+            return (f"证件号码 {no} 是该人员台账上登记的「{_types_label(other)}」号码，"
+                    f"而本次领用登记的证件种类是「{_types_label(code)}」——"
+                    "两者不是同一本证，这样存下来，借出账会指向另一本证。"
+                    "请把号码改成那一本的号码；"
+                    "如确需领用另一种证件，请先到出国申请里更正拟用证件种类。")
+
+    if ledger_required:
+        have = sorted(slots.get(code, set()))
+        tail = f"（台账登记的是 {'、'.join(have)}）" if have \
+            else "（台账上没有登记这一种证件）"
+        return (f"证件号码 {no} 不是该人员台账上登记的「{_types_label(code)}」号码{tail}。"
+                "本次申请「是否做证」为「否」，用的就是台账里已有的那一本，"
+                "号码应与台账一致。如果实体证上的号码确实与台账不同，"
+                "请先到证照台账更正，再来登记领用。")
+    return None
+
+
 def _validate_form(data: dict) -> list[str]:
     errors = check_required(data, [
         # 领用必须挂在一条出国申请上：证件是为某一次已批准的出行借出的，
@@ -752,7 +853,10 @@ def _validate_form(data: dict) -> list[str]:
     if data.get("travel_id"):
         db = get_db()
         tv = db.execute(
-            "SELECT personnel_filing_id, trip_status, intended_cert_type, approval_date "
+            "SELECT personnel_filing_id, trip_status, intended_cert_type, approval_date, "
+            # need_new_passport 决定号码对不上时拦不拦：路径A 台账里确定有那
+            # 本证，路径B 的新证可能还没入台账。见 cert_no_slot_error。
+            "need_new_passport "
             "FROM travel_details WHERE id = ?",
             (data["travel_id"],)).fetchone()
         if not tv:
@@ -777,6 +881,14 @@ def _validate_form(data: dict) -> list[str]:
                     f"该出国申请拟用证件种类为「{_types_label(want)}」，"
                     f"本次领用登记的是「{_types_label(got)}」，两者不一致。"
                     "如确需改用其他证件，请先到出国申请里更正拟用证件种类。")
+            # 上面那条只管「种类对不对」。号码与种类之间还要再比一次——
+            # 种类填对了、号码填成同一个人另一本证的号码，上面那条看不见。
+            # 判据与更正入口共用一个函数，见 cert_no_slot_error。
+            slot_err = cert_no_slot_error(
+                data.get("personnel_filing_id"), got, data.get("cert_nos"),
+                ledger_required=((tv["need_new_passport"] or "").strip() == "否"))
+            if slot_err:
+                errors.append(slot_err)
             # 证是为一次**已批准**的出行借出的，不该在审批完成之前发放。
             #
             # 与 late_issue_error 那条（领用日期 ≤ 实际回国日期）性质不同：

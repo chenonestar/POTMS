@@ -360,10 +360,47 @@ def certificate_number_maps() -> tuple[dict, dict]:
 
 
 def cert_no_of(personnel_filing_id, cert_type: str) -> str:
-    """某人台账上某一种证件的号码；没登记过返回空串。"""
+    """某人台账上某一种证件的号码；没登记过返回空串。
+
+    **只能用来「带出一个号码去预填」，不能用来校验。** 它背后那份映射用
+    setdefault，同一槽位跨多行时只保留先登记的那一个。校验要看全部，
+    用 certificate_slots_of()，那里写了拿这个函数校验会错在哪。
+    """
     if not personnel_filing_id or not cert_type:
         return ""
     return certificate_number_maps()[1].get(int(personnel_filing_id), {}).get(cert_type, "")
+
+
+def certificate_slots_of(personnel_filing_id) -> dict:
+    """某人台账上每个证件种类槽位的**全部**号码，跨行合并。
+
+        {'01': {'E1234567'}, '02': {'C7654321', 'C0000001'}, '03': set()}
+
+    与上面 certificate_number_maps() 的差别只有一处，而那一处是校验的生死：
+    那份映射用 `setdefault`，**同一槽位跨多行时只留先登记的那一个**——它的
+    消费方是「带出一个号码来预填」，取一个就够。
+
+    拿它做校验就错了。一个人有两条证照记录、两条都登记了往来港澳通行证
+    （历史遗留，原因见 certificate_number_maps 的说明）时，经办人交出去的
+    完全可能是第二本，而校验只认第一本，于是把一次**正当操作**判成错误。
+    这正是自检清单第 18 条：规则挡住坏情形时，顺带挡住了什么。
+
+    所以校验必须看全部，不能复用那份映射——两个函数都留着，各有各的用处。
+    """
+    # 槽位三元组与 certificate_number_maps 逐字一致；那里是唯一的先例，
+    # 改其中一处必须同时改另一处（这份对应关系另见 issuance.CERT_NO_FIELD）。
+    out: dict = {code: set() for code in ("01", "02", "03")}
+    if not personnel_filing_id:
+        return out
+    for cr in get_db().execute(
+        "SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "
+        "WHERE personnel_filing_id = ?", (int(personnel_filing_id),)
+    ).fetchall():
+        for code, v in (("01", cr["passport_no"]), ("02", cr["hm_pass_no"]),
+                        ("03", cr["tw_pass_no"])):
+            if v and v.strip():
+                out[code].add(v.strip())
+    return out
 
 
 def get_personnel_options() -> list[dict]:

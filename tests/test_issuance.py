@@ -128,6 +128,17 @@ def c(tmp_path, monkeypatch):
                "residence,political_status,work_unit,position_or_title,supervisor_unit,operator) "
                "VALUES (1,'张','三','男','19900101',?,'北京','群众','总部','科长','人事处','admin')",
                (_VALID_ID,))
+    # 证照台账：这条原先**没有**，而出行却填着 need_new_passport='否'（= 我已经
+    # 有证了）。那个组合在真系统里造不出来——travel._validate_form 会直接拦
+    # 「该备案人员名下没有在有效期内的 X，「是否做证」应为「是」」。
+    # 以前没有任何判据会碰到这份假数据；第 15 批加了「号码必须属于所选种类」
+    # 之后它当场暴露（自检清单第 17 条：加约束时测试大面积变红，往往不是约束
+    # 错了，是测试数据一直是假的）。两个号码就是本文件 _issue 与第 321 行用的那两个。
+    db.execute("INSERT INTO certificates (personnel_filing_id,unit,department,name,"
+               "passport_no,passport_expiry,passport_submit_date,"
+               "hm_pass_no,hm_pass_expiry,hm_pass_submit_date,operator) "
+               "VALUES (1,'总部','技术部','张三','E12345678','20351231','20250101',"
+               "'C87654321','20351231','20250101','admin')")
     db.execute("INSERT INTO travel_details (id,personnel_filing_id,unit,department,name,position,"
                "id_number,destination_passport,category,travel_dates,need_new_passport,operator) "
                "VALUES (1,1,'总部','技术部','张三','科长',?,'美国/护照','01','2026/08/01-2026/08/11','否','admin')",

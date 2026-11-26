@@ -131,8 +131,12 @@
                    正是「哪本实体证在谁手上」的唯一凭据。 #}
                 <div class="mt-3">
                     <label class="form-label required">证件号码</label>
-                    <input type="text" class="form-control" name="cert_nos" id="fixCertNos" value="{{ item.cert_nos or '' }}" required>
-                    <div class="form-text">改了种类，号码也要跟着改成那一本的号码，否则借出账指向一本不存在的证。</div>
+                    <input type="text" class="form-control" name="cert_nos" id="fixCertNos" value="{{ item.cert_nos or '' }}" autocomplete="off" required>
+                    <div class="form-text">改了种类，号码也要跟着改成那一本的号码，否则借出账指向一本不存在的证。<br>
+                        {# 这句规则以前只写在这里和模板注释里，从没被执行过：把「护照 E1」
+                           订正成「往来港澳通行证」、号码仍留 E1，照样保存成功。现在后端
+                           硬拦（issuance.cert_no_slot_error），文案与执行对上了。 #}
+                        号码必须是上面所选那一种的号码——<strong>填成本人另一本证的号码会被拦下</strong>（上面每一项后面括号里就是台账登记的号码）。</div>
                 </div>
             </div>
             <div class="modal-footer">

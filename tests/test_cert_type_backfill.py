@@ -251,19 +251,53 @@ def test_correction_shows_the_ledger_numbers_to_pick_from(client):
     assert "台账：C60000001" in html, "没把号码显示给经办人看"
 
 
-def test_correction_refuses_a_number_already_lent_to_someone_else(client):
-    """更正时填的号码若已在别人手上未还，挡回——与新建同一条规则。
+def test_correction_refuses_a_number_already_lent_out(client):
+    """更正时填的号码若已有一张未归还单占着，挡回——与新建同一条规则。
 
     这个入口原先根本不写号码，也就无从撞号；改成可写之后，跨申请查重
     必须一并跟过来，否则「一本证同时只能在一个人手上」就只在新建那一头成立。
+
+    **原先这条填的是张三的号码（E12345678）去更正周八的记录 #6**，靠「别人
+    正持有」来造冲突。第 15 批补上「号码必须属于所选种类」之后，那个号码先被
+    槽位校验拦下了（它压根不是周八的证），于是这条用例虽然还红着，测到的却
+    不再是跨申请查重——判据被遮住了。
+
+    冲突要造在**周八自己的证**上才到得了这条规则：同一个人两条申请争同一本
+    护照，这既是现实会发生的，也是这条规则存在的理由。
     """
+    # 先塞一张占着周八护照的未归还单（不走 HTTP，只为制造占用）
+    db = sqlite3.connect(Config.DATABASE)
+    db.execute(
+        "INSERT INTO cert_issuance (id,travel_id,personnel_filing_id,holder_name,id_number,"
+        "cert_types,cert_nos,issue_date,issuer,status,operator) "
+        "VALUES (90,NULL,6,'周八',?,'01','E60000001','20260901','admin','issued','admin')",
+        (valid_id(6),))
+    db.commit(); db.close()
+
     r = client.post("/issuance/6/cert-types",
                     data={"csrf_token": _tok(client), "cert_types": "01",
-                          "cert_nos": "E12345678"},     # 张三（记录 #1）正持有
+                          "cert_nos": "E60000001"},     # 周八自己的护照，已被 #90 占着
                     follow_redirects=True)
     body = r.get_data(as_text=True)
     assert "已由" in body and "尚未归还" in body
     assert _cert_types(6) == ""
+
+
+def test_correction_refuses_another_persons_number(client):
+    """更正时填**别人**的号码，被槽位校验拦下。
+
+    这是上面那条原本的数据（拿张三的 E12345678 去更正周八的记录），现在由
+    「号码必须属于所选种类」这条判据接住，报的是「不是同一本证 / 不是台账上
+    登记的号码」，而不是「已被别人领用」——后者会让人以为等它还回来就能用，
+    而那本证永远不是周八的。
+    """
+    r = client.post("/issuance/6/cert-types",
+                    data={"csrf_token": _tok(client), "cert_types": "01",
+                          "cert_nos": "E12345678"},     # 张三的护照
+                    follow_redirects=True)
+    body = r.get_data(as_text=True)
+    assert "号码应与台账一致" in body, body[:400]
+    assert _cert_types(6) == "" and _cert_nos(6) == ""
 
 
 def test_correction_rejected_on_signed_record(client):

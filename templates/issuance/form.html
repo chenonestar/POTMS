@@ -84,10 +84,17 @@
             </div>
         </div>
         <div class="col-md-6">
-            <label class="form-label required">证件号码 <span class="text-muted">(按所选种类自动带入，可修改)</span></label>
-            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="选择证件种类后自动带入" required>
+            <label class="form-label required">证件号码 <span class="text-muted">(按所选种类自动带入)</span></label>
+            {# autocomplete="off"：号码框是文本输入，浏览器会按输入框名字做历史
+               填充，把以前敲过的号码（包括给**别人**登记时敲的）弹成候选。业务方
+               就是这么把护照号填进了一条「往来港澳通行证」的领用单。
+               这只是减少触发概率，判据在后端（issuance.cert_no_slot_error）。 #}
+            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="选择证件种类后自动带入" autocomplete="off" required>
             <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。<br>
-                这一栏是「哪一本实体证在谁手上」的唯一凭据：留空这本证就会从借出账上消失，仍被算作在库。</div>
+                这一栏是「哪一本实体证在谁手上」的唯一凭据：留空这本证就会从借出账上消失，仍被算作在库。<br>
+                {# 原先这里写「可修改」。路径A 下现在是硬拦——只能是台账里那一本的号码，
+                   给一句照做会失败的提示比没有提示更糟（自检清单第 22 条）。 #}
+                {% if travel and travel.need_new_passport == '否' %}本次申请「是否做证」为「否」，用的就是台账里已有的那一本，<strong>号码须与台账一致</strong>；实体证上的号码与台账不同时，请先到证照台账更正。{% else %}新办证件尚未入台账时，填实际发放的那本证的号码。{% endif %}</div>
         </div>
     </div>
     <div class="row g-3 mt-2">
