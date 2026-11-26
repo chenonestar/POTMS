@@ -372,9 +372,15 @@ def cert_no_of(personnel_filing_id, cert_type: str) -> str:
 
 
 def certificate_slots_of(personnel_filing_id) -> dict:
-    """某人台账上每个证件种类槽位的**全部**号码，跨行合并。
+    """某人台账上每个证件种类槽位的**全部**号码及其有效期，跨行合并。
 
-        {'01': {'E1234567'}, '02': {'C7654321', 'C0000001'}, '03': set()}
+        {'01': {'E1234567': '20351231'},
+         '02': {'C7654321': '20300101', 'C_OLD': '20260927'},
+         '03': {}}
+
+    返回 dict 而不是 set，是为了把**有效期**一起带出来——判「这本证在领用那天
+    还有效吗」要用（见 usable_cert_nos）。`no in slots[code]` 这种成员判断在
+    dict 上照样成立，所以调用方写法不变。
 
     与上面 certificate_number_maps() 的差别只有一处，而那一处是校验的生死：
     那份映射用 `setdefault`，**同一槽位跨多行时只留先登记的那一个**——它的
@@ -389,18 +395,49 @@ def certificate_slots_of(personnel_filing_id) -> dict:
     """
     # 槽位三元组与 certificate_number_maps 逐字一致；那里是唯一的先例，
     # 改其中一处必须同时改另一处（这份对应关系另见 issuance.CERT_NO_FIELD）。
-    out: dict = {code: set() for code in ("01", "02", "03")}
+    out: dict = {code: {} for code in ("01", "02", "03")}
     if not personnel_filing_id:
         return out
     for cr in get_db().execute(
-        "SELECT passport_no, hm_pass_no, tw_pass_no FROM certificates "
+        "SELECT passport_no, passport_expiry, hm_pass_no, hm_pass_expiry, "
+        "tw_pass_no, tw_pass_expiry FROM certificates "
         "WHERE personnel_filing_id = ?", (int(personnel_filing_id),)
     ).fetchall():
-        for code, v in (("01", cr["passport_no"]), ("02", cr["hm_pass_no"]),
-                        ("03", cr["tw_pass_no"])):
+        for code, v, exp in (("01", cr["passport_no"], cr["passport_expiry"]),
+                             ("02", cr["hm_pass_no"], cr["hm_pass_expiry"]),
+                             ("03", cr["tw_pass_no"], cr["tw_pass_expiry"])):
             if v and v.strip():
-                out[code].add(v.strip())
+                # 同一号码在多行里重复出现时，留**有效期最晚**的那条：换发后
+                # 重复登记过的，以新的那条为准。setdefault 会留先登记的，
+                # 那恰好是旧的——这个函数存在的理由就是不要那种取法。
+                cur = out[code].get(v.strip())
+                e = (exp or "").strip()
+                if cur is None or (e and e > cur):
+                    out[code][v.strip()] = e
     return out
+
+
+def usable_cert_nos(personnel_filing_id, cert_type: str, on_date: str) -> list:
+    """某人某一种证件里，**在 on_date 那天仍然有效**的号码，升序。
+
+    `on_date` 是 YYYYMMDD。**为什么不按「今天」判：** 补录一张两年前的领用单
+    时，当时用的那本证今天早过期了，而那是正当业务。按今天判会把补录整类堵死
+    （自检清单第 18 条：规则挡住坏情形时顺带挡住了什么）。所以基准日是**领用
+    日期**，不是今天。
+
+    **有效期为空时算「有效」。** 历史回填的证照行根本没采集过有效期（见
+    tests 里 _seed_legacy），拿一个系统自己都没有的答案去挡人是错的——与
+    `intended_cert_type` 留空就不比对、逾期判据基准日缺失就不算逾期是同一条
+    原则：宁可漏报，不可误报。
+
+    空的 on_date 同样不判（没有基准日就比不了），直接返回该槽位全部号码。
+    """
+    slots = certificate_slots_of(personnel_filing_id)
+    nos = slots.get((cert_type or "").strip(), {})
+    on = (on_date or "").strip()
+    if not on:
+        return sorted(nos)
+    return sorted(no for no, exp in nos.items() if not exp or exp >= on)
 
 
 def get_personnel_options() -> list[dict]:

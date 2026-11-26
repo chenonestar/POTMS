@@ -291,14 +291,17 @@ def test_certificate_slots_of_merges_across_rows(tmp_path, monkeypatch):
     app = create_app()
     with app.test_request_context():
         slots = certificate_slots_of(1)
-        assert slots["01"] == {"E1234567"}
-        assert slots["02"] == {"C1111111", "C2222222"}, "同槽位第二个号码丢了"
-        assert slots["03"] == {"W3333333"}
+        # 第 16 批起返回 {号码: 有效期}，不再是号码集合——有效期要一起带出来，
+        # 判「这本证在领用那天还有效吗」要用。成员判断写法不变。
+        assert set(slots["01"]) == {"E1234567"}
+        assert set(slots["02"]) == {"C1111111", "C2222222"}, "同槽位第二个号码丢了"
+        assert set(slots["03"]) == {"W3333333"}
+        assert slots["02"]["C1111111"] == _d(3000), "有效期没带出来"
         # 与 cert_no_of 的差别就在这里，顺手钉住，免得将来有人把两者合并
         assert cert_no_of(1, "02") in slots["02"]
         assert len(slots["02"]) == 2
     with app.test_request_context():
-        assert certificate_slots_of(999) == {"01": set(), "02": set(), "03": set()}
+        assert certificate_slots_of(999) == {"01": {}, "02": {}, "03": {}}
 
 
 # ===========================================================================
@@ -430,11 +433,12 @@ def test_the_swap_can_no_longer_happen(both):
 # ===========================================================================
 # 六、表单文案与代码执行的是同一条（第 22 条）
 # ===========================================================================
-def test_the_form_no_longer_says_the_number_is_freely_editable(both):
-    """路径 A 的表单不能再说「可修改」。
+def test_the_form_no_longer_lets_you_type_the_number_on_path_a(both):
+    """路径 A 的号码不让人敲：渲染成服务端给选项的下拉，不是文本框。
 
-    现在是硬拦——只能是台账里那一本的号码。给一句读起来合理、照做却失败的
-    提示，比没有提示更糟。
+    第 15 批这里只是把「可修改」那句文案改掉；第 16 批进一步——号码在路径A 上
+    是**确定的**（人 + 种类 + 领用那天有效），系统给得出，就不该让人填
+    （第 14 条）。顺带把浏览器历史填充这条路整个断掉。
     """
     db, c = both
     r = c.get("/issuance/new?travel_id=1")
@@ -443,10 +447,16 @@ def test_the_form_no_longer_says_the_number_is_freely_editable(both):
     # 断言整句，不是「可修改」三个字——后者在同一页的签名区还有一处
     # 「签名一经保存后不可修改」，整页找短字符串当场就假了（第 3 条）。
     assert "按所选种类自动带入，可修改" not in body
-    assert "号码须与台账一致" in body, \
+    # 控件必须是 select：取 id="certNos" 之前那一小段，别拿整页找 <select
+    # （人员选择框也是 select，整页断言两条路径都会过）。
+    head = body.split('id="certNos"')[0][-160:]
+    assert "<select" in head, "路径A 的号码框还是文本输入"
+    assert "取自证照台账" in body
+    assert "号码由系统带出" in body, \
         "路径A 的提示没出来——很可能 _travel_brief 又没把 need_new_passport 取出来，" \
         "那个 {% if %} 会静默地永远走 else"
-    assert 'autocomplete="off"' in body
+    # 台账里那一本应当已经选中，什么都不改就能提交
+    assert '<option value="C7654321" selected' in body
 
 
 def test_path_b_form_says_something_else(tmp_path, monkeypatch):

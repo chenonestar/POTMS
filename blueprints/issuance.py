@@ -25,8 +25,8 @@ from auth import login_required
 from config import Config
 from database import get_db
 from utils.helpers import (log_action, list_all, row_snapshot, get_dict_value,
-                           operator_name, cert_no_of, certificate_number_maps,
-                           certificate_slots_of)
+                           operator_name, certificate_number_maps,
+                           certificate_slots_of, usable_cert_nos)
 from utils.validators import parse_date_input, check_required, check_dates, comparable_ymd
 
 issuance_bp = Blueprint("issuance", __name__)
@@ -187,6 +187,9 @@ def new() -> ResponseReturnValue:
         if errors:
             for e in errors:
                 flash(e, "danger")
+            data["cert_no_options"] = cert_no_options_for(
+                data.get("personnel_filing_id"), data.get("cert_types"),
+                data.get("issue_date"))
             return render_template("issuance/form.html", data=data,
                                    travel=_travel_brief(data.get("travel_id")))
 
@@ -218,6 +221,9 @@ def new() -> ResponseReturnValue:
                   "一本证件同时只能在一个人手上。"
                   "如果刚才连点了两次「保存」，那一次已经登记成功，请到领用列表查看，不必重复提交。",
                   "danger")
+            data["cert_no_options"] = cert_no_options_for(
+                data.get("personnel_filing_id"), data.get("cert_types"),
+                data.get("issue_date"))
             return render_template("issuance/form.html", data=data,
                                    travel=_travel_brief(data.get("travel_id")))
         iss_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -240,6 +246,10 @@ def new() -> ResponseReturnValue:
         return render_template("issuance/pick_travel.html", travels=_eligible_travels())
     if travel:
         code = (travel["intended_cert_type"] or "").strip()
+        pfid = travel["personnel_filing_id"]
+        # 该槽位里在预填那天仍然有效的号码。只有一个时这一栏就是确定的，
+        # 不必让人填；有多个时不替人选，交给下拉。
+        usable = usable_cert_nos(pfid, code, prefill["issue_date"])
         prefill.update({
             "travel_id": travel_id,
             "personnel_filing_id": travel["personnel_filing_id"],
@@ -249,20 +259,34 @@ def new() -> ResponseReturnValue:
             # 让人先选一遍再被打回来，是纯粹的为难。
             # 存量申请这一栏可能是空的（回填判不出的那批），空就不预选。
             "cert_types": code,
-            # 号码也在服务端带出来，不只靠 JS。
+            # 号码由服务端给，不靠 JS，而且要给**对的那一本**。
             #
-            # 原先这一栏只有前端 syncCertNos() 会填，而它只挂在 change 事件上：
-            # 种类是服务端预选好的，经办人没有理由再去点一下那个已经选中的
-            # 单选钮，于是号码框一直是空的——**看上去却像填好了**。实测就这么
-            # 登记出了一条号码为空的领用记录，而 certificate.lent_out_numbers()
-            # 是按号码收集的，空号码直接被滤掉：证已经在人手上，首页却仍把它
-            # 算作「在库」，四档恒等式照样平，孤儿号码也是空的，**一处都不喊**。
+            # 两段历史叠在这一行上：
+            # ① 原先这一栏只有前端 syncCertNos() 会填，而它只挂在 change 事件
+            #    上；种类是服务端预选好的，经办人没理由再点一次那个已选中的
+            #    单选钮，于是号码框一直是空的——看上去却像填好了。空号码会让
+            #    那本证从借出账上消失、仍被算作在库，而恒等式照样平（第 13 批）。
+            # ② 补上服务端预填后用的是 cert_no_of()，它取「先登记的那一个」。
+            #    换发过的人台账里同一槽位有两个号码（旧证到期后新建了一条记录
+            #    而不是改原记录），先登记的恰好是**旧的、已过期的**那本——于是
+            #    预填直接带出过期号码，「什么都不改直接提交」就登记出一本过期
+            #    证，一句话都不说（第 16 批，实测复现）。
             #
-            # 台账优先、出行记录上的号码兜底：路径B 的新证还没进台账，
-            # travel_details.passport_no 是系统里唯一的来源。
-            "cert_nos": cert_no_of(travel["personnel_filing_id"], code)
+            # 所以现在取的是 usable_cert_nos()：该槽位在**领用日期那天**仍然
+            # 有效的号码。只有一个时它就是确定的，没有让人输入的理由
+            # （第 14 条：必填与否看系统给不给得出这个值）。
+            #
+            # **只在唯一有效时预选。** 两本都有效就不替人选——那等于替他决定
+            # 交出去的是哪一本实体证，而系统并不知道；模板会渲染成下拉让他选。
+            # 路径B 没有台账号码，退回出行记录上的 passport_no（唯一来源）。
+            "cert_nos": (usable[0] if len(usable) == 1 else "")
                         or (travel["passport_no"] or "").strip(),
         })
+        # 下拉里**列出该槽位全部号码**并标出各自有效期，不是只列今天有效的：
+        # 补录旧单时要选的那本今天可能已经过期，而后端按领用日期判，
+        # 所以选项不能先被「今天」筛掉。
+        prefill["cert_no_options"] = cert_no_options_for(
+            pfid, code, prefill["issue_date"])
     return render_template("issuance/form.html", data=prefill, travel=travel)
 
 
@@ -277,9 +301,16 @@ def view(iss_id) -> ResponseReturnValue:
     return render_template("issuance/view.html", item=row, travel=travel,
                            type_labels=_types_label(row["cert_types"]),
                            can_fix=can_fix_cert_types(row),
-                           # 更正弹窗里按种类带出台账号码，与新建那一头同源
-                           ledger_nos=certificate_number_maps()[1].get(
-                               row["personnel_filing_id"], {}))
+                           # 更正弹窗里按种类列出台账号码，与新建那一头同源。
+                           #
+                           # 原先用 certificate_number_maps()[1]，每种只给一个
+                           # ——「先登记的那一个」。换发过的人同槽位有两个号码，
+                           # 那个提示会把**已过期的旧号码**显示成「台账：X」，
+                           # 等于引导经办人填错（第 12 条：新增路径加的校验，
+                           # 编辑路径问过「这里也该有吗」；这里连提示都要一起问）。
+                           # 现在给全部号码 + 有效期，由模板列出来。
+                           ledger_slots=certificate_slots_of(
+                               row["personnel_filing_id"]))
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +461,9 @@ def fix_cert_types(iss_id) -> ResponseReturnValue:
         (row["travel_id"],)).fetchone() if row["travel_id"] else None
     slot_err = cert_no_slot_error(
         row["personnel_filing_id"], types[0], cert_nos,
-        ledger_required=bool(tv and (tv["need_new_passport"] or "").strip() == "否"))
+        ledger_required=bool(tv and (tv["need_new_passport"] or "").strip() == "否"),
+        # 更正入口不改领用日期，基准日就取这条记录自己的领用日期。
+        on_date=(row["issue_date"] or ""))
     if slot_err:
         flash(slot_err, "danger")
         return redirect(url_for("issuance.view", iss_id=iss_id))
@@ -730,8 +763,29 @@ def _extract_form(form):
     }
 
 
+def cert_no_options_for(personnel_filing_id, code: str, on_date: str = "") -> list:
+    """渲染号码下拉用的选项：该槽位**全部**号码 + 各自有效期 + 今天是否已过期。
+
+    列全部而不是只列今天有效的：补录旧单时要选的那本今天可能已经过期，而后端
+    是按**领用日期**判的（见 cert_no_slot_error），选项先被「今天」筛掉就选不着了。
+    过期的那几个在界面上标出来，让人看见自己在选什么。
+
+    GET 预填与两处校验失败回显都用这一个函数——回显时不重算，下拉就是空的，
+    人被拦下之后反而改不了（第 13 条那类：入口和判据必须同源）。
+    """
+    all_nos = certificate_slots_of(personnel_filing_id).get((code or "").strip(), {})
+    today = datetime.now().strftime("%Y%m%d")
+    base = (on_date or "").strip() or today
+    return [
+        {"no": n, "expiry": all_nos[n] or "",
+         "expired_today": bool(all_nos[n] and all_nos[n] < today),
+         "expired_on_date": bool(all_nos[n] and all_nos[n] < base)}
+        for n in sorted(all_nos)
+    ]
+
+
 def cert_no_slot_error(personnel_filing_id, code: str, no: str,
-                       ledger_required: bool) -> str | None:
+                       ledger_required: bool, on_date: str = "") -> str | None:
     """领用登记的号码，必须就是「所选那个种类」那一本的号码。
 
     这条判据此前**根本不存在**。种类与申请的拟用种类比对过（硬拦），号码的
@@ -785,7 +839,25 @@ def cert_no_slot_error(personnel_filing_id, code: str, no: str,
     # 一人两条港澳通行证记录时会把正当操作判成错误。见 certificate_slots_of。
     slots = certificate_slots_of(personnel_filing_id)
 
-    if no in slots.get(code, set()):
+    if no in slots.get(code, {}):
+        # 号码落在对的槽里，还要问一句：它在**领用那天**还有效吗。
+        #
+        # 换发过的人台账里同一槽位有两个号码（旧证到期后新建了一条记录而不是
+        # 改原记录，见 certificate_number_maps 的说明），而预填取的是「先登记
+        # 的那一个」＝旧的那本。实测：表单预填直接带出已过期的号码，
+        # 「什么都不改直接提交」就登记出一本过期证，一句话都不说。
+        #
+        # 基准日是领用日期不是今天：补录两年前的领用单，当时那本证有效、
+        # 今天早过期了，那是正当业务（第 18 条）。有效期为空不判（历史回填
+        # 行没采集过）。两条都在 usable_cert_nos 里。
+        exp = (slots[code].get(no) or "").strip()
+        base = (on_date or "").strip()
+        if exp and base and exp < base:
+            ok = [n for n in usable_cert_nos(personnel_filing_id, code, base) if n != no]
+            alt = f"该种类在当天有效的是 {'、'.join(ok)}。" if ok else \
+                "该种类在当天没有有效的证件——请核对领用日期，或先到证照台账更正有效期。"
+            return (f"证件号码 {no} 的有效期至 {exp}，"
+                    f"在领用日期（{base}）当天已经过期。{alt}")
         return None
 
     for other, nums in slots.items():
@@ -797,7 +869,7 @@ def cert_no_slot_error(personnel_filing_id, code: str, no: str,
                     "如确需领用另一种证件，请先到出国申请里更正拟用证件种类。")
 
     if ledger_required:
-        have = sorted(slots.get(code, set()))
+        have = sorted(slots.get(code, {}))
         tail = f"（台账登记的是 {'、'.join(have)}）" if have \
             else "（台账上没有登记这一种证件）"
         return (f"证件号码 {no} 不是该人员台账上登记的「{_types_label(code)}」号码{tail}。"
@@ -886,7 +958,10 @@ def _validate_form(data: dict) -> list[str]:
             # 判据与更正入口共用一个函数，见 cert_no_slot_error。
             slot_err = cert_no_slot_error(
                 data.get("personnel_filing_id"), got, data.get("cert_nos"),
-                ledger_required=((tv["need_new_passport"] or "").strip() == "否"))
+                ledger_required=((tv["need_new_passport"] or "").strip() == "否"),
+                # 基准日是本次领用日期，不是今天——补录旧单时当时那本证有效、
+                # 今天早过期了，按今天判会把补录整类堵死。
+                on_date=data.get("issue_date") or "")
             if slot_err:
                 errors.append(slot_err)
             # 证是为一次**已批准**的出行借出的，不该在审批完成之前发放。

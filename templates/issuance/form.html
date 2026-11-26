@@ -84,17 +84,39 @@
             </div>
         </div>
         <div class="col-md-6">
-            <label class="form-label required">证件号码 <span class="text-muted">(按所选种类自动带入)</span></label>
-            {# autocomplete="off"：号码框是文本输入，浏览器会按输入框名字做历史
-               填充，把以前敲过的号码（包括给**别人**登记时敲的）弹成候选。业务方
-               就是这么把护照号填进了一条「往来港澳通行证」的领用单。
+            {% set from_ledger = travel and travel.need_new_passport == '否' %}
+            {% set opts = data.cert_no_options or [] %}
+            <label class="form-label required">证件号码
+                <span class="text-muted">{% if from_ledger %}(取自证照台账){% else %}(新办证件，请填实际发放的号码){% endif %}</span></label>
+
+            {% if from_ledger and opts %}
+            {# 路径A：号码由系统给，不让人敲。
+               一个选项时等于只读；多个时让人选哪一本——系统知道「是哪一种证」，
+               不知道「交出去的是哪一本」，那一步只有经办人能定。
+               下拉里列该槽位**全部**号码并标出有效期：补录旧单时要选的那本今天
+               可能已经过期，后端按领用日期判，所以选项不能先被「今天」筛掉。 #}
+            <select class="form-select" name="cert_nos" id="certNos" required>
+                {% if opts | length > 1 and not data.cert_nos %}<option value="">请选择本次交出的是哪一本</option>{% endif %}
+                {% for o in opts %}
+                <option value="{{ o.no }}" {{ 'selected' if data.cert_nos == o.no }}>{{ o.no }}{% if o.expiry %}（有效期至 {{ o.expiry }}{% if o.expired_today %}，今天已过期{% endif %}）{% endif %}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。<br>
+                这一栏是「哪一本实体证在谁手上」的唯一凭据。<br>
+                {% if opts | length > 1 %}该人员这一种证在台账里有 <strong>{{ opts | length }}</strong> 个号码，请按手上那一本选。{% else %}本次申请「是否做证」为「否」，用的就是台账里登记的那一本，<strong>号码由系统带出</strong>。{% endif %}
+                实体证上的号码与台账不同时，请先到证照台账更正。</div>
+
+            {% else %}
+            {# 路径B：新证还没进台账，travel_details.passport_no 是系统里唯一的
+               来源，仍然要人填。autocomplete="off"：浏览器会按输入框名字做历史
+               填充，把以前敲过的号码（包括给**别人**登记时敲的）弹成候选——
+               业务方就是这么把护照号填进了一条「往来港澳通行证」的领用单。
                这只是减少触发概率，判据在后端（issuance.cert_no_slot_error）。 #}
-            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="选择证件种类后自动带入" autocomplete="off" required>
+            <input type="text" class="form-control" name="cert_nos" id="certNos" value="{{ data.cert_nos or '' }}" placeholder="填实际发放的那本证的号码" autocomplete="off" required>
             <div class="form-text">号码会随记录固化保存，后续修改证照信息不影响本次领用凭证。<br>
                 这一栏是「哪一本实体证在谁手上」的唯一凭据：留空这本证就会从借出账上消失，仍被算作在库。<br>
-                {# 原先这里写「可修改」。路径A 下现在是硬拦——只能是台账里那一本的号码，
-                   给一句照做会失败的提示比没有提示更糟（自检清单第 22 条）。 #}
-                {% if travel and travel.need_new_passport == '否' %}本次申请「是否做证」为「否」，用的就是台账里已有的那一本，<strong>号码须与台账一致</strong>；实体证上的号码与台账不同时，请先到证照台账更正。{% else %}新办证件尚未入台账时，填实际发放的那本证的号码。{% endif %}</div>
+                {% if from_ledger %}台账上查不到这一种证件的号码，请先到证照台账补登，再来办领用。{% else %}新办证件尚未入台账时，填实际发放的那本证的号码。{% endif %}</div>
+            {% endif %}
         </div>
     </div>
     <div class="row g-3 mt-2">
@@ -139,6 +161,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 选定的证件种类 → 带出对应号码（一次申请一本证，单选）
     function syncCertNos() {
+        // 路径A 的号码框是服务端渲染的 <select>，选项与预选都由
+        // issuance.cert_no_options_for() / usable_cert_nos() 决定，这里不许碰。
+        //
+        // **不加这个守卫，整个第 16 批的修复会被悄悄抵消：** data-cert0X 的值来自
+        // cert_no_of()，取的是「先登记的那一个」，换发过的人那恰好是已过期的旧
+        // 号码。两本都有效时下拉故意不预选（不替人决定交出哪一本），于是
+        // 下面那句 `if (!nosEl.value) syncCertNos()` 会触发，把过期号码又塞回来。
+        // 两处代码各自都对，断的是「号码框是个 input」这条没写在任何地方的隐式
+        // 依赖——自检清单第 19 条。
+        if (nosEl.tagName === 'SELECT') return;
         var o = sel.options[sel.selectedIndex];
         if (!o || !o.value) return;
         var cb = document.querySelector('.cert-type:checked');

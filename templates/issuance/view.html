@@ -120,10 +120,15 @@
                 {% set picked = ',' ~ (item.cert_types or '') ~ ',' %}
                 {% for o in dict_opts('cert_type') %}
                 <div class="form-check">
+                    {# 台账里这一种可能有多个号码（换发后新建了一条记录）。
+                       只显示一个就会把已过期的旧号码当成「台账上那一本」，
+                       等于引导经办人填错——所以全部列出并带上有效期。
+                       data-no 只在**唯一**时才给，多个时不替人选。 #}
+                    {% set nos = ledger_slots.get(o.code, {}) %}
                     <input class="form-check-input fix-type" type="radio" name="cert_types" value="{{ o.code }}" id="fx{{ o.code }}"
-                           data-no="{{ ledger_nos.get(o.code, '') }}"
+                           data-no="{{ (nos | list)[0] if nos | length == 1 else '' }}"
                            {{ 'checked' if (',' ~ o.code ~ ',') in picked }}>
-                    <label class="form-check-label" for="fx{{ o.code }}">{{ o.value }}{% if ledger_nos.get(o.code) %} <span class="text-muted small">（台账：{{ ledger_nos[o.code] }}）</span>{% endif %}</label>
+                    <label class="form-check-label" for="fx{{ o.code }}">{{ o.value }}{% if nos %} <span class="text-muted small">（台账：{% for n in nos | sort %}{{ n }}{% if nos[n] %} 至 {{ nos[n] }}{% endif %}{{ '；' if not loop.last }}{% endfor %}）</span>{% endif %}</label>
                 </div>
                 {% endfor %}
                 {# 号码必须跟着种类一起改。把护照记录订正成港澳通行证、号码却

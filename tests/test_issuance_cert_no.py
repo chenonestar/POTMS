@@ -213,10 +213,14 @@ def test_the_server_prefills_the_number_from_the_ledger(cl):
     却没有任何东西把它搬进框子。
     """
     html = cl.get("/issuance/new?travel_id=1").get_data(as_text=True)
-    box = re.search(r'<input[^>]*name="cert_nos"[^>]*>', html)
-    assert box, "找不到证件号码输入框"
-    assert 'value="E1"' in box.group(0), f"号码没有预填：{box.group(0)}"
-    assert "required" in box.group(0), "号码输入框没有 required"
+    # 第 16 批起路径A 的号码框是服务端给选项的 <select>（号码是派生值，不让人
+    # 敲），所以读的是**选中的那个 option**，不再是 input 的 value。
+    # 这一条要钉的事没变：页面刚打开时号码就在那儿，不用人去点。
+    box = re.search(r'<select[^>]*name="cert_nos"[^>]*>.*?</select>', html, re.S)
+    assert box, "找不到证件号码控件"
+    assert '<option value="E1" selected' in box.group(0), \
+        f"号码没有预选：{box.group(0)[:300]}"
+    assert "required" in box.group(0), "号码控件没有 required"
 
 
 def test_the_form_marks_the_number_as_required(cl):
@@ -268,5 +272,10 @@ def test_the_ledger_wins_over_the_travel_record(cl):
     db.execute("UPDATE travel_details SET passport_no='STALE' WHERE id=1")
     db.commit(); db.close()
     html = cl.get("/issuance/new?travel_id=1").get_data(as_text=True)
-    box = re.search(r'<input[^>]*name="cert_nos"[^>]*>', html)
-    assert 'value="E1"' in box.group(0), f"没有以台账为准：{box.group(0)}"
+    box = re.search(r'<select[^>]*name="cert_nos"[^>]*>.*?</select>', html, re.S)
+    assert box, "找不到证件号码控件"
+    assert '<option value="E1" selected' in box.group(0), \
+        f"没有以台账为准：{box.group(0)[:300]}"
+    # 第 16 批之后这里能断得更强：路径A 的选项**只**从台账出，
+    # 出行记录上那个陈旧的派生值连成为一个选项的机会都没有。
+    assert "STALE" not in box.group(0), "陈旧的派生值出现在了下拉里"
